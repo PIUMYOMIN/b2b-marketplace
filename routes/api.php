@@ -1,7 +1,7 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ProductController;
@@ -61,10 +61,14 @@ Route::group([
     // --------------------
     Route::middleware(['auth:sanctum'])->group(function () {
 
+        // ---- Dashboard ----
+        Route::get('/dashboard', [DashboardController::class, 'stats']);
+        
+
+
         // ---- Users ----
         Route::prefix('users')->group(function () {
             Route::get('/', [UserController::class, 'index'])->middleware('role:admin');
-            Route::post('/', [UserController::class, 'store'])->middleware('role:admin');
             Route::get('/{user}', [UserController::class, 'show']);
             Route::put('/{user}', [UserController::class, 'update']);
             Route::delete('/{user}', [UserController::class, 'destroy'])->middleware('role:admin');

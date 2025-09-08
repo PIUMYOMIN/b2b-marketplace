@@ -866,14 +866,4 @@ public function setPrimaryImage(Product $product, $imageIndex)
     }
 }
 
-/**
- * Updated store method to handle image URLs from frontend
- */
-
-
-/**
- * Updated update method to handle image updates
- */
-
-
 }
