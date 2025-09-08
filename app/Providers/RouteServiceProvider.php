@@ -19,6 +19,8 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        parent::boot();
+
+        $this->loadRoutesFrom(base_path('routes/api.php'));
     }
 }
