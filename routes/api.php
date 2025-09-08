@@ -87,7 +87,7 @@ Route::group([
         Route::prefix('products')->group(function () {
             // Route::get('/', [ProductController::class, 'index']);
             Route::get('/search', [ProductController::class, 'search']);
-            Route::get('/{product}', [ProductController::class, 'show']);
+            // Route::get('/{product}', [ProductController::class, 'show']);
 
             // Image Management
             Route::post('/upload-image', [ProductController::class, 'uploadImage']);
@@ -117,10 +117,10 @@ Route::group([
         });
 
         // ---- Categories ----
-        Route::prefix('categories')->middleware('role:admin')->group(function () {
-            Route::post('/', [CategoryController::class, 'store']);
-            Route::put('/{category}', [CategoryController::class, 'update']);
-            Route::delete('/{category}', [CategoryController::class, 'destroy']);
+        Route::prefix('categories')->group(function () {
+            Route::post('/', [CategoryController::class, 'store'])->middleware('role:admin');
+            Route::put('/{category}', [CategoryController::class, 'update'])->middleware('role:admin');
+            Route::delete('/{category}', [CategoryController::class, 'destroy'])->middleware('role:admin');
         });
 
         // ---- Orders ----

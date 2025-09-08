@@ -9,10 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Resources\ProductResource;
 use App\Http\Resources\ReviewResource;
-use App\Http\Resources\CategoryResource;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
 
 
 class ProductController extends Controller
@@ -149,7 +147,7 @@ class ProductController extends Controller
     /**
      * Display the specified product with reviews
      */
-    public function show($id)
+    public function showPublic($id)
     {
         $product = Product::with(['category', 'seller'])
             ->withCount(['reviews as reviews_count' => function($query) {
@@ -272,7 +270,7 @@ class ProductController extends Controller
 }
 
 
-    public function showPublic($id)
+    public function show($id)
     {
         return $this->show($id);
     }

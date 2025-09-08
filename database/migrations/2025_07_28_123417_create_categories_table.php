@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->string('name_mm')->nullable(); // Myanmar name
+            $table->string('image')->nullable();
             $table->text('description')->nullable();
             $table->string('slug')->unique();
             $table->decimal('commission_rate', 5, 2)->default(0.1); // 10% default
