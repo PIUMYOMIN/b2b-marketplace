@@ -1,9 +1,9 @@
 <?php
 
 return [
-    'paths' => ['api/v1/*', 'sanctum/csrf-cookie','storage/*'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie','storage/*'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => ['https://b2b.piueducation.org'], // Specify domains instead of *
+    'allowed_origins' => ['*'],
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
