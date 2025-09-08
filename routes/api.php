@@ -85,7 +85,7 @@ Route::group([
 
         // ---- Products ----
         Route::prefix('products')->group(function () {
-            Route::get('/', [ProductController::class, 'index']);
+            // Route::get('/', [ProductController::class, 'index']);
             Route::get('/search', [ProductController::class, 'search']);
             Route::get('/{product}', [ProductController::class, 'show']);
 

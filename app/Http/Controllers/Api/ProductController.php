@@ -20,7 +20,7 @@ class ProductController extends Controller
     /**
      * Display a listing of products with optional filters
      */
-    public function index(Request $request)
+    public function indexPublic(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'per_page' => 'sometimes|integer|min:1|max:100',
@@ -119,7 +119,7 @@ class ProductController extends Controller
     /**
      * Display a listing of public products
      */
-    public function indexPublic(Request $request)
+    public function index(Request $request)
     {
         $query = Product::query()
             ->with(['category', 'seller'])
