@@ -190,6 +190,15 @@ class ReviewController extends Controller
     {
         try {
             $review = Review::findOrFail($id);
+            
+            // Check if review is already approved
+            if ($review->status === 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Review is already approved'
+                ], 400);
+            }
+            
             $review->update(['status' => 'approved']);
 
             // Update product rating
@@ -197,7 +206,8 @@ class ReviewController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Review approved successfully'
+                'message' => 'Review approved successfully',
+                'data' => $review->load(['user', 'product'])
             ]);
 
         } catch (\Exception $e) {
@@ -208,6 +218,90 @@ class ReviewController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to approve review'
+            ], 500);
+        }
+    }
+
+    /**
+     * Reject a review (admin only)
+     */
+    public function reject($id)
+    {
+        try {
+            $review = Review::findOrFail($id);
+            
+            // Check if review is already rejected
+            if ($review->status === 'rejected') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Review is already rejected'
+                ], 400);
+            }
+            
+            $review->update(['status' => 'rejected']);
+
+            // Update product rating (in case this was previously approved)
+            $this->updateProductRating($review->product_id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Review rejected successfully',
+                'data' => $review->load(['user', 'product'])
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to reject review:', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reject review'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update review status (admin only) - generic method for any status
+     */
+    public function updateStatus(Request $request, $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'status' => 'required|in:approved,pending,rejected'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $review = Review::findOrFail($id);
+            $oldStatus = $review->status;
+            $review->update(['status' => $request->status]);
+
+            // Update product rating if status changed to/from approved
+            if ($oldStatus === 'approved' || $request->status === 'approved') {
+                $this->updateProductRating($review->product_id);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Review status updated successfully',
+                'data' => $review->load(['user', 'product'])
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to update review status:', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update review status'
             ], 500);
         }
     }

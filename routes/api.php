@@ -81,6 +81,12 @@ Route::group([
             Route::get('/top-products', [DashboardController::class, 'topProducts']);
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
 
+            //Admin/Seller user management
+            Route::prefix('sellers')->group(function () {
+            Route::get('/', [SellerController::class, 'adminIndex'])->middleware('role:admin');
+            Route::post('/{seller}/approve', [SellerController::class, 'adminApprove'])->middleware('role:admin');
+            Route::post('/{seller}/reject', [SellerController::class, 'adminReject'])->middleware('role:admin');
+            });
             // Admin/Seller product management
             Route::get('/products', [ProductController::class, 'index'])->middleware('role:admin|seller');
 
@@ -137,6 +143,8 @@ Route::group([
 
             Route::middleware('role:admin')->group(function () {
                 Route::post('/{review}/approve', [ReviewController::class, 'approve']);
+                Route::post('/{review}/reject', [ReviewController::class, 'reject']);
+                Route::put('/{review}/status', [ReviewController::class, 'updateStatus']);
                 Route::delete('/{review}', [ReviewController::class, 'destroy']);
             });
         });

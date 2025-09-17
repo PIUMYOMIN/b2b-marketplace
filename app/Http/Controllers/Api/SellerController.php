@@ -62,7 +62,7 @@ class SellerController extends Controller
         $query = SellerProfile::with(['user', 'reviews'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->where('status', 'approved');
+            ->where('status', 'active');
 
         // Apply filters
         if ($request->has('search')) {
@@ -326,8 +326,18 @@ class SellerController extends Controller
                 'production_capacity' => 'nullable|string|max:255',
                 'quality_certifications' => 'nullable|array',
                 'quality_certifications.*' => 'string|max:255',
-                'status' => 'sometimes|in:pending,approved,rejected,suspended'
+                'status' => 'sometimes|in:pending,approved,rejected,suspended,closed',
+                'reason' => 'sometimes|string|max:1000' // If you want to track reasons
             ]);
+
+                if ($user->hasRole('admin') && isset($validated['status'])) {
+                    $seller->status = $validated['status'];
+    
+                // Optional: Store admin notes if reason is provided
+                if (isset($validated['reason'])) {
+                    $seller->admin_notes = $validated['reason'];
+                }
+            }
 
             if ($validator->fails()) {
                 return response()->json([
@@ -554,45 +564,51 @@ class SellerController extends Controller
      * Admin: Get all seller profiles for management
      */
     public function adminIndex(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'per_page' => 'sometimes|integer|min:1|max:100',
-            'status' => 'sometimes|in:pending,approved,rejected,suspended',
-            'search' => 'sometimes|string|max:255'
-        ]);
+{
+    $validator = Validator::make($request->all(), [
+        'per_page' => 'sometimes|integer|min:1|max:100',
+        'status' => 'sometimes|in:pending,approved,active,suspended,closed', // Updated status values
+        'search' => 'sometimes|string|max:255'
+    ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $perPage = $request->input('per_page', 15);
-        
-        $query = SellerProfile::with(['user', 'reviews'])
-            ->withAvg('reviews', 'rating')
-            ->withCount('reviews');
-
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->has('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('store_name', 'like', '%'.$request->search.'%')
-                  ->orWhere('store_id', 'like', '%'.$request->search.'%')
-                  ->orWhere('contact_email', 'like', '%'.$request->search.'%');
-            });
-        }
-
-        $sellers = $query->orderBy('created_at', 'desc')->paginate($perPage);
-
+    if ($validator->fails()) {
         return response()->json([
-            'success' => true,
-            'data' => $sellers
-        ]);
+            'success' => false,
+            'errors' => $validator->errors()
+        ], 422);
     }
+
+    $perPage = $request->input('per_page', 15);
+    
+    $query = SellerProfile::with(['user', 'reviews'])
+        ->withAvg('reviews', 'rating')
+        ->withCount('reviews');
+
+    // Filter by status if provided
+    if ($request->has('status') && !empty($request->status)) {
+        $query->where('status', $request->status);
+    }
+
+    // Search filter
+    if ($request->has('search') && !empty($request->search)) {
+        $query->where(function($q) use ($request) {
+            $q->where('store_name', 'like', '%'.$request->search.'%')
+              ->orWhere('store_id', 'like', '%'.$request->search.'%')
+              ->orWhere('contact_email', 'like', '%'.$request->search.'%')
+              ->orWhereHas('user', function($userQuery) use ($request) {
+                  $userQuery->where('name', 'like', '%'.$request->search.'%')
+                           ->orWhere('email', 'like', '%'.$request->search.'%');
+              });
+        });
+    }
+
+    $sellers = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+    return response()->json([
+        'success' => true,
+        'data' => $sellers
+    ]);
+}
 
     /**
      * Admin: Approve seller profile

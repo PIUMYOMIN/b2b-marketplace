@@ -96,5 +96,86 @@ class CategorySeeder extends Seeder
             'commission_rate' => 0.04,
             'image' => 'https://picsum.photos/seed/office-supplies/600/400'
         ]);
+
+        // Food & Beverages Category
+        $food = Category::create([
+            'name' => 'Food & Beverages',
+            'slug' => 'food-beverages',
+            'commission_rate' => 0.05,
+            'image' => 'https://picsum.photos/seed/food-beverages/600/400'
+        ]);
+        
+        $grains = Category::create([
+            'name' => 'Grains & Rice',
+            'slug' => 'grains-rice',
+            'commission_rate' => 0.05,
+            'parent_id' => $food->id,
+            'image' => 'https://picsum.photos/seed/grains-rice/600/400'
+        ]);
+        
+        $snacks = Category::create([
+            'name' => 'Snacks',
+            'slug' => 'snacks',
+            'commission_rate' => 0.06,
+            'parent_id' => $food->id,
+            'image' => 'https://picsum.photos/seed/snacks/600/400'
+        ]);
+        
+        // Beauty & Personal Care Category
+        $beauty = Category::create([
+            'name' => 'Beauty & Personal Care',
+            'slug' => 'beauty-personal-care',
+            'commission_rate' => 0.08,
+            'image' => 'https://picsum.photos/seed/beauty/600/400'
+        ]);
+        
+        $skincare = Category::create([
+            'name' => 'Skincare',
+            'slug' => 'skincare',
+            'commission_rate' => 0.07,
+            'parent_id' => $beauty->id,
+            'image' => 'https://picsum.photos/seed/skincare/600/400'
+        ]);
+        
+        $haircare = Category::create([
+            'name' => 'Haircare',
+            'slug' => 'haircare',
+            'commission_rate' => 0.07,
+            'parent_id' => $beauty->id,
+            'image' => 'https://picsum.photos/seed/haircare/600/400'
+        ]);
+        
+        // Sports & Outdoors Category
+        $sports = Category::create([
+            'name' => 'Sports & Outdoors',
+            'slug' => 'sports-outdoors',
+            'commission_rate' => 0.05,
+            'image' => 'https://picsum.photos/seed/sports/600/400'
+        ]);
+        
+        $fitness = Category::create([
+            'name' => 'Fitness Equipment',
+            'slug' => 'fitness-equipment',
+            'commission_rate' => 0.05,
+            'parent_id' => $sports->id,
+            'image' => 'https://picsum.photos/seed/fitness/600/400'
+        ]);
+        
+        $camping = Category::create([
+            'name' => 'Camping & Hiking',
+            'slug' => 'camping-hiking',
+            'commission_rate' => 0.06,
+            'parent_id' => $sports->id,
+            'image' => 'https://picsum.photos/seed/camping/600/400'
+        ]);
+        
+        // Books Category
+        $books = Category::create([
+            'name' => 'Books',
+            'slug' => 'books',
+            'commission_rate' => 0.03,
+            'image' => 'https://picsum.photos/seed/books/600/400'
+        ]);
+
     }
 }
