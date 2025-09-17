@@ -41,6 +41,7 @@ class SellerController extends Controller
             ]);
         }
 
+        // Validate filters and pagination
         $validator = Validator::make($request->all(), [
             'per_page' => 'sometimes|integer|min:1|max:100',
             'search' => 'sometimes|string|max:255',
@@ -50,6 +51,7 @@ class SellerController extends Controller
             'sort' => 'sometimes|in:newest,rating,name'
         ]);
 
+        // Validation failed
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
@@ -57,8 +59,10 @@ class SellerController extends Controller
             ], 422);
         }
 
+        // Pagination
         $perPage = $request->input('per_page', 15);
         
+        // Base query
         $query = SellerProfile::with(['user', 'reviews'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')

@@ -18,38 +18,39 @@ class UserController extends Controller
     /**
      * Display a paginated list of users.
      */
-    public function index(Request $request)
-    {
-        $this->authorize('viewAny', User::class);
+    // In UserController::index() method
+public function index(Request $request)
+{
+    $this->authorize('viewAny', User::class);
 
-        $perPage = $request->input('per_page', 10);
-        $search = $request->input('search');
-        $role = $request->input('role');
+    $perPage = $request->input('per_page', 10);
+    $search = $request->input('search');
+    $role = $request->input('role');
 
-        $query = User::with('roles')
-            ->when($search, function ($query) use ($search) {
-                $query->where('name', 'like', "%$search%")
-                    ->orWhere('email', 'like', "%$search%")
-                    ->orWhere('phone', 'like', "%$search%");
-            })
-            ->when($role, function ($query) use ($role) {
-                $query->whereHas('roles', function ($q) use ($role) {
-                    $q->where('name', $role);
-                });
+    $query = User::with('roles') // Make sure this line is present
+        ->when($search, function ($query) use ($search) {
+            $query->where('name', 'like', "%$search%")
+                ->orWhere('email', 'like', "%$search%")
+                ->orWhere('phone', 'like', "%$search%");
+        })
+        ->when($role, function ($query) use ($role) {
+            $query->whereHas('roles', function ($q) use ($role) {
+                $q->where('name', $role);
             });
+        });
 
-        $users = $query->paginate($perPage);
+    $users = $query->paginate($perPage);
 
-        return response()->json([
-            'success' => true,
-            'data' => UserResource::collection($users),
-            'meta' => [
-                'current_page' => $users->currentPage(),
-                'per_page' => $users->perPage(),
-                'total' => $users->total(),
-            ]
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'data' => UserResource::collection($users),
+        'meta' => [
+            'current_page' => $users->currentPage(),
+            'per_page' => $users->perPage(),
+            'total' => $users->total(),
+        ]
+    ]);
+}
 
     /**
      * Store a newly created user.
@@ -136,11 +137,10 @@ class UserController extends Controller
             'phone' => 'sometimes|string|unique:users,phone,'.$user->id,
             'password' => ['sometimes', 'confirmed', Rules\Password::defaults()],
             'type' => 'sometimes|in:admin,seller,buyer',
-            'company_name' => 'nullable|string|max:255',
+            'is_active' => 'sometimes|boolean', // Add this line
             'address' => 'nullable|string',
             'city' => 'nullable|string',
             'state' => 'nullable|string',
-            'account_number' => 'nullable|string'
         ]);
 
         return DB::transaction(function () use ($validated, $user, $request) {
@@ -148,13 +148,13 @@ class UserController extends Controller
                 'name' => $validated['name'] ?? $user->name,
                 'email' => $validated['email'] ?? $user->email,
                 'phone' => $validated['phone'] ?? $user->phone,
+                'is_active' => $validated['is_active'] ?? $user->is_active, // Add this line
                 'company_name' => $validated['company_name'] ?? $user->company_name,
                 'address' => $validated['address'] ?? $user->address,
                 'city' => $validated['city'] ?? $user->city,
                 'state' => $validated['state'] ?? $user->state,
                 'account_number' => $validated['account_number'] ?? $user->account_number
             ];
-
             if ($request->has('password')) {
                 $updateData['password'] = Hash::make($validated['password']);
             }
