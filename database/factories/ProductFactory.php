@@ -24,7 +24,6 @@ class ProductFactory extends Factory
 
         return [
             'name' => $this->faker->words(3, true),
-            'name_mm' => $this->faker->words(3, true), // In a real app, you'd use Myanmar words
             'description' => $this->faker->paragraph(3),
             'price' => $this->faker->numberBetween(5000, 100000),
             'quantity' => $this->faker->numberBetween(0, 200),
@@ -45,7 +44,7 @@ class ProductFactory extends Factory
                     'order' => 0
                 ]
             ]),
-            'min_order' => $this->faker->numberBetween(1, 5),
+            'moq' => $this->faker->numberBetween(1, 5),
             'lead_time' => $this->faker->randomElement(['1-2 days', '3-5 days', '1 week']),
             'is_active' => $this->faker->boolean(90), // 90% chance of being active
         ];

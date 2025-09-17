@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function adminDashboard()
+    public function index()
     {
         return response()->json([
             'success' => true,

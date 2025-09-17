@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\WishlistController;
+use App\Http\Controllers\Api\SellerController;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,6 +41,16 @@ Route::group([
     // --------------------
     // Public Routes
     // --------------------
+
+    // Seller Routes
+    Route::prefix('sellers')->group(function () {
+        Route::get('/', [SellerController::class, 'indexPublic']);
+        Route::get('/{identifier}', [SellerController::class, 'showPublic'])->where('identifier', '.*');
+        Route::get('/{identifier}/products', [SellerController::class, 'sellerProducts'])->where('identifier', '.*');
+        Route::get('/{identifier}/reviews', [SellerController::class, 'sellerReviews'])->where('identifier', '.*');
+});
+
+    // Products
     Route::prefix('products')->group(function () {
         Route::get('/', [ProductController::class, 'indexPublic']);
         Route::get('/{product}', [ProductController::class, 'showPublic']);
@@ -47,11 +58,13 @@ Route::group([
         Route::get('/category/{categoryId}', [ProductController::class, 'categoryProducts']);
     });
 
+    // Categories
     Route::prefix('categories')->group(function () {
         Route::get('/', [CategoryController::class, 'index']);
         Route::get('/{category}', [CategoryController::class, 'show']);
     });
 
+    // Reviews
     Route::prefix('reviews')->group(function () {
         Route::get('/products/{product}', [ReviewController::class, 'productReviews']);
     });
@@ -61,12 +74,27 @@ Route::group([
     // --------------------
     Route::middleware(['auth:sanctum'])->group(function () {
 
-        // ---- Dashboard ----
-        Route::get('/dashboard', [DashboardController::class, 'stats']);
-        
+        // Dashboard
+        Route::prefix('dashboard')->group(function () {
+            Route::get('/', [DashboardController::class, 'index']);
+            Route::get('/sales-summary', [DashboardController::class, 'salesSummary']);
+            Route::get('/top-products', [DashboardController::class, 'topProducts']);
+            Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
+
+            // Admin/Seller product management
+            Route::get('/products', [ProductController::class, 'index'])->middleware('role:admin|seller');
+
+            //Admin/Seller review management
+            Route::get('/reviews', [ReviewController::class, 'index'])->middleware('role:admin|seller');
+
+            Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary'])->middleware('role:seller');
+            Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts'])->middleware('role:seller');
+            Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders'])->middleware('role:seller');
 
 
-        // ---- Users ----
+        });
+
+        // Users
         Route::prefix('users')->group(function () {
             Route::get('/', [UserController::class, 'index'])->middleware('role:admin');
             Route::get('/{user}', [UserController::class, 'show']);
@@ -83,12 +111,11 @@ Route::group([
             });
         });
 
-        // ---- Products ----
+        // Products
         Route::prefix('products')->group(function () {
-            // Route::get('/', [ProductController::class, 'index']);
             Route::get('/search', [ProductController::class, 'search']);
-            // Route::get('/{product}', [ProductController::class, 'show']);
-
+            Route::post('/{product}/reviews', [ReviewController::class, 'store'])->middleware('role:buyer');
+            
             // Image Management
             Route::post('/upload-image', [ProductController::class, 'uploadImage']);
             Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct']);
@@ -104,26 +131,37 @@ Route::group([
             });
         });
 
-        // ---- Reviews ----
+        // Reviews
         Route::prefix('reviews')->group(function () {
-            Route::post('/', [ReviewController::class, 'store'])->middleware('role:buyer');
             Route::get('/my-reviews', [ReviewController::class, 'myReviews']);
 
             Route::middleware('role:admin')->group(function () {
-                Route::get('/', [ReviewController::class, 'index']);
                 Route::post('/{review}/approve', [ReviewController::class, 'approve']);
                 Route::delete('/{review}', [ReviewController::class, 'destroy']);
             });
         });
 
-        // ---- Categories ----
+        // Seller Product Reviews
+        Route::prefix('seller')->middleware('role:seller')->group(function () {
+            Route::get('/products/reviews', [ReviewController::class, 'sellerReviews']);
+        });
+
+        // Sellers
+        Route::prefix('sellers')->group(function () {
+            Route::get('/my-store', [SellerController::class, 'myStore'])->middleware('role:seller');
+            Route::post('/', [SellerController::class, 'store'])->middleware('role:seller|admin');
+            Route::put('/{seller}', [SellerController::class, 'update'])->middleware('role:seller|admin');
+            Route::delete('/{seller}', [SellerController::class, 'destroy'])->middleware('role:admin');
+        });
+
+        // Categories
         Route::prefix('categories')->group(function () {
             Route::post('/', [CategoryController::class, 'store'])->middleware('role:admin');
             Route::put('/{category}', [CategoryController::class, 'update'])->middleware('role:admin');
             Route::delete('/{category}', [CategoryController::class, 'destroy'])->middleware('role:admin');
         });
 
-        // ---- Orders ----
+        // Orders
         Route::prefix('orders')->group(function () {
             Route::get('/', [OrderController::class, 'index']);
             Route::post('/', [OrderController::class, 'store'])->middleware('role:buyer|admin');
@@ -140,18 +178,18 @@ Route::group([
             });
         });
 
-        // ---- Wishlist ----
+        // Wishlist
         Route::prefix('wishlist')->middleware('role:buyer|admin')->group(function () {
-            Route::get('/', [WishlistController::class, 'viewWishlist']);
-            Route::post('/add/{product}', [WishlistController::class, 'addToWishlist']);
-            Route::delete('/remove/{product}', [WishlistController::class, 'removeFromWishlist']);
+            Route::get('/', [WishlistController::class, 'index']);
+            Route::post('/add/{product}', [WishlistController::class, 'add']);
+            Route::delete('/remove/{product}', [WishlistController::class, 'remove']);
         });
 
-        // ---- Payments ----
+        // Payments
         Route::prefix('payments')->group(function () {
             Route::post('/initiate', [PaymentController::class, 'initiate']);
             Route::post('/verify', [PaymentController::class, 'verify']);
-            Route::get('/history', [PaymentController::class, 'paymentHistory']);
+            Route::get('/history', [PaymentController::class, 'history']);
         });
     });
 

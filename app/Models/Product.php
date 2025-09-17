@@ -13,7 +13,6 @@ class Product extends Model
 
     protected $fillable = [
         'name',
-        'name_mm',
         'description',
         'price',
         'quantity',
@@ -116,7 +115,6 @@ class Product extends Model
     {
         return $query->where(function ($q) use ($searchTerm) {
             $q->where('name', 'like', "%{$searchTerm}%")
-              ->orWhere('name_mm', 'like', "%{$searchTerm}%")
               ->orWhere('description', 'like', "%{$searchTerm}%");
         });
     }

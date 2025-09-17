@@ -19,101 +19,121 @@ class ProductController extends Controller
      * Display a listing of products with optional filters
      */
     public function indexPublic(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'per_page' => 'sometimes|integer|min:1|max:100',
-            'category_id' => 'sometimes|exists:categories,id',
-            'seller_id' => 'sometimes|exists:users,id',
-            'min_price' => 'sometimes|numeric|min:0',
-            'max_price' => 'sometimes|numeric|min:0',
-            'min_rating' => 'sometimes|numeric|min:0|max:5',
-            'search' => 'sometimes|string|max:255',
-            'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
-            'status' => 'sometimes|in:active,inactive'
-        ]);
+{
+    $validator = Validator::make($request->all(), [
+        'per_page' => 'sometimes|integer|min:1|max:100',
+        'category_id' => 'sometimes|exists:categories,id',
+        'seller_id' => 'sometimes|exists:users,id',
+        'min_price' => 'sometimes|numeric|min:0',
+        'max_price' => 'sometimes|numeric|min:0',
+        'min_rating' => 'sometimes|numeric|min:0|max:5',
+        'search' => 'sometimes|string|max:255',
+        'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
+        'status' => 'sometimes|in:active,inactive'
+    ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $perPage = $request->input('per_page', 15);
-        
-        $query = Product::with(['category', 'seller'])
-            ->withCount(['reviews as reviews_count' => function($query) {
-                $query->where('status', 'approved');
-            }])
-            ->withAvg(['reviews as average_rating' => function($query) {
-                $query->where('status', 'approved');
-            }], 'rating');
-
-        // Apply filters
-        if ($request->has('category_id')) {
-            $query->where('category_id', $request->category_id);
-        }
-
-        if ($request->has('seller_id')) {
-            $query->where('seller_id', $request->seller_id);
-        }
-
-        if ($request->has('min_price')) {
-            $query->where('price', '>=', $request->min_price);
-        }
-
-        if ($request->has('max_price')) {
-            $query->where('price', '<=', $request->max_price);
-        }
-
-        if ($request->has('min_rating')) {
-            $query->having('average_rating', '>=', $request->min_rating);
-        }
-
-        if ($request->has('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                  ->orWhere('description', 'like', '%'.$request->search.'%')
-                  ->orWhere('name_mm', 'like', '%'.$request->search.'%');
-            });
-        }
-
-        if ($request->has('status')) {
-            $query->where('is_active', $request->status === 'active');
-        }
-
-        // Apply sorting
-        switch ($request->input('sort', 'newest')) {
-            case 'price_asc':
-                $query->orderBy('price', 'asc');
-                break;
-            case 'price_desc':
-                $query->orderBy('price', 'desc');
-                break;
-            case 'rating':
-                $query->orderBy('average_rating', 'desc');
-                break;
-            case 'popular':
-                $query->orderBy('reviews_count', 'desc');
-                break;
-            default: // newest
-                $query->latest();
-        }
-
-        $products = $query->paginate($perPage);
-
+    if ($validator->fails()) {
         return response()->json([
-            'success' => true,
-            'data' => ProductResource::collection($products),
-            'meta' => [
-                'current_page' => $products->currentPage(),
-                'per_page' => $products->perPage(),
-                'total' => $products->total(),
-                'last_page' => $products->lastPage(),
-            ]
-        ]);
+            'success' => false,
+            'errors' => $validator->errors()
+        ], 422);
     }
 
+    $perPage = $request->input('per_page', 15);
+
+    $query = Product::with(['category', 'seller'])
+        ->withCount(['reviews as reviews_count' => function($query) {
+            $query->where('status', 'approved');
+        }])
+        ->withAvg(['reviews as average_rating' => function($query) {
+            $query->where('status', 'approved');
+        }], 'rating');
+
+    // Apply filters
+    if ($request->has('category_id')) {
+        $query->where('category_id', $request->category_id);
+    }
+
+    if ($request->has('seller_id')) {
+        $query->where('seller_id', $request->seller_id);
+    }
+
+    if ($request->has('min_price')) {
+        $query->where('price', '>=', $request->min_price);
+    }
+
+    if ($request->has('max_price')) {
+        $query->where('price', '<=', $request->max_price);
+    }
+
+    if ($request->has('min_rating')) {
+        $query->having('average_rating', '>=', $request->min_rating);
+    }
+
+    if ($request->has('search')) {
+        $query->where(function($q) use ($request) {
+            $q->where('name', 'like', '%'.$request->search.'%')
+              ->orWhere('description', 'like', '%'.$request->search.'%');
+        });
+    }
+
+    if ($request->has('status')) {
+        $query->where('is_active', $request->status === 'active');
+    }
+
+    // Apply sorting
+    switch ($request->input('sort', 'newest')) {
+        case 'price_asc':
+            $query->orderBy('price', 'asc');
+            break;
+        case 'price_desc':
+            $query->orderBy('price', 'desc');
+            break;
+        case 'rating':
+            $query->orderBy('average_rating', 'desc');
+            break;
+        case 'popular':
+            $query->orderBy('reviews_count', 'desc');
+            break;
+        default: // newest
+            $query->latest();
+    }
+
+    $products = $query->paginate($perPage);
+
+    // Format the products manually without using ProductResource
+    $formattedProducts = $products->getCollection()->map(function ($product) {
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'description' => $product->description,
+            'price' => (float) $product->price,
+            'quantity' => $product->quantity,
+            'category_id' => $product->category_id,
+            'seller_id' => $product->seller_id,
+            'average_rating' => (float) $product->average_rating,
+            'review_count' => $product->reviews_count,
+            'specifications' => $product->specifications,
+            'images' => $this->formatImages($product->images),
+            'is_active' => $product->is_active,
+            'created_at' => $product->created_at,
+            'updated_at' => $product->updated_at,
+            'category' => $product->category,
+            'seller' => $product->seller,
+        ];
+    });
+
+    return response()->json([
+        'success' => true,
+        'data' => $formattedProducts,
+        'meta' => [
+            'current_page' => $products->currentPage(),
+            'per_page' => $products->perPage(),
+            'total' => $products->total(),
+            'last_page' => $products->lastPage(),
+        ]
+    ]);
+}
     /**
      * Display a listing of public products
      */
@@ -127,7 +147,7 @@ class ProductController extends Controller
             ->withAvg(['reviews as average_rating' => function($query) {
                 $query->where('status', 'approved');
             }], 'rating')
-            ->where('is_public', true);
+            ->where('is_featured', true);
 
         // Apply filters and sorting as in the index method...
 
@@ -199,7 +219,6 @@ class ProductController extends Controller
 {
     $validator = Validator::make($request->all(), [
         'name' => 'required|string|max:255',
-        'name_mm' => 'nullable|string|max:255',
         'description' => 'required|string',
         'price' => 'required|numeric|min:0',
         'quantity' => 'required|integer|min:0',
@@ -223,7 +242,7 @@ class ProductController extends Controller
 
     try {
         $productData = $request->only([
-            'name', 'name_mm', 'description', 'price', 'quantity',
+            'name', 'description', 'price', 'quantity',
             'category_id', 'specifications', 'min_order', 'lead_time', 'is_active'
         ]);
         
@@ -290,7 +309,6 @@ class ProductController extends Controller
 
     $validator = Validator::make($request->all(), [
         'name' => 'sometimes|string|max:255',
-        'name_mm' => 'nullable|string|max:255',
         'description' => 'sometimes|string',
         'price' => 'sometimes|numeric|min:0',
         'quantity' => 'sometimes|integer|min:0',
@@ -311,7 +329,7 @@ class ProductController extends Controller
 
     try {
         $updateData = $request->only([
-            'name', 'name_mm', 'description', 'price', 'quantity',
+            'name', 'description', 'price', 'quantity',
             'category_id', 'specifications', 'min_order', 'lead_time', 'is_active'
         ]);
 
@@ -381,14 +399,9 @@ class ProductController extends Controller
      */
     public function myProducts(Request $request)
     {
-        $perPage = $request->input('per_page', 10);
-        
         $products = Product::where('seller_id', Auth::id())
-            ->with(['category'])
-            ->withCount(['reviews as reviews_count'])
-            ->withAvg(['reviews as average_rating'], 'rating')
             ->latest()
-            ->paginate($perPage);
+            ->paginate($request->input('per_page', 15));
 
         return response()->json([
             'success' => true,
@@ -397,7 +410,6 @@ class ProductController extends Controller
                 'current_page' => $products->currentPage(),
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
-                'last_page' => $products->lastPage(),
             ]
         ]);
     }

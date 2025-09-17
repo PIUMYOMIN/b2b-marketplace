@@ -71,9 +71,13 @@ class UserController extends Controller
             'account_number' => 'nullable|string'
         ]);
 
+        //user_id generation
+        $validated['user_id'] = 'USER-' . strtoupper(Str::random(9));
+
         return DB::transaction(function () use ($validated) {
             $user = User::create([
                 'name' => $validated['name'],
+                'user_id' => $validated['user_id'],
                 'email' => $validated['email'],
                 'phone' => $validated['phone'],
                 'password' => Hash::make($validated['password']),
@@ -82,7 +86,6 @@ class UserController extends Controller
                 'address' => $validated['address'] ?? null,
                 'city' => $validated['city'] ?? null,
                 'state' => $validated['state'] ?? null,
-                'account_number' => $validated['account_number'] ?? null
             ]);
 
             // Assign role based on type

@@ -59,4 +59,9 @@ class Review extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    public function seller(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'seller_id');
+    }
 }

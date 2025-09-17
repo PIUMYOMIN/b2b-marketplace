@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::create('products', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('name_mm')->nullable(); // Myanmar name
             $table->text('description');
             $table->decimal('price', 12, 2); // Max 999,999,999.99
             $table->integer('quantity')->default(0);
@@ -24,8 +23,44 @@ return new class extends Migration
             $table->integer('review_count')->default(0);
             $table->json('specifications')->nullable(); // JSON for product specs
             $table->json('images')->nullable(); // JSON for product images
-            $table->integer('min_order')->default(1);
+            $table->integer('weight_kg')->decimal(10, 2)->nullable(); // in grams
+            $table->json('dimensions')->nullable(); // LxWxH format
+            $table->string('sku')->unique()->nullable(); // Stock Keeping Unit
+            $table->string('barcode')->unique()->nullable();
+            $table->string('brand')->nullable();
+            $table->string('model')->nullable();
+            $table->string('color')->nullable();
+            $table->string('material')->nullable();
+            $table->string('origin')->nullable(); // Country of origin
+            $table->decimal('discount_price', 12, 2)->nullable();
+            $table->date('discount_start')->nullable();
+            $table->date('discount_end')->nullable();
+            $table->integer('views')->default(0);
+            $table->integer('sales')->default(0);
+            $table->boolean('is_featured')->default(false);
+            $table->boolean('is_new')->default(true);
+            $table->boolean('is_on_sale')->default(false);
+            $table->string('warranty')->nullable(); // e.g., "1 year"
+            $table->string('warranty_type')->nullable(); // e.g., "manufacturer", "seller"
+            $table->string('warranty_period')->nullable(); // e.g., "12 months"
+            $table->string('warranty_conditions')->nullable(); // e.g., "terms and conditions"
+            $table->string('return_policy')->nullable(); // e.g., "30 days return"
+            $table->string('return_conditions')->nullable(); // e.g., "unused, original packaging"
+            $table->string('shipping_details')->nullable(); // e.g., "Free shipping over $50"
+            $table->decimal('shipping_cost', 12, 2)->nullable();
+            $table->string('shipping_time')->nullable(); // e.g., "3-5 business days"
+            $table->string('shipping_origin')->nullable(); // e.g., "Yangon, Myanmar"
+            $table->string('customs_info')->nullable(); // e.g., "Buyer responsible for duties"
+            $table->string('hs_code')->nullable(); // Harmonized System Code
+            $table->string('min_order_unit')->default('piece');
+            $table->integer('moq')->default(1);
             $table->string('lead_time')->nullable();
+            $table->text('packaging_details')->nullable();
+            $table->text('additional_info')->nullable();
+            $table->timestamp('listed_at')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
+            
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
@@ -35,10 +70,13 @@ return new class extends Migration
             $table->softDeletes();
 
             // Indexes for better performance
-            $table->index('category_id');
-            $table->index('seller_id');
+            $table->index(['sku', 'is_active']);
             $table->index('is_active');
             $table->index('created_at');
+            $table->fullText(['name', 'description']);
+
+            //Orders table indexes
+            $table->index(['seller_id','status']);
         });
     }
 

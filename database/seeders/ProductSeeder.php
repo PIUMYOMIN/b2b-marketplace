@@ -25,7 +25,6 @@ class ProductSeeder extends Seeder
         $products = [
             [
                 'name' => 'Organic Rice',
-                'name_mm' => 'အော်ဂဲနစ်ဆန်',
                 'description' => 'High-quality organic rice grown in Myanmar with sustainable farming practices. Perfect for daily consumption and special occasions.',
                 'price' => 45000,
                 'quantity' => 100,
@@ -61,7 +60,7 @@ class ProductSeeder extends Seeder
                         'order' => 2
                     ]
                 ]),
-                'min_order' => 1,
+                'moq' => 1,
                 'lead_time' => '2-3 days',
                 'is_active' => true,
                 'created_at' => now(),
@@ -69,7 +68,6 @@ class ProductSeeder extends Seeder
             ],
             [
                 'name' => 'Handwoven Bamboo Basket',
-                'name_mm' => 'လက်ဖက်ပုလက်',
                 'description' => 'Beautiful handwoven bamboo basket made by local artisans. Perfect for storage and decorative purposes.',
                 'price' => 15000,
                 'quantity' => 50,
@@ -105,7 +103,7 @@ class ProductSeeder extends Seeder
                         'order' => 2
                     ]
                 ]),
-                'min_order' => 1,
+                'moq' => 1,
                 'lead_time' => '3-5 days',
                 'is_active' => true,
                 'created_at' => now(),
@@ -113,7 +111,6 @@ class ProductSeeder extends Seeder
             ],
             [
                 'name' => 'Traditional Shan Bag',
-                'name_mm' => 'ရှမ်းရိုးရာ အိတ်',
                 'description' => 'Colorful traditional Shan bag made with handwoven fabric. Features intricate patterns and durable construction.',
                 'price' => 25000,
                 'quantity' => 30,
@@ -149,7 +146,7 @@ class ProductSeeder extends Seeder
                         'order' => 2
                     ]
                 ]),
-                'min_order' => 1,
+                'moq' => 1,
                 'lead_time' => '4-6 days',
                 'is_active' => true,
                 'created_at' => now(),

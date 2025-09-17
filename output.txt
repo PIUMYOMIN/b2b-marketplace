@@ -1,0 +1,252 @@
+# Entity Relationship Diagram
+
+## Entities
+
+### Category (`App\Models\Category`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `name` (varchar)
+- `image` (varchar)
+- `description` (text)
+- `slug` (varchar)
+- `commission_rate` (decimal)
+- `parent_id` (bigint)
+- `_lft` (int)
+- `_rgt` (int)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### Commission (`App\Models\Commission`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `order_id` (bigint)
+- `seller_id` (bigint)
+- `amount` (decimal)
+- `status` (enum)
+- `due_date` (timestamp)
+- `collected_at` (timestamp)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### Order (`App\Models\Order`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `buyer_id` (bigint)
+- `seller_id` (bigint)
+- `total_amount` (decimal)
+- `commission_amount` (decimal)
+- `status` (enum)
+- `payment_method` (enum)
+- `shipping_address` (text)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### Product (`App\Models\Product`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `name` (varchar)
+- `description` (text)
+- `price` (decimal)
+- `quantity` (int)
+- `category_id` (bigint)
+- `seller_id` (bigint)
+- `average_rating` (decimal)
+- `review_count` (int)
+- `specifications` (longtext)
+- `images` (longtext)
+- `weight` (int)
+- `dimensions` (longtext)
+- `sku` (varchar)
+- `barcode` (varchar)
+- `brand` (varchar)
+- `model` (varchar)
+- `color` (varchar)
+- `material` (varchar)
+- `origin` (varchar)
+- `discount_price` (decimal)
+- `discount_start` (date)
+- `discount_end` (date)
+- `views` (int)
+- `sales` (int)
+- `is_featured` (tinyint)
+- `is_new` (tinyint)
+- `is_on_sale` (tinyint)
+- `warranty` (varchar)
+- `warranty_type` (varchar)
+- `warranty_period` (varchar)
+- `warranty_conditions` (varchar)
+- `return_policy` (varchar)
+- `return_conditions` (varchar)
+- `shipping_details` (varchar)
+- `shipping_cost` (decimal)
+- `shipping_time` (varchar)
+- `shipping_origin` (varchar)
+- `customs_info` (varchar)
+- `hs_code` (varchar)
+- `min_order_unit` (varchar)
+- `min_order` (int)
+- `lead_time` (varchar)
+- `approved_at` (timestamp)
+- `status` (enum)
+- `is_active` (tinyint)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+- `deleted_at` (timestamp)
+
+### Review (`App\Models\Review`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `user_id` (bigint)
+- `product_id` (bigint)
+- `rating` (int)
+- `comment` (text)
+- `status` (enum)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### SellerProfile (`App\Models\SellerProfile`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `user_id` (bigint)
+- `store_name` (varchar)
+- `store_slug` (varchar)
+- `store_id` (varchar)
+- `business_type` (enum)
+- `business_registration_number` (varchar)
+- `certificate` (varchar)
+- `tax_id` (varchar)
+- `description` (text)
+- `contact_email` (varchar)
+- `contact_phone` (varchar)
+- `website` (varchar)
+- `account_number` (varchar)
+- `social_facebook` (varchar)
+- `social_twitter` (varchar)
+- `social_instagram` (varchar)
+- `social_linkedin` (varchar)
+- `social_youtube` (varchar)
+- `address` (varchar)
+- `city` (varchar)
+- `state` (varchar)
+- `country` (varchar)
+- `postal_code` (varchar)
+- `store_logo` (varchar)
+- `store_banner` (varchar)
+- `location` (varchar)
+- `status` (enum)
+- `admin_notes` (text)
+- `deleted_at` (timestamp)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### SellerReview (`App\Models\SellerReview`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `user_id` (bigint)
+- `seller_profile_id` (bigint)
+- `rating` (tinyint)
+- `comment` (text)
+- `review` (text)
+- `status` (enum)
+- `deleted_at` (timestamp)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### User (`App\Models\User`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `name` (varchar)
+- `user_id` (varchar)
+- `email` (varchar)
+- `phone` (varchar)
+- `password` (varchar)
+- `type` (enum)
+- `address` (text)
+- `city` (varchar)
+- `state` (varchar)
+- `country` (varchar)
+- `postal_code` (varchar)
+- `profile_photo` (varchar)
+- `email_verified_at` (timestamp)
+- `status` (enum)
+- `deleted_at` (timestamp)
+- `remember_token` (varchar)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### Wishlist (`App\Models\Wishlist`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `user_id` (bigint)
+- `product_id` (bigint)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+## Relationships
+
+### Category Relationships
+
+- **BelongsTo** `parent` to Category (Local Key: `parent_id`, Foreign Key: `id`)
+- **HasMany** `children` to Category (Local Key: `id`, Foreign Key: `parent_id`)
+- **HasMany** `products` to Product (Local Key: `id`, Foreign Key: `category_id`)
+- **DescendantsRelation** `descendants` to Category (Local Key: ``, Foreign Key: ``)
+- **AncestorsRelation** `ancestors` to Category (Local Key: ``, Foreign Key: ``)
+
+### Commission Relationships
+
+- **BelongsTo** `order` to Order (Local Key: `order_id`, Foreign Key: `id`)
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+
+### Product Relationships
+
+- **BelongsTo** `category` to Category (Local Key: `category_id`, Foreign Key: `id`)
+- **BelongsTo** `seller` to User (Local Key: `seller_id`, Foreign Key: `id`)
+- **HasMany** `reviews` to Review (Local Key: `id`, Foreign Key: `product_id`)
+
+### Review Relationships
+
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+- **BelongsTo** `product` to Product (Local Key: `product_id`, Foreign Key: `id`)
+- **BelongsTo** `buyer` to User (Local Key: `user_id`, Foreign Key: `id`)
+- **BelongsTo** `seller` to User (Local Key: `seller_id`, Foreign Key: `id`)
+
+### SellerProfile Relationships
+
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+- **HasMany** `products` to Product (Local Key: `id`, Foreign Key: `seller_id`)
+- **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `seller_id`)
+- **HasMany** `reviews` to Review (Local Key: `id`, Foreign Key: `store_id`)
+
+### SellerReview Relationships
+
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+- **BelongsTo** `sellerProfile` to SellerProfile (Local Key: `seller_profile_id`, Foreign Key: `id`)
+- **BelongsTo** `buyer` to User (Local Key: `user_id`, Foreign Key: `id`)
+- **BelongsTo** `seller` to SellerProfile (Local Key: `seller_profile_id`, Foreign Key: `id`)
+
+### User Relationships
+
+- **HasOne** `sellerProfile` to SellerProfile (Local Key: `id`, Foreign Key: `user_id`)
+- **HasMany** `reviews` to Review (Local Key: `id`, Foreign Key: `user_id`)
+- **HasMany** `sellerReviews` to SellerReview (Local Key: `id`, Foreign Key: `user_id`)
+- **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `user_id`)
+- **HasMany** `products` to Product (Local Key: `id`, Foreign Key: `user_id`)
+
