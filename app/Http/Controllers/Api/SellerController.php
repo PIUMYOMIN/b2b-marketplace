@@ -10,9 +10,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator; 
 
 class SellerController extends Controller
 {
@@ -29,10 +27,10 @@ class SellerController extends Controller
                 ->withCount(['orders as customers_count' => function($q) {
                     $q->distinct('user_id'); // unique customers
                 }])
-                ->where('status', 'approved')
+                ->whereIn('status', ['approved','active'])
                 ->orderByDesc('reviews_avg_rating')
                 ->orderByDesc('reviews_count')
-                ->take(8)
+                ->take(6)
                 ->get();
 
             return response()->json([
@@ -66,7 +64,7 @@ class SellerController extends Controller
         $query = SellerProfile::with(['user', 'reviews'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->where('status', 'active');
+            ->whereIn('status', ['approved','active']);
 
         // Apply filters
         if ($request->has('search')) {

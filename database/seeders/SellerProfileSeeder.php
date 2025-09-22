@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\SellerProfile;
-use App\Models\SellerReview;
 use Illuminate\Support\Str;
 
 class SellerProfileSeeder extends Seeder
@@ -25,6 +24,7 @@ class SellerProfileSeeder extends Seeder
                     'contact_phone'  => fake()->phoneNumber(),
                     'contact_email'  => $seller->email,
                     'website'        => fake()->url(),
+                    'store_logo'     => fake()->url(),
                     'store_slug'     => Str::slug($seller->name . '-store'),
                     'status'         => 'active',
                 ]

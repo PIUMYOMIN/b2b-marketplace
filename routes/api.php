@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\SellerReviewController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
 
@@ -160,6 +161,12 @@ Route::group([
             Route::post('/', [SellerController::class, 'store'])->middleware('role:seller|admin');
             Route::put('/{seller}', [SellerController::class, 'update'])->middleware('role:seller|admin');
             Route::delete('/{seller}', [SellerController::class, 'destroy'])->middleware('role:admin');
+
+            //Seller profile reviews
+            Route::post('/{seller}/reviews', [SellerReviewController::class, 'store'])->middleware('role:buyer|admin');
+            Route::get('/my-reviews', [SellerReviewController::class, 'myReviews'])->middleware('role:buyer|admin');
+            Route::put('/{review}', [SellerReviewController::class, 'update'])->middleware('role:buyer|admin');
+            Route::delete('/{review}', [SellerReviewController::class, 'destroy'])->middleware('role:buyer|admin');
         });
 
         // Categories

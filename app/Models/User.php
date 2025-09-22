@@ -16,7 +16,7 @@ class User extends Authenticatable
     protected string $guard_name = 'sanctum';
 
    protected $fillable = [
-    'name', 'email', 'password', 'phone', 'type', 'is_active', 'address', 'city', 'state'
+    'name', 'email', 'password', 'phone', 'type', 'user_id', 'is_active', 'address', 'city', 'state'
     ];
 
     protected $hidden = [
@@ -56,6 +56,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(Product::class);
     }
+
+    public function wishlist()
+    {
+        return $this->belongsToMany(Product::class, 'wishlists');
+    }
+
 
     public function isAdmin()
     {

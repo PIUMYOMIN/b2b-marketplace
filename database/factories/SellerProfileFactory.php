@@ -16,6 +16,7 @@ class SellerProfileFactory extends Factory
     {
         return [
             'store_name'     => $this->faker->company,
+            'store_logo'     => $this->faker->logo,
             'description'    => $this->faker->paragraph,
             'address'        => $this->faker->address,
             'contact_phone'  => $this->faker->phoneNumber,
