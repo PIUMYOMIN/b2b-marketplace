@@ -225,4 +225,15 @@ Route::group([
             'message' => 'API endpoint not found'
         ], 404);
     });
+
+    // Serve React app for all non-API routes
+    Route::get('/{any}', function () {
+        $path = public_path('index.html');
+        
+        if (!File::exists($path)) {
+            abort(404, 'Frontend not built yet');
+        }
+        
+        return file_get_contents($path);
+    })->where('any', '^(?!api/).*$');
 });
