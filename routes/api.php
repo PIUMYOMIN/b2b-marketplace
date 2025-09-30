@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SellerReviewController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
+use App\Http\Controllers\Api\CartController;
 
 /*
 |--------------------------------------------------------------------------
@@ -136,6 +137,16 @@ Route::group([
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
                 Route::get('/my-products', [ProductController::class, 'myProducts']);
             });
+        });
+
+        // Add to your authenticated routes section
+        Route::prefix('cart')->middleware('role:buyer')->group(function () {
+            Route::get('/', [CartController::class, 'index']);
+            Route::post('/', [CartController::class, 'store']);
+            Route::put('/{cart}', [CartController::class, 'update']);
+            Route::delete('/{cart}', [CartController::class, 'destroy']);
+            Route::post('/clear', [CartController::class, 'clear']);
+            Route::get('/count', [CartController::class, 'count']);
         });
 
         // Reviews

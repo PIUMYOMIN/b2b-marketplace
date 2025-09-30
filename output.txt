@@ -62,7 +62,7 @@
 - `review_count` (int)
 - `specifications` (longtext)
 - `images` (longtext)
-- `weight` (int)
+- `weight_kg` (int)
 - `dimensions` (longtext)
 - `sku` (varchar)
 - `barcode` (varchar)
@@ -92,8 +92,11 @@
 - `customs_info` (varchar)
 - `hs_code` (varchar)
 - `min_order_unit` (varchar)
-- `min_order` (int)
+- `moq` (int)
 - `lead_time` (varchar)
+- `packaging_details` (text)
+- `additional_info` (text)
+- `listed_at` (timestamp)
 - `approved_at` (timestamp)
 - `status` (enum)
 - `is_active` (tinyint)
@@ -157,7 +160,7 @@
 
 - `id` (bigint)
 - `user_id` (bigint)
-- `seller_profile_id` (bigint)
+- `seller_id` (bigint)
 - `rating` (tinyint)
 - `comment` (text)
 - `review` (text)
@@ -185,6 +188,7 @@
 - `profile_photo` (varchar)
 - `email_verified_at` (timestamp)
 - `status` (enum)
+- `is_active` (tinyint)
 - `deleted_at` (timestamp)
 - `remember_token` (varchar)
 - `created_at` (timestamp)
@@ -231,22 +235,22 @@
 ### SellerProfile Relationships
 
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
-- **HasMany** `products` to Product (Local Key: `id`, Foreign Key: `seller_id`)
+- **HasMany** `reviews` to SellerReview (Local Key: `id`, Foreign Key: `seller_id`)
+- **HasMany** `products` to Product (Local Key: `user_id`, Foreign Key: `seller_id`)
 - **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `seller_id`)
-- **HasMany** `reviews` to Review (Local Key: `id`, Foreign Key: `store_id`)
 
 ### SellerReview Relationships
 
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
-- **BelongsTo** `sellerProfile` to SellerProfile (Local Key: `seller_profile_id`, Foreign Key: `id`)
+- **BelongsTo** `seller` to SellerProfile (Local Key: `seller_id`, Foreign Key: `id`)
 - **BelongsTo** `buyer` to User (Local Key: `user_id`, Foreign Key: `id`)
-- **BelongsTo** `seller` to SellerProfile (Local Key: `seller_profile_id`, Foreign Key: `id`)
 
 ### User Relationships
 
 - **HasOne** `sellerProfile` to SellerProfile (Local Key: `id`, Foreign Key: `user_id`)
 - **HasMany** `reviews` to Review (Local Key: `id`, Foreign Key: `user_id`)
 - **HasMany** `sellerReviews` to SellerReview (Local Key: `id`, Foreign Key: `user_id`)
-- **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `user_id`)
+- **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `buyer_id`)
 - **HasMany** `products` to Product (Local Key: `id`, Foreign Key: `user_id`)
+- **BelongsToMany** `wishlist` to Product (Local Key: ``, Foreign Key: ``)
 

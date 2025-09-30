@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -12,72 +14,157 @@ use Illuminate\Support\Facades\DB;
 class OrderController extends Controller
 {
     public function index()
-    {
-        $user = Auth::user();
-        $query = Order::with(['items.product', 'buyer', 'seller']);
+{
+    $user = Auth::user();
+    
+    $orders = Order::with(['items', 'seller'])
+        ->where('buyer_id', $user->id)
+        ->orderBy('created_at', 'desc')
+        ->get();
 
-        if ($user->hasRole('seller')) {
-            $query->where('seller_id', $user->id);
-        } elseif ($user->hasRole('buyer')) {
-            $query->where('buyer_id', $user->id);
-        }
-
-        $orders = $query->paginate(10);
-
-        return response()->json([
-            'success' => true,
-            'data' => $orders
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'data' => $orders
+    ]);
+}
 
     public function store(Request $request)
     {
-        $request->validate([
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'payment_method' => 'required|in:mmqr,kbz_pay,wave_pay,bank_transfer,cod'
-        ]);
-
-        return DB::transaction(function () use ($request) {
-            $order = Order::create([
-                'buyer_id' => Auth::id(),
-                'payment_method' => $request->payment_method,
-                'status' => 'pending'
+        DB::beginTransaction();
+        
+        try {
+            $user = Auth::user();
+            
+            // Validate request
+            $request->validate([
+                'items' => 'required|array|min:1',
+                'items.*.product_id' => 'required|exists:products,id',
+                'items.*.quantity' => 'required|integer|min:1',
+                'shipping_address' => 'required|array',
+                'shipping_address.full_name' => 'required|string',
+                'shipping_address.phone' => 'required|string',
+                'shipping_address.address' => 'required|string',
+                'payment_method' => 'required|in:kbz_pay,wave_pay,cb_pay,cash_on_delivery',
             ]);
 
-            $totalAmount = 0;
-            $commissionAmount = 0;
+            // Get cart items or use provided items
+            $cartItems = $request->items;
+            
+            // Group items by seller to create separate orders
+            $itemsBySeller = [];
+            $subtotal = 0;
 
-            foreach ($request->items as $item) {
+            foreach ($cartItems as $item) {
                 $product = Product::find($item['product_id']);
                 
-                $order->items()->create([
-                    'product_id' => $product->id,
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $product->price,
-                    'commission_rate' => $product->category->commission_rate
-                ]);
+                if (!$product) {
+                    throw new \Exception("Product not found: " . $item['product_id']);
+                }
 
+                if (!$product->is_active) {
+                    throw new \Exception("Product is not available: " . $product->name);
+                }
+
+                if ($product->quantity < $item['quantity']) {
+                    throw new \Exception("Insufficient stock for: " . $product->name);
+                }
+
+                $sellerId = $product->seller_id;
                 $itemTotal = $product->price * $item['quantity'];
-                $totalAmount += $itemTotal;
-                $commissionAmount += $itemTotal * $product->category->commission_rate;
+                $subtotal += $itemTotal;
 
-                // Update product quantity
-                $product->decrement('quantity', $item['quantity']);
+                if (!isset($itemsBySeller[$sellerId])) {
+                    $itemsBySeller[$sellerId] = [];
+                }
+
+                $itemsBySeller[$sellerId][] = [
+                    'product' => $product,
+                    'quantity' => $item['quantity'],
+                    'price' => $product->price,
+                    'subtotal' => $itemTotal
+                ];
             }
 
-            $order->update([
-                'total_amount' => $totalAmount,
-                'commission_amount' => $commissionAmount,
-                'seller_id' => $order->items()->first()->product->seller_id
-            ]);
+            // Create orders for each seller
+            $orders = [];
+            
+            foreach ($itemsBySeller as $sellerId => $sellerItems) {
+                // Calculate seller-specific totals
+                $sellerSubtotal = collect($sellerItems)->sum('subtotal');
+                $sellerShippingFee = 5000; // You can calculate this per seller
+                $sellerTax = $sellerSubtotal * 0.05;
+                $sellerTotal = $sellerSubtotal + $sellerShippingFee + $sellerTax;
+
+                // Create order
+                $order = Order::create([
+                    'buyer_id' => $user->id,
+                    'seller_id' => $sellerId,
+                    'total_amount' => $sellerTotal,
+                    'subtotal_amount' => $sellerSubtotal,
+                    'shipping_fee' => $sellerShippingFee,
+                    'tax_amount' => $sellerTax,
+                    'tax_rate' => 0.05,
+                    'status' => Order::STATUS_PENDING,
+                    'payment_method' => $request->payment_method,
+                    'payment_status' => Order::PAYMENT_STATUS_PENDING,
+                    'shipping_address' => $request->shipping_address,
+                    'order_notes' => $request->notes,
+                    'commission_rate' => 0.10, // 10% commission
+                ]);
+
+                // Calculate commission
+                $order->commission_amount = $sellerSubtotal * $order->commission_rate;
+                $order->save();
+
+                // Create order items
+                foreach ($sellerItems as $item) {
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'product_id' => $item['product']->id,
+                        'product_name' => $item['product']->name,
+                        'product_sku' => $item['product']->sku,
+                        'price' => $item['price'],
+                        'quantity' => $item['quantity'],
+                        'subtotal' => $item['subtotal'],
+                        'product_data' => [
+                            'name' => $item['product']->name,
+                            'description' => $item['product']->description,
+                            'images' => $item['product']->images,
+                            'specifications' => $item['product']->specifications,
+                            'category' => $item['product']->category->name ?? 'Uncategorized'
+                        ]
+                    ]);
+
+                    // Update product stock
+                    $item['product']->decrement('quantity', $item['quantity']);
+                }
+
+                $orders[] = $order;
+            }
+
+            // Clear user's cart
+            Cart::where('user_id', $user->id)->delete();
+
+            DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $order->load('items')
-            ], 201);
-        });
+                'message' => 'Order created successfully',
+                'data' => [
+                    'orders' => $orders,
+                    'total_orders' => count($orders)
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Order creation failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create order: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function show(Order $order)
