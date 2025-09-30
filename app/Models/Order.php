@@ -24,8 +24,6 @@ class Order extends Model
         'shipping_fee',
         'tax_amount',
         'tax_rate',
-        'commission_amount',
-        'commission_rate',
         'status',
         'payment_method',
         'payment_status',
@@ -35,11 +33,10 @@ class Order extends Model
         'tracking_number',
         'shipping_carrier',
         'estimated_delivery',
+        'commission_rate',
+        'commission_amount',
         'delivered_at',
         'cancelled_at',
-        'refund_status',
-        'refund_amount',
-        'refund_reason',
     ];
 
     /**
@@ -48,6 +45,8 @@ class Order extends Model
      * @var array<string, string>
      */
     protected $casts = [
+        'shipping_address' => 'array',
+        'billing_address' => 'array',
         'total_amount' => 'decimal:2',
         'subtotal_amount' => 'decimal:2',
         'shipping_fee' => 'decimal:2',
@@ -55,9 +54,6 @@ class Order extends Model
         'tax_rate' => 'decimal:2',
         'commission_amount' => 'decimal:2',
         'commission_rate' => 'decimal:2',
-        'refund_amount' => 'decimal:2',
-        'shipping_address' => 'array',
-        'billing_address' => 'array',
         'estimated_delivery' => 'datetime',
         'delivered_at' => 'datetime',
         'cancelled_at' => 'datetime',
@@ -189,6 +185,35 @@ class Order extends Model
     public function commission()
     {
         return $this->hasOne(Commission::class);
+    }
+
+    /**
+     * Route model binding with authorization check for sellers
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        $user = auth()->user();
+        
+        if (!$user) {
+            return $this->where('id', $value)->firstOrFail();
+        }
+
+        // If user is a seller, only show their own orders
+        if ($user->hasRole('seller')) {
+            return $this->where('id', $value)
+                ->where('seller_id', $user->id)
+                ->firstOrFail();
+        }
+
+        // If user is a buyer, only show their own orders
+        if ($user->hasRole('buyer')) {
+            return $this->where('id', $value)
+                ->where('buyer_id', $user->id)
+                ->firstOrFail();
+        }
+
+        // Admin can see all orders
+        return $this->where('id', $value)->firstOrFail();
     }
 
     /**

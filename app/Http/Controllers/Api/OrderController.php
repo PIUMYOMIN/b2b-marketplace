@@ -10,23 +10,51 @@ use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
-    public function index()
-{
-    $user = Auth::user();
-    
-    $orders = Order::with(['items', 'seller'])
-        ->where('buyer_id', $user->id)
-        ->orderBy('created_at', 'desc')
-        ->get();
+    const STATUS_PENDING = 'pending';
+    const STATUS_CONFIRMED = 'confirmed';
+    const STATUS_PROCESSING = 'processing';
+    const STATUS_SHIPPED = 'shipped';
+    const STATUS_DELIVERED = 'delivered';
+    const STATUS_CANCELLED = 'cancelled';
 
-    return response()->json([
-        'success' => true,
-        'data' => $orders
-    ]);
-}
+    const PAYMENT_STATUS_PENDING = 'pending';
+    const PAYMENT_STATUS_PAID = 'paid';
+    const PAYMENT_STATUS_FAILED = 'failed';
+    const PAYMENT_STATUS_REFUNDED = 'refunded';
+
+    public function index()
+    {
+        $user = Auth::user();
+        
+        // Check user role to determine which orders to show
+        if ($user->hasRole('seller')) {
+            // For sellers, show orders where they are the seller
+            $orders = Order::with(['items', 'buyer'])
+                ->where('seller_id', $user->id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+        } else if ($user->hasRole('buyer')) {
+            // For buyers, show their own orders
+            $orders = Order::with(['items', 'seller'])
+                ->where('buyer_id', $user->id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+        } else {
+            // For admins, show all orders
+            $orders = Order::with(['items', 'buyer', 'seller'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $orders
+        ]);
+    }
 
     public function store(Request $request)
     {
@@ -95,8 +123,12 @@ class OrderController extends Controller
                 $sellerTax = $sellerSubtotal * 0.05;
                 $sellerTotal = $sellerSubtotal + $sellerShippingFee + $sellerTax;
 
+                // Generate order number
+                $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(Order::count() + 1, 5, '0', STR_PAD_LEFT);
+
                 // Create order
                 $order = Order::create([
+                    'order_number' => $orderNumber,
                     'buyer_id' => $user->id,
                     'seller_id' => $sellerId,
                     'total_amount' => $sellerTotal,
@@ -104,9 +136,9 @@ class OrderController extends Controller
                     'shipping_fee' => $sellerShippingFee,
                     'tax_amount' => $sellerTax,
                     'tax_rate' => 0.05,
-                    'status' => Order::STATUS_PENDING,
+                    'status' => self::STATUS_PENDING,
                     'payment_method' => $request->payment_method,
-                    'payment_status' => Order::PAYMENT_STATUS_PENDING,
+                    'payment_status' => self::PAYMENT_STATUS_PENDING,
                     'shipping_address' => $request->shipping_address,
                     'order_notes' => $request->notes,
                     'commission_rate' => 0.10, // 10% commission
@@ -169,7 +201,22 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        $this->authorize('view', $order);
+        $user = Auth::user();
+        
+        // Authorization check
+        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to view this order'
+            ], 403);
+        }
+        
+        if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to view this order'
+            ], 403);
+        }
 
         return response()->json([
             'success' => true,
@@ -179,16 +226,34 @@ class OrderController extends Controller
 
     public function cancel(Order $order)
     {
-        $this->authorize('cancel', $order);
+        $user = Auth::user();
+        
+        // Authorization check
+        if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to cancel this order'
+            ], 403);
+        }
+        
+        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to cancel this order'
+            ], 403);
+        }
 
-        if (!in_array($order->status, ['pending', 'confirmed'])) {
+        if (!in_array($order->status, [self::STATUS_PENDING, self::STATUS_CONFIRMED])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Order cannot be canceled at this stage'
             ], 400);
         }
 
-        $order->update(['status' => 'cancelled']);
+        $order->update([
+            'status' => self::STATUS_CANCELLED,
+            'cancelled_at' => now()
+        ]);
 
         // Restore product quantities
         foreach ($order->items as $item) {
@@ -198,6 +263,205 @@ class OrderController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Order cancelled successfully'
+        ]);
+    }
+
+    /**
+     * Confirm order (for sellers)
+     */
+    public function confirm(Order $order)
+    {
+        $user = Auth::user();
+        
+        // Only seller can confirm their own orders
+        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to confirm this order'
+            ], 403);
+        }
+
+        if ($order->status !== self::STATUS_PENDING) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order cannot be confirmed in current status'
+            ], 400);
+        }
+
+        $order->update([
+            'status' => self::STATUS_CONFIRMED
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order confirmed successfully'
+        ]);
+    }
+
+    /**
+     * Mark order as processing (for sellers)
+     */
+    public function process(Order $order)
+    {
+        $user = Auth::user();
+        
+        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to process this order'
+            ], 403);
+        }
+
+        if ($order->status !== self::STATUS_CONFIRMED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order must be confirmed before processing'
+            ], 400);
+        }
+
+        $order->update([
+            'status' => self::STATUS_PROCESSING
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order marked as processing'
+        ]);
+    }
+
+    /**
+     * Mark order as shipped (for sellers)
+     */
+    public function ship(Request $request, Order $order)
+    {
+        $user = Auth::user();
+        
+        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to ship this order'
+            ], 403);
+        }
+
+        if (!in_array($order->status, [self::STATUS_CONFIRMED, self::STATUS_PROCESSING])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order cannot be shipped in current status'
+            ], 400);
+        }
+
+        $request->validate([
+            'tracking_number' => 'nullable|string',
+            'shipping_carrier' => 'nullable|string'
+        ]);
+
+        $order->update([
+            'status' => self::STATUS_SHIPPED,
+            'tracking_number' => $request->tracking_number,
+            'shipping_carrier' => $request->shipping_carrier
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order marked as shipped'
+        ]);
+    }
+
+    /**
+     * Mark order as delivered (for buyers)
+     */
+    public function confirmDelivery(Order $order)
+    {
+        $user = Auth::user();
+        
+        if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to confirm delivery for this order'
+            ], 403);
+        }
+
+        if ($order->status !== self::STATUS_SHIPPED) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order must be shipped before confirming delivery'
+            ], 400);
+        }
+
+        $order->update([
+            'status' => self::STATUS_DELIVERED,
+            'delivered_at' => now()
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery confirmed successfully'
+        ]);
+    }
+
+    /**
+     * Get seller's recent orders for dashboard
+     */
+    public function sellerRecentOrders()
+    {
+        $user = Auth::user();
+        
+        if (!$user->hasRole('seller')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only sellers can access this endpoint'
+            ], 403);
+        }
+
+        $orders = Order::with(['items', 'buyer'])
+            ->where('seller_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $orders
+        ]);
+    }
+
+    /**
+     * Get order statistics for seller dashboard
+     */
+    public function sellerOrderStats()
+    {
+        $user = Auth::user();
+        
+        if (!$user->hasRole('seller')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only sellers can access this endpoint'
+            ], 403);
+        }
+
+        $totalOrders = Order::where('seller_id', $user->id)->count();
+        $pendingOrders = Order::where('seller_id', $user->id)->where('status', self::STATUS_PENDING)->count();
+        $confirmedOrders = Order::where('seller_id', $user->id)->where('status', self::STATUS_CONFIRMED)->count();
+        $shippedOrders = Order::where('seller_id', $user->id)->where('status', self::STATUS_SHIPPED)->count();
+        $deliveredOrders = Order::where('seller_id', $user->id)->where('status', self::STATUS_DELIVERED)->count();
+
+        $totalRevenue = Order::where('seller_id', $user->id)
+            ->where('status', self::STATUS_DELIVERED)
+            ->sum('total_amount');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total_orders' => $totalOrders,
+                'pending_orders' => $pendingOrders,
+                'confirmed_orders' => $confirmedOrders,
+                'shipped_orders' => $shippedOrders,
+                'delivered_orders' => $deliveredOrders,
+                'total_revenue' => $totalRevenue,
+                'pending_revenue' => Order::where('seller_id', $user->id)
+                    ->whereIn('status', [self::STATUS_PENDING, self::STATUS_CONFIRMED, self::STATUS_SHIPPED])
+                    ->sum('total_amount')
+            ]
         ]);
     }
 }

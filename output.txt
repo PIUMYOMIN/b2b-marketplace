@@ -2,6 +2,19 @@
 
 ## Entities
 
+### Cart (`App\Models\Cart`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `user_id` (bigint)
+- `product_id` (bigint)
+- `quantity` (int)
+- `price` (decimal)
+- `product_data` (longtext)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
 ### Category (`App\Models\Category`)
 
 #### Attributes:
@@ -37,13 +50,47 @@
 #### Attributes:
 
 - `id` (bigint)
+- `order_number` (varchar)
 - `buyer_id` (bigint)
 - `seller_id` (bigint)
 - `total_amount` (decimal)
+- `subtotal_amount` (decimal)
+- `shipping_fee` (decimal)
+- `tax_amount` (decimal)
+- `tax_rate` (decimal)
 - `commission_amount` (decimal)
+- `commission_rate` (decimal)
 - `status` (enum)
 - `payment_method` (enum)
-- `shipping_address` (text)
+- `payment_status` (enum)
+- `shipping_address` (longtext)
+- `billing_address` (longtext)
+- `order_notes` (text)
+- `tracking_number` (varchar)
+- `shipping_carrier` (varchar)
+- `estimated_delivery` (timestamp)
+- `delivered_at` (timestamp)
+- `cancelled_at` (timestamp)
+- `refund_status` (enum)
+- `refund_amount` (decimal)
+- `refund_reason` (text)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+- `deleted_at` (timestamp)
+
+### OrderItem (`App\Models\OrderItem`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `order_id` (bigint)
+- `product_id` (bigint)
+- `product_name` (varchar)
+- `product_sku` (varchar)
+- `price` (decimal)
+- `quantity` (int)
+- `subtotal` (decimal)
+- `product_data` (longtext)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 
@@ -206,6 +253,11 @@
 
 ## Relationships
 
+### Cart Relationships
+
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+- **BelongsTo** `product` to Product (Local Key: `product_id`, Foreign Key: `id`)
+
 ### Category Relationships
 
 - **BelongsTo** `parent` to Category (Local Key: `parent_id`, Foreign Key: `id`)
@@ -218,6 +270,19 @@
 
 - **BelongsTo** `order` to Order (Local Key: `order_id`, Foreign Key: `id`)
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+
+### Order Relationships
+
+- **BelongsTo** `buyer` to User (Local Key: `buyer_id`, Foreign Key: `id`)
+- **BelongsTo** `seller` to User (Local Key: `seller_id`, Foreign Key: `id`)
+- **HasMany** `items` to OrderItem (Local Key: `id`, Foreign Key: `order_id`)
+- **HasOne** `commission` to Commission (Local Key: `id`, Foreign Key: `order_id`)
+- **HasMany** `reviews` to Review (Local Key: `id`, Foreign Key: `order_id`)
+
+### OrderItem Relationships
+
+- **BelongsTo** `order` to Order (Local Key: `order_id`, Foreign Key: `id`)
+- **BelongsTo** `product` to Product (Local Key: `product_id`, Foreign Key: `id`)
 
 ### Product Relationships
 

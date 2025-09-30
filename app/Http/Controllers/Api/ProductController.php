@@ -397,22 +397,81 @@ class ProductController extends Controller
     /**
      * Get products for the authenticated seller
      */
-    public function myProducts(Request $request)
-    {
-        $products = Product::where('seller_id', Auth::id())
+    // In ProductController - make sure the myProducts method looks like this:
+public function myProducts(Request $request)
+{
+    try {
+        $user = Auth::user();
+        
+        // Debug: Check if user is authenticated and has seller role
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not authenticated'
+            ], 401);
+        }
+
+        // Check if user has seller role
+        if (!$user->hasRole('seller')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only sellers can access this endpoint'
+            ], 403);
+        }
+
+        $perPage = $request->input('per_page', 15);
+        
+        $products = Product::where('seller_id', $user->id)
+            ->with(['category'])
+            ->withCount(['reviews as reviews_count'])
+            ->withAvg(['reviews as average_rating'], 'rating')
             ->latest()
-            ->paginate($request->input('per_page', 15));
+            ->paginate($perPage);
+
+        // Format the response
+        $formattedProducts = $products->getCollection()->map(function ($product) {
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'description' => $product->description,
+                'price' => (float) $product->price,
+                'quantity' => $product->quantity,
+                'category_id' => $product->category_id,
+                'seller_id' => $product->seller_id,
+                'average_rating' => (float) $product->average_rating,
+                'review_count' => $product->reviews_count,
+                'specifications' => $product->specifications,
+                'images' => $this->formatImages($product->images),
+                'is_active' => (bool) $product->is_active,
+                'created_at' => $product->created_at->toISOString(),
+                'updated_at' => $product->updated_at->toISOString(),
+                'category' => $product->category ? [
+                    'id' => $product->category->id,
+                    'name' => $product->category->name,
+                    'slug' => $product->category->slug
+                ] : null
+            ];
+        });
 
         return response()->json([
             'success' => true,
-            'data' => ProductResource::collection($products),
+            'data' => $formattedProducts,
             'meta' => [
                 'current_page' => $products->currentPage(),
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
+                'last_page' => $products->lastPage(),
             ]
         ]);
+
+    } catch (\Exception $e) {
+        \Log::error('My Products Error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch products: ' . $e->getMessage()
+        ], 500);
     }
+}
 
 
     /**

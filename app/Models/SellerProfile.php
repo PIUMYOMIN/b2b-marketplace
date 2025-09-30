@@ -42,6 +42,27 @@ class SellerProfile extends Model
         'admin_notes'
     ];
 
+    const BUSINESS_TYPE_INDIVIDUAL = 'individual';
+    const BUSINESS_TYPE_PARTNERSHIP = 'partnership';
+    const BUSINESS_TYPE_PRIVATE_LIMITED = 'private_limited';
+    const BUSINESS_TYPE_PUBLIC_LIMITED = 'public_limited';
+    const BUSINESS_TYPE_COOPERATIVE = 'cooperative';
+
+    protected $casts = [
+        'business_type' => 'string',
+    ];
+
+    public static function getBusinessTypes()
+    {
+        return [
+            self::BUSINESS_TYPE_INDIVIDUAL => 'Individual/Sole Proprietorship',
+            self::BUSINESS_TYPE_PARTNERSHIP => 'Partnership',
+            self::BUSINESS_TYPE_PRIVATE_LIMITED => 'Private Limited Company',
+            self::BUSINESS_TYPE_PUBLIC_LIMITED => 'Public Limited Company',
+            self::BUSINESS_TYPE_COOPERATIVE => 'Cooperative',
+        ];
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);
