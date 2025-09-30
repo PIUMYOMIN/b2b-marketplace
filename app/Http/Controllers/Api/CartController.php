@@ -19,8 +19,9 @@ class CartController extends Controller
         try {
             Log::info('Cart index called for user: ' . Auth::id());
             
-            // Check if user has buyer role
             $user = Auth::user();
+            
+            // Check if user has buyer role
             if (!$user->hasRole('buyer')) {
                 Log::warning('User does not have buyer role', ['user_id' => $user->id, 'roles' => $user->getRoleNames()]);
                 return response()->json([
@@ -34,6 +35,10 @@ class CartController extends Controller
                 ->get()
                 ->map(function ($item) {
                     $product = $item->product;
+                    
+                    // Handle product availability
+                    $isAvailable = $product->is_active && $product->quantity > 0;
+                    $isQuantityValid = $item->quantity <= $product->quantity;
                     
                     // Handle product image
                     $image = '/placeholder-product.jpg';
@@ -52,15 +57,15 @@ class CartController extends Controller
                         'id' => $item->id,
                         'product_id' => $product->id,
                         'name' => $product->name,
-                        'price' => $item->price,
-                        'quantity' => $item->quantity,
+                        'price' => (float) $item->price,
+                        'quantity' => (int) $item->quantity,
                         'image' => $image,
                         'category' => $product->category->name ?? 'Uncategorized',
-                        'stock' => $product->quantity,
+                        'stock' => (int) $product->quantity,
                         'min_order' => $product->min_order ?? 1,
-                        'is_available' => $item->is_available,
-                        'is_quantity_valid' => $item->is_quantity_valid,
-                        'subtotal' => $item->subtotal
+                        'is_available' => $isAvailable,
+                        'is_quantity_valid' => $isQuantityValid,
+                        'subtotal' => (float) ($item->price * $item->quantity)
                     ];
                 });
 
