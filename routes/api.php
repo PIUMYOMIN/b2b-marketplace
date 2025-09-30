@@ -49,7 +49,7 @@ Route::group([
         Route::get('/{identifier}', [SellerController::class, 'showPublic'])->where('identifier', '.*');
         Route::get('/{identifier}/products', [SellerController::class, 'sellerProducts'])->where('identifier', '.*');
         Route::get('/{identifier}/reviews', [SellerController::class, 'sellerReviews'])->where('identifier', '.*');
-});
+    });
 
     // Products
     Route::prefix('products')->group(function () {
@@ -82,23 +82,22 @@ Route::group([
             Route::get('/top-products', [DashboardController::class, 'topProducts']);
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
 
-            //Admin/Seller user management
+            // Admin/Seller user management
             Route::prefix('sellers')->group(function () {
-            Route::get('/', [SellerController::class, 'adminIndex'])->middleware('role:admin');
-            Route::post('/{seller}/approve', [SellerController::class, 'adminApprove'])->middleware('role:admin');
-            Route::post('/{seller}/reject', [SellerController::class, 'adminReject'])->middleware('role:admin');
+                Route::get('/', [SellerController::class, 'adminIndex'])->middleware('role:admin');
+                Route::post('/{seller}/approve', [SellerController::class, 'adminApprove'])->middleware('role:admin');
+                Route::post('/{seller}/reject', [SellerController::class, 'adminReject'])->middleware('role:admin');
             });
+            
             // Admin/Seller product management
             Route::get('/products', [ProductController::class, 'index'])->middleware('role:admin|seller');
 
-            //Admin/Seller review management
+            // Admin/Seller review management
             Route::get('/reviews', [ReviewController::class, 'index'])->middleware('role:admin|seller');
 
             Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary'])->middleware('role:seller');
             Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts'])->middleware('role:seller');
             Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders'])->middleware('role:seller');
-
-
         });
 
         // Users
@@ -162,7 +161,7 @@ Route::group([
             Route::put('/{seller}', [SellerController::class, 'update'])->middleware('role:seller|admin');
             Route::delete('/{seller}', [SellerController::class, 'destroy'])->middleware('role:admin');
 
-            //Seller profile reviews
+            // Seller profile reviews
             Route::post('/{seller}/reviews', [SellerReviewController::class, 'store'])->middleware('role:buyer|admin');
             Route::get('/my-reviews', [SellerReviewController::class, 'myReviews'])->middleware('role:buyer|admin');
             Route::put('/{review}', [SellerReviewController::class, 'update'])->middleware('role:buyer|admin');
@@ -217,7 +216,7 @@ Route::group([
     });
 
     // --------------------
-    // Fallback
+    // API Fallback
     // --------------------
     Route::fallback(function () {
         return response()->json([
@@ -225,15 +224,4 @@ Route::group([
             'message' => 'API endpoint not found'
         ], 404);
     });
-
-    // Serve React app for all non-API routes
-    Route::get('/{any}', function () {
-        $path = public_path('index.html');
-        
-        if (!File::exists($path)) {
-            abort(404, 'Frontend not built yet');
-        }
-        
-        return file_get_contents($path);
-    })->where('any', '^(?!api/).*$');
 });
