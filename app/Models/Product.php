@@ -153,5 +153,16 @@ class Product extends Model
         return $this->reviews()->avg('rating') ?? 0;
     }
 
-    
+    public function orders()
+    {
+        return $this->belongsToMany(Order::class, 'order_items')
+            ->withPivot('quantity', 'price', 'seller_id')
+            ->withTimestamps();
+    }
+
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
 }

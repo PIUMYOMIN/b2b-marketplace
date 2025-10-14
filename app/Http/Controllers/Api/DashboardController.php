@@ -13,18 +13,47 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function index()
+    /**
+     * Get general dashboard data
+     */
+    public function index(Request $request)
     {
-        return response()->json([
-            'success' => true,
-            'message' => 'Admin dashboard loaded successfully.',
-            'data' => [
-                'user_count' => User::count(),
-                'product_count' => Product::count(),
-                'order_count' => Order::count(),
-                'total_revenue' => Order::sum('total_amount'),
-            ]
-        ]);
+        try {
+            $user = $request->user();
+            
+            if ($user->hasRole('seller')) {
+                // Return seller dashboard data
+                $salesSummary = $this->sellerSalesSummary($request);
+                $topProducts = $this->sellerTopProducts($request);
+                $recentOrders = $this->sellerRecentOrders($request);
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'type' => 'seller',
+                        'sales_summary' => $salesSummary->getData()->data ?? [],
+                        'top_products' => $topProducts->getData()->data ?? [],
+                        'recent_orders' => $recentOrders->getData()->data ?? []
+                    ]
+                ]);
+            } else {
+                // Return admin dashboard data
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'type' => 'admin',
+                        'message' => 'Admin dashboard data would go here'
+                    ]
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Error in dashboard index: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch dashboard data: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function stats()
@@ -401,5 +430,239 @@ class DashboardController extends Controller
             'success' => true,
             'data' => $results,
         ]);
+    }
+
+    /**
+     * Get seller sales summary
+     */
+    public function sellerSalesSummary(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            // Check if user is a seller
+            if (!$user->hasRole('seller')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint'
+                ], 403);
+            }
+
+            // Get date range (default to last 30 days)
+            $startDate = $request->input('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
+            $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
+
+            // Total products
+            $totalProducts = Product::where('seller_id', $user->id)->count();
+            $activeProducts = Product::where('seller_id', $user->id)
+                ->where('is_active', true)
+                ->count();
+
+            // Sales data (you'll need to adjust this based on your Order model structure)
+            $salesData = DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.seller_id', $user->id)
+                ->whereBetween('orders.created_at', [$startDate, $endDate])
+                ->select(
+                    DB::raw('COUNT(DISTINCT orders.id) as total_orders'),
+                    DB::raw('SUM(order_items.quantity) as total_items_sold'),
+                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue'),
+                    DB::raw('AVG(order_items.price * order_items.quantity) as average_order_value')
+                )
+                ->first();
+
+            // Order status counts
+            $orderStatusCounts = DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.seller_id', $user->id)
+                ->whereBetween('orders.created_at', [$startDate, $endDate])
+                ->select(
+                    'orders.status',
+                    DB::raw('COUNT(DISTINCT orders.id) as count')
+                )
+                ->groupBy('orders.status')
+                ->get()
+                ->pluck('count', 'status');
+
+            // Recent sales trend (last 7 days)
+            $recentSalesTrend = DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.seller_id', $user->id)
+                ->where('orders.created_at', '>=', Carbon::now()->subDays(7))
+                ->select(
+                    DB::raw('DATE(orders.created_at) as date'),
+                    DB::raw('SUM(order_items.price * order_items.quantity) as revenue'),
+                    DB::raw('COUNT(DISTINCT orders.id) as orders_count')
+                )
+                ->groupBy('date')
+                ->orderBy('date')
+                ->get();
+
+            // Top selling products
+            $topProducts = DB::table('order_items')
+                ->join('products', 'order_items.product_id', '=', 'products.id')
+                ->where('order_items.seller_id', $user->id)
+                ->whereBetween('order_items.created_at', [$startDate, $endDate])
+                ->select(
+                    'products.id',
+                    'products.name',
+                    DB::raw('SUM(order_items.quantity) as total_sold'),
+                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue')
+                )
+                ->groupBy('products.id', 'products.name')
+                ->orderBy('total_sold', 'desc')
+                ->limit(5)
+                ->get();
+
+            $summary = [
+                'period' => [
+                    'start_date' => $startDate,
+                    'end_date' => $endDate,
+                    'days' => Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1
+                ],
+                'products' => [
+                    'total' => $totalProducts,
+                    'active' => $activeProducts,
+                    'inactive' => $totalProducts - $activeProducts
+                ],
+                'sales' => [
+                    'total_orders' => $salesData->total_orders ?? 0,
+                    'total_items_sold' => $salesData->total_items_sold ?? 0,
+                    'total_revenue' => $salesData->total_revenue ?? 0,
+                    'average_order_value' => $salesData->average_order_value ?? 0,
+                    'revenue_formatted' => number_format($salesData->total_revenue ?? 0, 2) . ' MMK'
+                ],
+                'orders_by_status' => $orderStatusCounts,
+                'recent_trend' => $recentSalesTrend,
+                'top_products' => $topProducts
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $summary
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in sellerSalesSummary: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch sales summary: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get seller top products
+     */
+    public function sellerTopProducts(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user->hasRole('seller')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint'
+                ], 403);
+            }
+
+            $limit = $request->input('limit', 5);
+            $days = $request->input('days', 30);
+
+            $topProducts = DB::table('order_items')
+                ->join('products', 'order_items.product_id', '=', 'products.id')
+                ->where('order_items.seller_id', $user->id)
+                ->where('order_items.created_at', '>=', Carbon::now()->subDays($days))
+                ->select(
+                    'products.id',
+                    'products.name',
+                    'products.price',
+                    'products.images',
+                    DB::raw('SUM(order_items.quantity) as total_sold'),
+                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue'),
+                    DB::raw('AVG(order_items.rating) as average_rating')
+                )
+                ->groupBy('products.id', 'products.name', 'products.price', 'products.images')
+                ->orderBy('total_sold', 'desc')
+                ->limit($limit)
+                ->get();
+
+            // Format images
+            $topProducts = $topProducts->map(function ($product) {
+                $images = json_decode($product->images, true) ?? [];
+                $primaryImage = collect($images)->firstWhere('is_primary', true) ?? $images[0] ?? null;
+                
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => $product->price,
+                    'image' => $primaryImage['url'] ?? null,
+                    'total_sold' => $product->total_sold,
+                    'total_revenue' => $product->total_revenue,
+                    'average_rating' => $product->average_rating ? round($product->average_rating, 2) : null
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $topProducts
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in sellerTopProducts: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch top products: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get seller recent orders
+     */
+    public function sellerRecentOrders(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user->hasRole('seller')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint'
+                ], 403);
+            }
+
+            $limit = $request->input('limit', 10);
+
+            // Adjust this query based on your Order and OrderItem models
+            $recentOrders = DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.seller_id', $user->id)
+                ->select(
+                    'orders.id',
+                    'orders.order_number',
+                    'orders.status',
+                    'orders.total_amount',
+                    'orders.created_at',
+                    DB::raw('SUM(order_items.quantity) as total_items'),
+                    DB::raw('GROUP_CONCAT(order_items.product_name) as product_names')
+                )
+                ->groupBy('orders.id', 'orders.order_number', 'orders.status', 'orders.total_amount', 'orders.created_at')
+                ->orderBy('orders.created_at', 'desc')
+                ->limit($limit)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $recentOrders
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in sellerRecentOrders: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch recent orders: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
