@@ -44,16 +44,23 @@ Route::group([
     // Public Routes
     // --------------------
 
+    //Business Type
+    
+    // Sellers
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::prefix('sellers')->group(function () {
+            Route::get('/business-types', [SellerController::class, 'getBusinessTypes']);
+            Route::get('/onboarding-status', [SellerController::class, 'getOnboardingStatus']);
+        });
+    });
+
     // Seller Routes
     Route::prefix('sellers')->group(function () {
-        Route::get('/', [SellerController::class, 'indexPublic']);
-        Route::get('/{seller}', [SellerController::class, 'showPublic']);
+        Route::get('/', [SellerController::class, 'index']);
+        Route::get('/{seller}', [SellerController::class, 'show']);
         Route::get('/{seller}/products', [SellerController::class, 'sellerProducts']);
         Route::get('/{seller}/reviews', [SellerController::class, 'sellerReviews']);
     });
-
-    //Business Type
-        Route::get('/business-types', [SellerController::class, 'getBusinessTypes']);
 
     // Public Routes For Products
     Route::prefix('products')->group(function () {

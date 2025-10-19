@@ -3,21 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\SellerProfile;
-use App\Models\SellerReview;
-use App\Models\User;
-use App\Models\Product;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Validator; 
 
 class SellerController extends Controller
 {
     /**
-     * Get all sellers (public endpoint)
+     * Display a listing of the resource.
      */
-    public function indexPublic(Request $request)
+    public function index(Request $request)
     {
         // ✅ Handle "top sellers" case
         if ($request->boolean('top')) {
@@ -113,7 +106,7 @@ class SellerController extends Controller
     }
 
     /**
-     * Create a new seller profile
+     * Store a newly created resource in storage.
      */
     public function store(Request $request)
     {
@@ -216,75 +209,227 @@ class SellerController extends Controller
     }
 
     /**
-     * Get seller details (public endpoint)
+     * Display the specified resource.
      */
-    public function showPublic($id)
-{
-    try {
-        \Log::info('showPublic called with ID: ' . $id);
-        
-        $seller = SellerProfile::where('id', $id)
-            ->orWhere('store_slug', $id)
-            ->orWhere('store_id', $id)
-            ->with(['user', 'reviews.user'])
-            ->withAvg('reviews', 'rating')
-            ->withCount('reviews')
-            ->firstOrFail();
+    public function show($idOrSlug)
+    {
+        try {
+            $seller = SellerProfile::where('id', $idOrSlug)
+                ->orWhere('store_slug', $idOrSlug)
+                ->orWhere('store_id', $idOrSlug)
+                ->with(['user', 'reviews.user'])
+                ->withAvg('reviews', 'rating')
+                ->withCount('reviews')
+                ->firstOrFail();
 
-        \Log::info('Seller found: ' . $seller->id . ', Status: ' . $seller->status);
+            if ($seller->status !== 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
 
-        // Allow both 'approved' and 'active' statuses
-        if (!in_array($seller->status, ['approved', 'active'])) {
-            \Log::info('Seller status not allowed: ' . $seller->status);
+            // Get seller's products (only active ones)
+            $products = Product::where('seller_id', $seller->user_id)
+                ->where('is_active', true)
+                ->with(['category'])
+                ->withAvg('reviews', 'rating')
+                ->withCount('reviews')
+                ->paginate(12);
+
+            // Get seller stats
+            $stats = [
+                'total_products' => Product::where('seller_id', $seller->user_id)->count(),
+                'active_products' => Product::where('seller_id', $seller->user_id)
+                    ->where('is_active', true)->count(),
+                'total_orders' => $seller->user->orders()->count(),
+                'member_since' => $seller->created_at->format('M Y')
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'seller' => $seller,
+                    'products' => $products,
+                    'stats' => $stats
+                ]
+            ]);
+
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Seller profile not found'
+                'message' => 'Seller not found'
             ], 404);
         }
-
-        \Log::info('Seller status is valid, proceeding...');
-
-        // Get seller's products (only active ones) - FIXED: Use seller's user_id
-        $products = Product::where('seller_id', $seller->user_id)
-            ->where('is_active', true)
-            ->with(['category'])
-            ->withAvg('reviews', 'rating')
-            ->withCount('reviews')
-            ->paginate(12);
-
-        \Log::info('Products found: ' . $products->count());
-
-        // Get seller stats - FIXED: Use seller's user_id
-        $stats = [
-            'total_products' => Product::where('seller_id', $seller->user_id)->count(),
-            'active_products' => Product::where('seller_id', $seller->user_id)
-                ->where('is_active', true)->count(),
-            'total_orders' => $seller->user->orders()->count(),
-            'member_since' => $seller->created_at->format('M Y')
-        ];
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'seller' => $seller,
-                'products' => $products,
-                'stats' => $stats
-            ]
-        ]);
-
-    } catch (\Exception $e) {
-        \Log::error('Error in showPublic: ' . $e->getMessage());
-        \Log::error('Stack trace: ' . $e->getTraceAsString());
-        
-        return response()->json([
-            'success' => false,
-            'message' => 'Seller not found: ' . $e->getMessage()
-        ], 404);
     }
-}
 
     /**
-     * Update seller profile
+     * Display a listing of the seller's products.
+     */
+    public function sellerProducts($idOrSlug, Request $request)
+    {
+        try {
+            $seller = SellerProfile::where('id', $idOrSlug)
+                ->orWhere('store_slug', $idOrSlug)
+                ->orWhere('store_id', $idOrSlug)
+                ->firstOrFail();
+
+            $validator = Validator::make($request->all(), [
+                'per_page' => 'sometimes|integer|min:1|max:100',
+                'category_id' => 'sometimes|exists:categories,id',
+                'min_price' => 'sometimes|numeric|min:0',
+                'max_price' => 'sometimes|numeric|min:0',
+                'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $perPage = $request->input('per_page', 12);
+
+            $query = Product::where('seller_id', $seller->user_id)
+                ->where('is_active', true)
+                ->with(['category', 'reviews'])
+                ->withAvg('reviews', 'rating')
+                ->withCount('reviews');
+
+            // Apply filters
+            if ($request->has('category_id')) {
+                $query->where('category_id', $request->category_id);
+            }
+
+            if ($request->has('min_price')) {
+                $query->where('price', '>=', $request->min_price);
+            }
+
+            if ($request->has('max_price')) {
+                $query->where('price', '<=', $request->max_price);
+            }
+
+            // Apply sorting
+            switch ($request->input('sort', 'newest')) {
+                case 'price_asc':
+                    $query->orderBy('price', 'asc');
+                    break;
+                case 'price_desc':
+                    $query->orderBy('price', 'desc');
+                    break;
+                case 'rating':
+                    $query->orderBy('reviews_avg_rating', 'desc');
+                    break;
+                case 'popular':
+                    $query->orderBy('sold_count', 'desc');
+                    break;
+                default: // newest
+                    $query->latest();
+            }
+
+            $products = $query->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'seller' => $seller,
+                    'products' => $products
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seller not found'
+            ], 404);
+        }
+    }
+
+    /**
+     * Get seller's reviews
+     */
+    public function sellerReviews($idOrSlug, Request $request)
+    {
+        try {
+            $seller = SellerProfile::where('id', $idOrSlug)
+                ->orWhere('store_slug', $idOrSlug)
+                ->orWhere('store_id', $idOrSlug)
+                ->firstOrFail();
+
+            $perPage = $request->input('per_page', 10);
+
+            $reviews = SellerReview::where('seller_profile_id', $seller->id)
+                ->where('status', 'approved')
+                ->with('user')
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'seller' => $seller,
+                    'reviews' => $reviews
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seller not found'
+            ], 404);
+        }
+    }
+
+    public function adminIndex(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'per_page' => 'sometimes|integer|min:1|max:100',
+            'status' => 'sometimes|in:pending,approved,active,suspended,closed', //     Updated status values
+            'search' => 'sometimes|string|max:255'
+        ]);
+    
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+    
+        $perPage = $request->input('per_page', 15);
+        
+        $query = SellerProfile::with(['user', 'reviews'])
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews');
+    
+        // Filter by status if provided
+        if ($request->has('status') && !empty($request->status)) {
+            $query->where('status', $request->status);
+        }
+    
+        // Search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $query->where(function($q) use ($request) {
+                $q->where('store_name', 'like', '%'.$request->search.'%')
+                  ->orWhere('store_id', 'like', '%'.$request->search.'%')
+                  ->orWhere('contact_email', 'like', '%'.$request->search.'%')
+                  ->orWhereHas('user', function($userQuery) use ($request) {
+                      $userQuery->where('name', 'like', '%'.$request->search.'%')
+                               ->orWhere('email', 'like', '%'.$request->search.'%');
+                  });
+            });
+        }
+    
+        $sellers = $query->orderBy('created_at', 'desc')->paginate($perPage);
+    
+        return response()->json([
+            'success' => true,
+            'data' => $sellers
+        ]);
+    }
+
+    /**
+     * Update the specified resource in storage.
      */
     public function update(Request $request, $id)
     {
@@ -411,7 +556,7 @@ class SellerController extends Controller
     }
 
     /**
-     * Delete seller profile (admin only)
+     * Remove the specified resource from storage.
      */
     public function destroy($id)
     {
@@ -444,173 +589,40 @@ class SellerController extends Controller
         }
     }
 
-    /**
-     * Get seller's products
-     */
-    public function sellerProducts($idOrSlug, Request $request)
+    public function getBusinessTypes()
     {
-        try {
-            $seller = SellerProfile::where('id', $idOrSlug)
-                ->orWhere('store_slug', $idOrSlug)
-                ->orWhere('store_id', $idOrSlug)
-                ->firstOrFail();
+        $businessTypes = [
+            [
+                'value' => 'individual',
+                'label' => 'Individual/Sole Proprietorship',
+                'description' => 'A business owned and operated by one person',
+                'requires_registration' => false,
+            ],
+            [
+                'value' => 'company', 
+                'label' => 'Private Limited Company',
+                'description' => 'A registered company with limited liability',
+                'requires_registration' => true,
+            ],
+            [
+                'value' => 'partnership',
+                'label' => 'Partnership',
+                'description' => 'Business owned by two or more individuals',
+                'requires_registration' => true,
+            ],
+            [
+                'value' => 'cooperative',
+                'label' => 'Cooperative',
+                'description' => 'Member-owned business organization',
+                'requires_registration' => true,
+            ]
+        ];
 
-            $validator = Validator::make($request->all(), [
-                'per_page' => 'sometimes|integer|min:1|max:100',
-                'category_id' => 'sometimes|exists:categories,id',
-                'min_price' => 'sometimes|numeric|min:0',
-                'max_price' => 'sometimes|numeric|min:0',
-                'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular'
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $perPage = $request->input('per_page', 12);
-
-            $query = Product::where('seller_id', $seller->user_id)
-                ->where('is_active', true)
-                ->with(['category', 'reviews'])
-                ->withAvg('reviews', 'rating')
-                ->withCount('reviews');
-
-            // Apply filters
-            if ($request->has('category_id')) {
-                $query->where('category_id', $request->category_id);
-            }
-
-            if ($request->has('min_price')) {
-                $query->where('price', '>=', $request->min_price);
-            }
-
-            if ($request->has('max_price')) {
-                $query->where('price', '<=', $request->max_price);
-            }
-
-            // Apply sorting
-            switch ($request->input('sort', 'newest')) {
-                case 'price_asc':
-                    $query->orderBy('price', 'asc');
-                    break;
-                case 'price_desc':
-                    $query->orderBy('price', 'desc');
-                    break;
-                case 'rating':
-                    $query->orderBy('reviews_avg_rating', 'desc');
-                    break;
-                case 'popular':
-                    $query->orderBy('sold_count', 'desc');
-                    break;
-                default: // newest
-                    $query->latest();
-            }
-
-            $products = $query->paginate($perPage);
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'seller' => $seller,
-                    'products' => $products
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Seller not found'
-            ], 404);
-        }
-    }
-
-    /**
-     * Get seller's reviews
-     */
-    public function sellerReviews($idOrSlug, Request $request)
-    {
-        try {
-            $seller = SellerProfile::where('id', $idOrSlug)
-                ->orWhere('store_slug', $idOrSlug)
-                ->orWhere('store_id', $idOrSlug)
-                ->firstOrFail();
-
-            $perPage = $request->input('per_page', 10);
-
-            $reviews = SellerReview::where('seller_profile_id', $seller->id)
-                ->where('status', 'approved')
-                ->with('user')
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'seller' => $seller,
-                    'reviews' => $reviews
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Seller not found'
-            ], 404);
-        }
-    }
-
-    /**
-     * Admin: Get all seller profiles for management
-     */
-    public function adminIndex(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'per_page' => 'sometimes|integer|min:1|max:100',
-        'status' => 'sometimes|in:pending,approved,active,suspended,closed', // Updated status values
-        'search' => 'sometimes|string|max:255'
-    ]);
-
-    if ($validator->fails()) {
         return response()->json([
-            'success' => false,
-            'errors' => $validator->errors()
-        ], 422);
+            'success' => true,
+            'data' => $businessTypes
+        ]);
     }
-
-    $perPage = $request->input('per_page', 15);
-    
-    $query = SellerProfile::with(['user', 'reviews'])
-        ->withAvg('reviews', 'rating')
-        ->withCount('reviews');
-
-    // Filter by status if provided
-    if ($request->has('status') && !empty($request->status)) {
-        $query->where('status', $request->status);
-    }
-
-    // Search filter
-    if ($request->has('search') && !empty($request->search)) {
-        $query->where(function($q) use ($request) {
-            $q->where('store_name', 'like', '%'.$request->search.'%')
-              ->orWhere('store_id', 'like', '%'.$request->search.'%')
-              ->orWhere('contact_email', 'like', '%'.$request->search.'%')
-              ->orWhereHas('user', function($userQuery) use ($request) {
-                  $userQuery->where('name', 'like', '%'.$request->search.'%')
-                           ->orWhere('email', 'like', '%'.$request->search.'%');
-              });
-        });
-    }
-
-    $sellers = $query->orderBy('created_at', 'desc')->paginate($perPage);
-
-    return response()->json([
-        'success' => true,
-        'data' => $sellers
-    ]);
-}
 
     /**
      * Admin: Approve seller profile
@@ -671,19 +683,77 @@ class SellerController extends Controller
     }
 
     /**
-     * Generate unique slug for store
+     * Get the onboarding status of the authenticated seller.
      */
-    private function generateUniqueSlug($storeName)
-    {
-        $slug = Str::slug($storeName);
-        $originalSlug = $slug;
-        $count = 1;
 
-        while (SellerProfile::where('store_slug', $slug)->exists()) {
-            $slug = $originalSlug . '-' . $count;
-            $count++;
+    public function getOnboardingStatus(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            \Log::info('Checking onboarding status for user: ' . $user->id);
+            \Log::info('User roles: ' . json_encode($user->roles ?? $user->type));
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                \Log::info('No seller profile found for user: ' . $user->id);
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'has_profile' => false,
+                        'onboarding_complete' => false,
+                        'current_step' => 'store-basic',
+                        'profile_status' => 'not_created',
+                        'user_has_seller_role' => $user->hasRole('seller') || $user->type === 'seller'
+                    ]
+                ]);
+            }
+
+            $onboardingComplete = $sellerProfile->isOnboardingComplete();
+            $currentStep = $sellerProfile->getOnboardingStep();
+
+            \Log::info('Seller profile found - ID: ' . $sellerProfile->id . ', Status: ' . $sellerProfile->status);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'has_profile' => true,
+                    'onboarding_complete' => $onboardingComplete,
+                    'current_step' => $currentStep,
+                    'profile_status' => $sellerProfile->status,
+                    'profile' => $sellerProfile,
+                    'user_has_seller_role' => true
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get onboarding status'
+            ], 500);
+        }
+    }
+
+
+    /**
+     * Get the authenticated seller's store profile.
+     */
+    public function myStore(Request $request)
+    {
+        $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
+
+        if (!$sellerProfile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seller profile not found'
+            ], 404);
         }
 
-        return $slug;
+        return response()->json([
+            'success' => true,
+            'data' => $sellerProfile
+        ]);
     }
 }
