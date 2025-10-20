@@ -4,12 +4,30 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SellerProfile extends Model
 {
     use HasFactory, SoftDeletes;
+
+    const STATUS_PENDING_SETUP = 'pending_setup'; // New status for onboarding
+    const STATUS_PENDING = 'pending';
+    const STATUS_APPROVED = 'approved';
+    const STATUS_ACTIVE = 'active';
+    const STATUS_SUSPENDED = 'suspended';
+    const STATUS_CLOSED = 'closed';
+
+
+    const BUSINESS_TYPE_INDIVIDUAL = 'individual';
+    const BUSINESS_TYPE_COMPANY = 'company';
+    const BUSINESS_TYPE_RETAIL = 'retail';
+    const BUSINESS_TYPE_WHOLESALE = 'wholesale';
+    const BUSINESS_TYPE_PARTNERSHIP = 'partnership';
+    const BUSINESS_TYPE_PRIVATE_LIMITED = 'private_limited';
+    const BUSINESS_TYPE_PUBLIC_LIMITED = 'public_limited';
+    const BUSINESS_TYPE_COOPERATIVE = 'cooperative';
+    const BUSINESS_TYPE_MANUFACTURER = 'manufacturer';
+
 
     protected $fillable = [
         'user_id',
@@ -42,14 +60,12 @@ class SellerProfile extends Model
         'admin_notes'
     ];
 
-    const BUSINESS_TYPE_INDIVIDUAL = 'individual';
-    const BUSINESS_TYPE_PARTNERSHIP = 'partnership';
-    const BUSINESS_TYPE_PRIVATE_LIMITED = 'private_limited';
-    const BUSINESS_TYPE_PUBLIC_LIMITED = 'public_limited';
-    const BUSINESS_TYPE_COOPERATIVE = 'cooperative';
-
     protected $casts = [
         'business_type' => 'string',
+    ];
+
+    protected $attributes = [
+        'status' => 'pending',
     ];
 
     public static function getBusinessTypes()
@@ -156,4 +172,70 @@ class SellerProfile extends Model
     {
         return 'store_slug';
     }
+
+    /**
+     * Generate store ID
+     */
+    public static function generateStoreId()
+    {
+        $prefix = 'STORE';
+        $timestamp = now()->format('Ymd');
+        $random = strtoupper(substr(uniqid(), -6));
+        
+        return "{$prefix}{$timestamp}{$random}";
+    }
+
+    /**
+     * Generate store slug
+     */
+    public static function generateStoreSlug($storeName)
+    {
+        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $storeName)));
+        $originalSlug = $slug;
+        $counter = 1;
+
+        while (self::where('store_slug', $slug)->exists()) {
+            $slug = $originalSlug . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
+    }
+
+    /**
+ * Check if onboarding is complete
+ */
+public function isOnboardingComplete()
+{
+    // All required fields must be filled with actual data
+    return !empty($this->store_name) && 
+           !empty($this->business_type) && 
+           !empty($this->contact_email) &&
+           !empty($this->contact_phone) &&
+           !empty($this->address) && 
+           !empty($this->city) &&
+           !empty($this->state) &&
+           !empty($this->country);
+}
+
+/**
+ * Get current onboarding step
+ */
+public function getOnboardingStep()
+{
+    if (empty($this->store_name) || empty($this->business_type)) {
+        return 'store-basic';
+    }
+    
+    if (empty($this->business_registration_number) && empty($this->tax_id) && empty($this->website)) {
+        return 'business-details';
+    }
+    
+    if (empty($this->address) || empty($this->city) || empty($this->state)) {
+        return 'address';
+    }
+    
+    return 'complete';
+}
+
 }

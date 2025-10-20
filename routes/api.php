@@ -44,17 +44,31 @@ Route::group([
     // Public Routes
     // --------------------
 
-    //Business Type
-    
-    // Sellers
+    // Business Type (Public)
+    Route::get('/business-types', [SellerController::class, 'getBusinessTypes']);
+
     Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('sellers')->group(function () {
-            Route::get('/business-types', [SellerController::class, 'getBusinessTypes']);
             Route::get('/onboarding-status', [SellerController::class, 'getOnboardingStatus']);
+
+            // Create seller profile (first step)
+            Route::post('/', [SellerController::class, 'store'])->middleware('role:seller');
+
+            // Get current user's store
+            Route::get('/my-store', [SellerController::class, 'myStore'])->middleware('role:seller');
+
+            // Update store profile
+            Route::put('/my-store/update', [SellerController::class, 'updateMyStore'])->middleware('role:seller');
+
+            // Business details step
+            Route::post('/business-details', [SellerController::class, 'updateBusinessDetails'])->middleware('role:seller');
+
+            // Address step
+            Route::post('/address', [SellerController::class, 'updateAddress'])->middleware('role:seller');
         });
     });
 
-    // Seller Routes
+    // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
         Route::get('/', [SellerController::class, 'index']);
         Route::get('/{seller}', [SellerController::class, 'show']);
@@ -75,12 +89,12 @@ Route::group([
         Route::get('/', [CategoryController::class, 'index']);
         Route::get('/{category}', [CategoryController::class, 'show']);
     });
-
+    
     // Reviews
     Route::prefix('reviews')->group(function () {
         Route::get('/products/{product}', [ReviewController::class, 'productReviews']);
     });
-
+    
     // --------------------
     // Authenticated Routes
     // --------------------
@@ -93,29 +107,31 @@ Route::group([
             Route::get('/top-products', [DashboardController::class, 'topProducts']);
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
 
-            //Admin/Seller user management
+            // Admin seller management
             Route::prefix('sellers')->group(function () {
-            Route::get('/', [SellerController::class, 'adminIndex'])->middleware('role:admin');
-            Route::post('/{seller}/approve', [SellerController::class, 'adminApprove'])->middleware('role:admin');
-            Route::post('/{seller}/reject', [SellerController::class, 'adminReject'])->middleware('role:admin');
+                Route::get('/', [SellerController::class, 'adminIndex'])->middleware('role:admin');
+                Route::post('/{seller}/approve', [SellerController::class, 'adminApprove'])->middleware('role:admin');
+                Route::post('/{seller}/reject', [SellerController::class, 'adminReject'])->middleware('role:admin');
             });
 
-            //Admin/Seller review management
+            // Admin/Seller review management
             Route::get('/reviews', [ReviewController::class, 'index'])->middleware('role:admin|seller');
 
+            // Seller-specific dashboard
             Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary'])->middleware('role:seller');
             Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts'])->middleware('role:seller');
             Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders'])->middleware('role:seller');
         });
 
-        // Sellers
+        // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
-            Route::get('/my-store', [SellerController::class, 'myStore'])->middleware('role:seller');
-            Route::post('/', [SellerController::class, 'store'])->middleware('role:seller|admin');
-            Route::put('/{seller}', [SellerController::class, 'update'])->middleware('role:seller|admin');
-            Route::delete('/{seller}', [SellerController::class, 'destroy'])->middleware('role:admin');
+            // Admin only routes
+            Route::middleware('role:admin')->group(function () {
+                Route::put('/{seller}', [SellerController::class, 'update']);
+                Route::delete('/{seller}', [SellerController::class, 'destroy']);
+            });
 
-            //Seller profile reviews
+            // Seller reviews (buyers can review sellers)
             Route::post('/{seller}/reviews', [SellerReviewController::class, 'store'])->middleware('role:buyer|admin');
             Route::get('/my-reviews', [SellerReviewController::class, 'myReviews'])->middleware('role:buyer|admin');
             Route::put('/{review}', [SellerReviewController::class, 'update'])->middleware('role:buyer|admin');
@@ -155,7 +171,6 @@ Route::group([
                 Route::post('/', [ProductController::class, 'store']);
                 Route::put('/{product}', [ProductController::class, 'update']);
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
-                //has an api issues
                 Route::get('/my-products', [ProductController::class, 'myProducts']);
             });
         });
@@ -194,24 +209,25 @@ Route::group([
             Route::delete('/{category}', [CategoryController::class, 'destroy'])->middleware('role:admin');
         });
 
+        // Orders
         Route::prefix('orders')->group(function () {
-        Route::get('/', [OrderController::class, 'index']);
-        Route::post('/', [OrderController::class, 'store'])->middleware('role:buyer|admin');
-        Route::get('/{order}', [OrderController::class, 'show']);
-        Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
-    
-        // Seller order management - using explicit IDs
-        Route::middleware('role:seller|admin')->group(function () {
-            Route::post('/{order}/confirm', [OrderController::class, 'confirm']);
-            Route::post('/{order}/process', [OrderController::class, 'process']);
-            Route::post('/{order}/ship', [OrderController::class, 'ship']);
+            Route::get('/', [OrderController::class, 'index']);
+            Route::post('/', [OrderController::class, 'store'])->middleware('role:buyer|admin');
+            Route::get('/{order}', [OrderController::class, 'show']);
+            Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
+        
+            // Seller order management
+            Route::middleware('role:seller|admin')->group(function () {
+                Route::post('/{order}/confirm', [OrderController::class, 'confirm']);
+                Route::post('/{order}/process', [OrderController::class, 'process']);
+                Route::post('/{order}/ship', [OrderController::class, 'ship']);
+            });
+        
+            // Buyer order management
+            Route::middleware('role:buyer|admin')->group(function () {
+                Route::post('/{order}/confirm-delivery', [OrderController::class, 'confirmDelivery']);
+            });
         });
-    
-        // Buyer order management
-        Route::middleware('role:buyer|admin')->group(function () {
-            Route::post('/{order}/confirm-delivery', [OrderController::class,   'confirmDelivery']);
-        });
-    });
 
         // Wishlist
         Route::prefix('wishlist')->middleware('role:buyer|admin')->group(function () {

@@ -39,7 +39,15 @@ return new class extends Migration
             $table->string('store_logo')->nullable();
             $table->string('store_banner')->nullable();
             $table->string('location')->nullable();
-            $table->enum('status', ['pending','approved', 'active', 'suspended', 'closed'])->default('approved');
+
+            $table->enum('status', [
+                'pending_setup',
+                'pending',
+                'approved', 
+                'active', 
+                'suspended', 
+                'closed'
+            ])->default('pending_setup'); // Use only one .default()
             $table->text('admin_notes')->nullable();
             $table->softDeletes();
             $table->timestamps();

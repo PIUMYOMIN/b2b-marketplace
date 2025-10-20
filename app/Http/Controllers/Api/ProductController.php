@@ -19,121 +19,121 @@ class ProductController extends Controller
      * Display a listing of products with optional filters
      */
     public function indexPublic(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'per_page' => 'sometimes|integer|min:1|max:100',
-        'category_id' => 'sometimes|exists:categories,id',
-        'seller_id' => 'sometimes|exists:users,id',
-        'min_price' => 'sometimes|numeric|min:0',
-        'max_price' => 'sometimes|numeric|min:0',
-        'min_rating' => 'sometimes|numeric|min:0|max:5',
-        'search' => 'sometimes|string|max:255',
-        'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
-        'status' => 'sometimes|in:active,inactive'
-    ]);
+    {
+        $validator = Validator::make($request->all(), [
+            'per_page' => 'sometimes|integer|min:1|max:100',
+            'category_id' => 'sometimes|exists:categories,id',
+            'seller_id' => 'sometimes|exists:users,id',
+            'min_price' => 'sometimes|numeric|min:0',
+            'max_price' => 'sometimes|numeric|min:0',
+            'min_rating' => 'sometimes|numeric|min:0|max:5',
+            'search' => 'sometimes|string|max:255',
+            'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
+            'status' => 'sometimes|in:active,inactive'
+        ]);
 
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'errors' => $validator->errors()
-        ], 422);
-    }
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
-    $perPage = $request->input('per_page', 15);
+        $perPage = $request->input('per_page', 15);
 
-    $query = Product::with(['category', 'seller'])
-        ->withCount(['reviews as reviews_count' => function($query) {
-            $query->where('status', 'approved');
-        }])
-        ->withAvg(['reviews as average_rating' => function($query) {
-            $query->where('status', 'approved');
-        }], 'rating');
+        $query = Product::with(['category', 'seller'])
+            ->withCount(['reviews as reviews_count' => function($query) {
+                $query->where('status', 'approved');
+            }])
+            ->withAvg(['reviews as average_rating' => function($query) {
+                $query->where('status', 'approved');
+            }], 'rating');
 
-    // Apply filters
-    if ($request->has('category_id')) {
-        $query->where('category_id', $request->category_id);
-    }
+        // Apply filters
+        if ($request->has('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
 
-    if ($request->has('seller_id')) {
-        $query->where('seller_id', $request->seller_id);
-    }
+        if ($request->has('seller_id')) {
+            $query->where('seller_id', $request->seller_id);
+        }
 
-    if ($request->has('min_price')) {
-        $query->where('price', '>=', $request->min_price);
-    }
+        if ($request->has('min_price')) {
+            $query->where('price', '>=', $request->min_price);
+        }
 
-    if ($request->has('max_price')) {
-        $query->where('price', '<=', $request->max_price);
-    }
+        if ($request->has('max_price')) {
+            $query->where('price', '<=', $request->max_price);
+        }
 
-    if ($request->has('min_rating')) {
-        $query->having('average_rating', '>=', $request->min_rating);
-    }
+        if ($request->has('min_rating')) {
+            $query->having('average_rating', '>=', $request->min_rating);
+        }
 
-    if ($request->has('search')) {
-        $query->where(function($q) use ($request) {
-            $q->where('name', 'like', '%'.$request->search.'%')
-              ->orWhere('description', 'like', '%'.$request->search.'%');
+        if ($request->has('search')) {
+            $query->where(function($q) use ($request) {
+                $q->where('name', 'like', '%'.$request->search.'%')
+                  ->orWhere('description', 'like', '%'.$request->search.'%');
+            });
+        }
+
+        if ($request->has('status')) {
+            $query->where('is_active', $request->status === 'active');
+        }
+
+        // Apply sorting
+        switch ($request->input('sort', 'newest')) {
+            case 'price_asc':
+                $query->orderBy('price', 'asc');
+                break;
+            case 'price_desc':
+                $query->orderBy('price', 'desc');
+                break;
+            case 'rating':
+                $query->orderBy('average_rating', 'desc');
+                break;
+            case 'popular':
+                $query->orderBy('reviews_count', 'desc');
+                break;
+            default: // newest
+                $query->latest();
+        }
+
+        $products = $query->paginate($perPage);
+
+        // Format the products manually without using ProductResource
+        $formattedProducts = $products->getCollection()->map(function ($product) {
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'description' => $product->description,
+                'price' => (float) $product->price,
+                'quantity' => $product->quantity,
+                'category_id' => $product->category_id,
+                'seller_id' => $product->seller_id,
+                'average_rating' => (float) $product->average_rating,
+                'review_count' => $product->reviews_count,
+                'specifications' => $product->specifications,
+                'images' => $this->formatImages($product->images),
+                'is_active' => $product->is_active,
+                'created_at' => $product->created_at,
+                'updated_at' => $product->updated_at,
+                'category' => $product->category,
+                'seller' => $product->seller,
+            ];
         });
+
+        return response()->json([
+            'success' => true,
+            'data' => $formattedProducts,
+            'meta' => [
+                'current_page' => $products->currentPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
+                'last_page' => $products->lastPage(),
+            ]
+        ]);
     }
-
-    if ($request->has('status')) {
-        $query->where('is_active', $request->status === 'active');
-    }
-
-    // Apply sorting
-    switch ($request->input('sort', 'newest')) {
-        case 'price_asc':
-            $query->orderBy('price', 'asc');
-            break;
-        case 'price_desc':
-            $query->orderBy('price', 'desc');
-            break;
-        case 'rating':
-            $query->orderBy('average_rating', 'desc');
-            break;
-        case 'popular':
-            $query->orderBy('reviews_count', 'desc');
-            break;
-        default: // newest
-            $query->latest();
-    }
-
-    $products = $query->paginate($perPage);
-
-    // Format the products manually without using ProductResource
-    $formattedProducts = $products->getCollection()->map(function ($product) {
-        return [
-            'id' => $product->id,
-            'name' => $product->name,
-            'description' => $product->description,
-            'price' => (float) $product->price,
-            'quantity' => $product->quantity,
-            'category_id' => $product->category_id,
-            'seller_id' => $product->seller_id,
-            'average_rating' => (float) $product->average_rating,
-            'review_count' => $product->reviews_count,
-            'specifications' => $product->specifications,
-            'images' => $this->formatImages($product->images),
-            'is_active' => $product->is_active,
-            'created_at' => $product->created_at,
-            'updated_at' => $product->updated_at,
-            'category' => $product->category,
-            'seller' => $product->seller,
-        ];
-    });
-
-    return response()->json([
-        'success' => true,
-        'data' => $formattedProducts,
-        'meta' => [
-            'current_page' => $products->currentPage(),
-            'per_page' => $products->perPage(),
-            'total' => $products->total(),
-            'last_page' => $products->lastPage(),
-        ]
-    ]);
-}
     /**
      * Display a listing of public products
      */
@@ -148,8 +148,6 @@ class ProductController extends Controller
                 $query->where('status', 'approved');
             }], 'rating')
             ->where('is_featured', true);
-
-        // Apply filters and sorting as in the index method...
 
         $products = $query->paginate($request->input('per_page', 15));
 
@@ -228,9 +226,25 @@ class ProductController extends Controller
         'images.*.url' => 'required|string',
         'images.*.angle' => 'sometimes|string',
         'images.*.is_primary' => 'sometimes|boolean',
-        'min_order' => 'required|integer|min:1',
+        'moq' => 'required|integer|min:1',
+        'min_order_unit' => 'required|string|in:piece,kg,gram,meter,set,pack,box,pallet',
         'lead_time' => 'nullable|string|max:255',
-        'is_active' => 'sometimes|boolean'
+        'is_active' => 'sometimes|boolean',
+        // New fields
+        'brand' => 'nullable|string|max:255',
+        'model' => 'nullable|string|max:255',
+        'color' => 'nullable|string|max:255',
+        'material' => 'nullable|string|max:255',
+        'origin' => 'nullable|string|max:255',
+        'weight_kg' => 'nullable|numeric|min:0',
+        'warranty' => 'nullable|string|max:255',
+        'warranty_type' => 'nullable|string|in:manufacturer,seller,international,no_warranty',
+        'warranty_period' => 'nullable|string|max:255',
+        'return_policy' => 'nullable|string|max:255',
+        'shipping_cost' => 'nullable|numeric|min:0',
+        'shipping_time' => 'nullable|string|max:255',
+        'packaging_details' => 'nullable|string',
+        'additional_info' => 'nullable|string'
     ]);
 
     if ($validator->fails()) {
@@ -243,7 +257,11 @@ class ProductController extends Controller
     try {
         $productData = $request->only([
             'name', 'description', 'price', 'quantity',
-            'category_id', 'specifications', 'min_order', 'lead_time', 'is_active'
+            'category_id', 'specifications', 'moq', 'min_order_unit', 
+            'lead_time', 'is_active', 'brand', 'model', 'color', 
+            'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
+            'warranty_period', 'return_policy', 'shipping_cost', 
+            'shipping_time', 'packaging_details', 'additional_info'
         ]);
         
         $productData['seller_id'] = Auth::id();
@@ -255,7 +273,10 @@ class ProductController extends Controller
             
             foreach ($request->images as $image) {
                 $tempPath = $image['url'];
-                $newPath = 'products/' . Auth::id() . '/' . basename($tempPath);
+                
+                // Extract filename from temp path
+                $filename = basename($tempPath);
+                $newPath = 'products/' . Auth::id() . '/' . $filename;
                 
                 // Move from temp to permanent location
                 if (Storage::disk('public')->exists($tempPath)) {
@@ -263,6 +284,13 @@ class ProductController extends Controller
                     
                     $permanentImages[] = [
                         'url' => $newPath,
+                        'angle' => $image['angle'] ?? 'default',
+                        'is_primary' => $image['is_primary'] ?? false
+                    ];
+                } else {
+                    // If file doesn't exist in temp, use the path as is (might already be permanent)
+                    $permanentImages[] = [
+                        'url' => $tempPath,
                         'angle' => $image['angle'] ?? 'default',
                         'is_primary' => $image['is_primary'] ?? false
                     ];
@@ -281,6 +309,7 @@ class ProductController extends Controller
         ], 201);
 
     } catch (\Exception $e) {
+        \Log::error('Product creation error: ' . $e->getMessage());
         return response()->json([
             'success' => false,
             'message' => 'Failed to create product: ' . $e->getMessage()
@@ -289,70 +318,106 @@ class ProductController extends Controller
 }
 
 
+    /**
+     * Display the specified product
+     */
     public function show($id)
     {
-        return $this->show($id);
+        // Fixed: Remove infinite recursion
+        $product = Product::with(['category', 'seller'])
+            ->withCount(['reviews as reviews_count' => function($query) {
+                $query->where('status', 'approved');
+            }])
+            ->withAvg(['reviews as average_rating' => function($query) {
+                $query->where('status', 'approved');
+            }], 'rating')
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => new ProductResource($product)
+        ]);
     }
 
     /**
      * Update the specified product
      */
     public function update(Request $request, Product $product)
-{
-    // Authorization check - only seller or admin can update
-    if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Unauthorized to update this product'
-        ], 403);
-    }
-
-    $validator = Validator::make($request->all(), [
-        'name' => 'sometimes|string|max:255',
-        'description' => 'sometimes|string',
-        'price' => 'sometimes|numeric|min:0',
-        'quantity' => 'sometimes|integer|min:0',
-        'category_id' => 'sometimes|exists:categories,id',
-        'specifications' => 'nullable|array',
-        'images' => 'nullable|array',
-        'min_order' => 'sometimes|integer|min:1',
-        'lead_time' => 'nullable|string|max:255',
-        'is_active' => 'sometimes|boolean'
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'errors' => $validator->errors()
-        ], 422);
-    }
-
-    try {
-        $updateData = $request->only([
-            'name', 'description', 'price', 'quantity',
-            'category_id', 'specifications', 'min_order', 'lead_time', 'is_active'
-        ]);
-
-        // If images are provided in the update, handle them
-        if ($request->has('images')) {
-            $updateData['images'] = $request->images;
+    {
+        // Authorization check - only seller or admin can update
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to update this product'
+            ], 403);
         }
 
-        $product->update($updateData);
-
-        return response()->json([
-            'success' => true,
-            'data' => new ProductResource($product->fresh()),
-            'message' => 'Product updated successfully'
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|string|max:255',
+            'description' => 'sometimes|string',
+            'price' => 'sometimes|numeric|min:0',
+            'quantity' => 'sometimes|integer|min:0',
+            'category_id' => 'sometimes|exists:categories,id',
+            'specifications' => 'nullable|array',
+            'images' => 'nullable|array',
+            'moq' => 'sometimes|integer|min:1',
+            'min_order_unit' => 'sometimes|string|in:piece,kg,gram,meter,set,pack,box,pallet',
+            'lead_time' => 'nullable|string|max:255',
+            'is_active' => 'sometimes|boolean',
+            // New fields
+            'brand' => 'nullable|string|max:255',
+            'model' => 'nullable|string|max:255',
+            'color' => 'nullable|string|max:255',
+            'material' => 'nullable|string|max:255',
+            'origin' => 'nullable|string|max:255',
+            'weight_kg' => 'nullable|numeric|min:0',
+            'warranty' => 'nullable|string|max:255',
+            'warranty_type' => 'nullable|string|in:manufacturer,seller,international,no_warranty',
+            'warranty_period' => 'nullable|string|max:255',
+            'return_policy' => 'nullable|string|max:255',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            'shipping_time' => 'nullable|string|max:255',
+            'packaging_details' => 'nullable|string',
+            'additional_info' => 'nullable|string'
         ]);
 
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to update product: ' . $e->getMessage()
-        ], 500);
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $updateData = $request->only([
+                'name', 'description', 'price', 'quantity',
+                'category_id', 'specifications', 'moq', 'min_order_unit', 
+                'lead_time', 'is_active', 'brand', 'model', 'color', 
+                'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
+                'warranty_period', 'return_policy', 'shipping_cost', 
+                'shipping_time', 'packaging_details', 'additional_info'
+            ]);
+
+            // If images are provided in the update, handle them
+            if ($request->has('images')) {
+                $updateData['images'] = $request->images;
+            }
+
+            $product->update($updateData);
+
+            return response()->json([
+                'success' => true,
+                'data' => new ProductResource($product->fresh()),
+                'message' => 'Product updated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update product: ' . $e->getMessage()
+            ], 500);
+        }
     }
-}
 
 
     /**
@@ -399,36 +464,118 @@ class ProductController extends Controller
      */
     // In ProductController - make sure the myProducts method looks like this:
 public function myProducts(Request $request)
-{
-    try {
-        $user = Auth::user();
-        
-        // Debug: Check if user is authenticated and has seller role
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'User not authenticated'
-            ], 401);
-        }
+    {
+        try {
+            $user = Auth::user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated'
+                ], 401);
+            }
 
-        // Check if user has seller role
-        if (!$user->hasRole('seller')) {
+            if (!$user->hasRole('seller')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint'
+                ], 403);
+            }
+
+            $perPage = $request->input('per_page', 15);
+            
+            $products = Product::where('seller_id', $user->id)
+                ->with(['category'])
+                ->withCount(['reviews as reviews_count'])
+                ->withAvg(['reviews as average_rating'], 'rating')
+                ->latest()
+                ->paginate($perPage);
+
+            // Format the response
+            $formattedProducts = $products->getCollection()->map(function ($product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'description' => $product->description,
+                    'price' => (float) $product->price,
+                    'quantity' => $product->quantity,
+                    'category_id' => $product->category_id,
+                    'seller_id' => $product->seller_id,
+                    'average_rating' => (float) $product->average_rating,
+                    'review_count' => $product->reviews_count,
+                    'specifications' => $product->specifications,
+                    'images' => $this->formatImages($product->images),
+                    'is_active' => (bool) $product->is_active,
+                    'created_at' => $product->created_at->toISOString(),
+                    'updated_at' => $product->updated_at->toISOString(),
+                    'category' => $product->category ? [
+                        'id' => $product->category->id,
+                        'name' => $product->category->name,
+                        'slug' => $product->category->slug
+                    ] : null
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $formattedProducts,
+                'meta' => [
+                    'current_page' => $products->currentPage(),
+                    'per_page' => $products->perPage(),
+                    'total' => $products->total(),
+                    'last_page' => $products->lastPage(),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('My Products Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Only sellers can access this endpoint'
-            ], 403);
+                'message' => 'Failed to fetch products: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    /**
+     * Search products
+     */
+    public function searchPublic(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'query' => 'required|string|min:2',
+            'per_page' => 'sometimes|integer|min:1|max:100'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $perPage = $request->input('per_page', 15);
-        
-        $products = Product::where('seller_id', $user->id)
-            ->with(['category'])
-            ->withCount(['reviews as reviews_count'])
-            ->withAvg(['reviews as average_rating'], 'rating')
-            ->latest()
-            ->paginate($perPage);
 
-        // Format the response
+        $query = Product::with(['category', 'seller'])
+            ->withCount(['reviews as reviews_count' => function($query) {
+                $query->where('status', 'approved');
+            }])
+            ->withAvg(['reviews as average_rating' => function($query) {
+                $query->where('status', 'approved');
+            }], 'rating')
+            ->where('is_active', true);
+
+        if ($request->has('query')) {
+            $searchTerm = $request->input('query');
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('name', 'like', '%'.$searchTerm.'%')
+                  ->orWhere('description', 'like', '%'.$searchTerm.'%')
+                  ->orWhere('brand', 'like', '%'.$searchTerm.'%');
+            });
+        }
+
+        $products = $query->latest()->paginate($perPage);
+
         $formattedProducts = $products->getCollection()->map(function ($product) {
             return [
                 'id' => $product->id,
@@ -442,14 +589,11 @@ public function myProducts(Request $request)
                 'review_count' => $product->reviews_count,
                 'specifications' => $product->specifications,
                 'images' => $this->formatImages($product->images),
-                'is_active' => (bool) $product->is_active,
-                'created_at' => $product->created_at->toISOString(),
-                'updated_at' => $product->updated_at->toISOString(),
-                'category' => $product->category ? [
-                    'id' => $product->category->id,
-                    'name' => $product->category->name,
-                    'slug' => $product->category->slug
-                ] : null
+                'is_active' => $product->is_active,
+                'created_at' => $product->created_at,
+                'updated_at' => $product->updated_at,
+                'category' => $product->category,
+                'seller' => $product->seller,
             ];
         });
 
@@ -463,39 +607,8 @@ public function myProducts(Request $request)
                 'last_page' => $products->lastPage(),
             ]
         ]);
-
-    } catch (\Exception $e) {
-        \Log::error('My Products Error: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to fetch products: ' . $e->getMessage()
-        ], 500);
     }
-}
 
-
-    /**
-     * Search products
-     */
-    public function search(Request $request)
-    {
-        $request->validate([
-            'query' => 'required|string|min:2'
-        ]);
-
-        $products = Product::search($request->query)
-            ->query(function($builder) {
-                $builder->with(['category', 'seller'])
-                    ->withCount(['reviews as reviews_count'])
-                    ->withAvg(['reviews as average_rating'], 'rating');
-            })
-            ->paginate($request->input('per_page', 15));
-
-        return response()->json([
-            'success' => true,
-            'data' => ProductResource::collection($products)
-        ]);
-    }
 
     /**
      * Get products by category
@@ -733,10 +846,17 @@ public function myProducts(Request $request)
  */
 public function uploadImage(Request $request)
 {
-    $request->validate([
+    $validator = Validator::make($request->all(), [
         'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
         'angle' => 'sometimes|string|in:front,back,side,top,default'
     ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'success' => false,
+            'errors' => $validator->errors()
+        ], 422);
+    }
 
     try {
         $user = Auth::user();
@@ -748,8 +868,12 @@ public function uploadImage(Request $request)
             'public'
         );
         
+        // Generate full URL for the image
+        $fullUrl = Storage::disk('public')->url($path);
+        
         $imageData = [
-            'url' => $path,
+            'url' => $path, // Store the path for later use when moving to permanent location
+            'full_url' => $fullUrl, // Provide full URL for immediate frontend use
             'angle' => $angle,
             'is_primary' => false,
             'uploaded_at' => now()->toISOString()
@@ -762,6 +886,7 @@ public function uploadImage(Request $request)
         ]);
         
     } catch (\Exception $e) {
+        \Log::error('Image upload error: ' . $e->getMessage());
         return response()->json([
             'success' => false,
             'message' => 'Failed to upload image: ' . $e->getMessage()
