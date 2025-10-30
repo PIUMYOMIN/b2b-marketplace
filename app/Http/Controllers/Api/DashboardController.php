@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\OrderItem;
 use App\Models\Commission;
 use Illuminate\Http\Request;
-use Carbon\Carbon;
+use App\Models\SellerProfile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
 
 class DashboardController extends Controller
 {
@@ -56,6 +60,118 @@ class DashboardController extends Controller
         }
     }
 
+    /**
+     * Admin: Get all seller profiles for management
+     */
+    public function getSellers(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'per_page' => 'sometimes|integer|min:1|max:100',
+            'status' => 'sometimes|in:pending,approved,active,suspended,closed', // Updated status values
+            'search' => 'sometimes|string|max:255'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $perPage = $request->input('per_page', 15);
+
+        $query = SellerProfile::with(['user', 'reviews'])
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews');
+
+        // Filter by status if provided
+        if ($request->has('status') && !empty($request->status)) {
+            $query->where('status', $request->status);
+        }
+
+        // Search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $query->where(function($q) use ($request) {
+                $q->where('store_name', 'like', '%'.$request->search.'%')
+                  ->orWhere('store_id', 'like', '%'.$request->search.'%')
+                  ->orWhere('contact_email', 'like', '%'.$request->search.'%')
+                  ->orWhereHas('user', function($userQuery) use ($request) {
+                      $userQuery->where('name', 'like', '%'.$request->search.'%')
+                               ->orWhere('email', 'like', '%'.$request->search.'%');
+                  });
+            });
+        }
+
+        $sellers = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'data' => $sellers
+        ]);
+    }
+
+    /**
+     * Admin: Approve seller profile
+     */
+    public function adminApprove($id)
+    {
+        try {
+            $seller = SellerProfile::findOrFail($id);
+            $seller->update(['status' => 'approved']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller profile approved successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to approve seller profile'
+            ], 500);
+        }
+    }
+
+    /**
+     * Admin: Reject seller profile
+     */
+    public function adminReject($id, Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'reason' => 'required|string|max:1000'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $seller = SellerProfile::findOrFail($id);
+            $seller->update([
+                'status' => 'rejected',
+                'admin_notes' => $request->reason
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller profile rejected successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reject seller profile'
+            ], 500);
+        }
+    }
+
+
+    /**
+     * Get overall statistics for dashboard
+     */
     public function stats()
     {
         return response()->json([

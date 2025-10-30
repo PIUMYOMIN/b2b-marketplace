@@ -41,13 +41,13 @@ return new class extends Migration
             $table->string('location')->nullable();
 
             $table->enum('status', [
-                'pending_setup',
+                'setup_pending',  // Add this
                 'pending',
                 'approved', 
                 'active', 
                 'suspended', 
                 'closed'
-            ])->default('pending_setup'); // Use only one .default()
+            ])->default('setup_pending'); // Use only one .default()
             $table->text('admin_notes')->nullable();
             $table->softDeletes();
             $table->timestamps();

@@ -2,32 +2,28 @@
 
 namespace App\Models;
 
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\SellerReview;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class SellerProfile extends Model
 {
     use HasFactory, SoftDeletes;
-
-    const STATUS_PENDING_SETUP = 'pending_setup'; // New status for onboarding
     const STATUS_PENDING = 'pending';
     const STATUS_APPROVED = 'approved';
     const STATUS_ACTIVE = 'active';
     const STATUS_SUSPENDED = 'suspended';
     const STATUS_CLOSED = 'closed';
 
-
-    const BUSINESS_TYPE_INDIVIDUAL = 'individual';
-    const BUSINESS_TYPE_COMPANY = 'company';
     const BUSINESS_TYPE_RETAIL = 'retail';
     const BUSINESS_TYPE_WHOLESALE = 'wholesale';
-    const BUSINESS_TYPE_PARTNERSHIP = 'partnership';
-    const BUSINESS_TYPE_PRIVATE_LIMITED = 'private_limited';
-    const BUSINESS_TYPE_PUBLIC_LIMITED = 'public_limited';
-    const BUSINESS_TYPE_COOPERATIVE = 'cooperative';
-    const BUSINESS_TYPE_MANUFACTURER = 'manufacturer';
-
+    const BUSINESS_TYPE_SERVICE = 'service';
+    const BUSINESS_TYPE_INDIVIDUAL = 'individual';
+    const BUSINESS_TYPE_COMPANY = 'company';
 
     protected $fillable = [
         'user_id',
@@ -60,12 +56,12 @@ class SellerProfile extends Model
         'admin_notes'
     ];
 
+    protected $attributes = [
+        'status' => self::STATUS_PENDING,
+    ];
+    
     protected $casts = [
         'business_type' => 'string',
-    ];
-
-    protected $attributes = [
-        'status' => 'pending',
     ];
 
     public static function getBusinessTypes()
@@ -186,7 +182,7 @@ class SellerProfile extends Model
     }
 
     /**
-     * Generate store slug
+     * Generate store slug // this function is duplicated, consider removing one
      */
     public static function generateStoreSlug($storeName)
     {
@@ -207,15 +203,15 @@ class SellerProfile extends Model
  */
 public function isOnboardingComplete()
 {
-    // All required fields must be filled with actual data
-    return !empty($this->store_name) && 
-           !empty($this->business_type) && 
-           !empty($this->contact_email) &&
-           !empty($this->contact_phone) &&
-           !empty($this->address) && 
-           !empty($this->city) &&
-           !empty($this->state) &&
-           !empty($this->country);
+    // All required fields must be filled with actual data (not empty strings)
+    return !empty(trim($this->store_name)) && 
+           !empty(trim($this->business_type)) && 
+           !empty(trim($this->contact_email)) &&
+           !empty(trim($this->contact_phone)) &&
+           !empty(trim($this->address)) && 
+           !empty(trim($this->city)) &&
+           !empty(trim($this->state)) &&
+           !empty(trim($this->country));
 }
 
 /**
@@ -223,19 +219,38 @@ public function isOnboardingComplete()
  */
 public function getOnboardingStep()
 {
-    if (empty($this->store_name) || empty($this->business_type)) {
+    // Check if store-basic fields are empty
+    if (empty(trim($this->store_name)) || empty(trim($this->business_type))) {
         return 'store-basic';
     }
     
-    if (empty($this->business_registration_number) && empty($this->tax_id) && empty($this->website)) {
+    // Check if business details are mostly empty (optional fields)
+    if (empty(trim($this->business_registration_number)) && 
+        empty(trim($this->tax_id)) && 
+        empty(trim($this->website))) {
         return 'business-details';
     }
     
-    if (empty($this->address) || empty($this->city) || empty($this->state)) {
+    // Check if address fields are empty
+    if (empty(trim($this->address)) || empty(trim($this->city)) || empty(trim($this->state))) {
         return 'address';
     }
     
     return 'complete';
+}
+
+public static function generateUniqueSlug($storeName)
+{
+    $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $storeName)));
+    $originalSlug = $slug;
+    $counter = 1;
+
+    while (self::where('store_slug', $slug)->exists()) {
+        $slug = $originalSlug . '-' . $counter;
+        $counter++;
+    }
+
+    return $slug;
 }
 
 }

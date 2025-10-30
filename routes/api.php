@@ -30,6 +30,8 @@ Route::group([
     // --------------------
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
+    // In api.php
+    Route::get('/debug/roles', [AuthController::class, 'debugRoles'])->middleware('auth:sanctum');
 
     Route::prefix('auth')->group(function () {
         Route::post('/refresh-token', [AuthController::class, 'refreshToken']);
@@ -46,27 +48,6 @@ Route::group([
 
     // Business Type (Public)
     Route::get('/business-types', [SellerController::class, 'getBusinessTypes']);
-
-    Route::middleware('auth:sanctum')->group(function () {
-        Route::prefix('sellers')->group(function () {
-            Route::get('/onboarding-status', [SellerController::class, 'getOnboardingStatus']);
-
-            // Create seller profile (first step)
-            Route::post('/', [SellerController::class, 'store'])->middleware('role:seller');
-
-            // Get current user's store
-            Route::get('/my-store', [SellerController::class, 'myStore'])->middleware('role:seller');
-
-            // Update store profile
-            Route::put('/my-store/update', [SellerController::class, 'updateMyStore'])->middleware('role:seller');
-
-            // Business details step
-            Route::post('/business-details', [SellerController::class, 'updateBusinessDetails'])->middleware('role:seller');
-
-            // Address step
-            Route::post('/address', [SellerController::class, 'updateAddress'])->middleware('role:seller');
-        });
-    });
 
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
@@ -100,18 +81,47 @@ Route::group([
     // --------------------
     Route::middleware(['auth:sanctum'])->group(function () {
 
+        // Check onboarding status
+        Route::get('/onboarding-status', [AuthController::class, 'getOnboardingStatus']);
+
+        // In api.php - Update seller routes with proper middleware
+        Route::prefix('sellers')->group(function () {
+
+            // Create/Update seller profile
+            Route::put('/update-profile', [SellerController::class, 'updateMyStore']);
+            // Business details step
+            Route::post('/business-details', [SellerController::class, 'updateBusinessDetails']);
+            // Address step
+            Route::post('/address', [SellerController::class, 'updateAddress']);
+        });
+
         // Dashboard
         Route::prefix('dashboard')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
-            Route::get('/sales-summary', [DashboardController::class, 'salesSummary']);
-            Route::get('/top-products', [DashboardController::class, 'topProducts']);
+            Route::get('/sellers', [DashboardController::class, 'getSellers']);
+            Route::post('/{seller}/approve', [DashboardController::class, 'adminApprove'])->middleware('role:admin');
+            Route::post('/{seller}/reject', [DashboardController::class, 'adminReject'])->middleware('role:admin');
+            Route::get('/stats', [DashboardController::class, 'stats']);
+            Route::get('/sales-report', [DashboardController::class, 'salesReport']);
+            Route::get('/top-sellers', [DashboardController::class, 'topSellers']);
+            Route::get('/user-registrations', [DashboardController::class, 'userRegistrationsOverTime']);
+            Route::get('/order-status-summary', [DashboardController::class, 'orderStatusSummary']);
+            Route::get('/monthly-revenue', [DashboardController::class, 'monthlyRevenueTrend']);
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
+            Route::get('/commission-summary', [DashboardController::class, 'commissionSummary']);
+            Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
+            Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
+            Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
+            Route::get('/user-growth', [DashboardController::class, 'userGrowthLast30Days']);
 
             // Admin seller management
-            Route::prefix('sellers')->group(function () {
-                Route::get('/', [SellerController::class, 'adminIndex'])->middleware('role:admin');
-                Route::post('/{seller}/approve', [SellerController::class, 'adminApprove'])->middleware('role:admin');
-                Route::post('/{seller}/reject', [SellerController::class, 'adminReject'])->middleware('role:admin');
+            Route::prefix('seller')->group(function () {
+                Route::get('/my-store', [SellerController::class, 'myStore'])->middleware('role:seller');
+                Route::get('/dashboard', [SellerController::class, 'dashboard']);
+                Route::get('/sales-summary', [SellerController::class, 'salesSummary']);
+                Route::get('/top-products', [SellerController::class, 'topProducts']);
+                Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
+                Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
             });
 
             // Admin/Seller review management
@@ -137,6 +147,9 @@ Route::group([
             Route::put('/{review}', [SellerReviewController::class, 'update'])->middleware('role:buyer|admin');
             Route::delete('/{review}', [SellerReviewController::class, 'destroy'])->middleware('role:buyer|admin');
         });
+
+        // Debug routes
+        Route::get('/debug/seller-status', [SellerController::class, 'debugSellerStatus']);
 
         // Users
         Route::prefix('users')->group(function () {

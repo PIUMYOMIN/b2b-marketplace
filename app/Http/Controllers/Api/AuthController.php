@@ -2,82 +2,101 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\SellerProfile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
+use App\Models\SellerProfile;
 use Illuminate\Validation\Rules;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
+
     public function register(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'nullable|string|email|max:255|unique:users',
             'phone' => ['required', 'regex:/^(\+?95|0|9)\d{7,10}$/', 'unique:users'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
-            'type' => 'required|in:buyer,seller', // ✅ Using 'type' field
+            'type' => 'required|in:buyer,seller',
             'address' => 'nullable|string',
             'city' => 'nullable|string',
             'state' => 'nullable|string'
         ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        return DB::transaction(function () use ($request) {
+    
+        return DB::transaction(function () use ($validated) {
             // Normalize Myanmar phone number to +95 format
-            $phone = $this->normalizeMyanmarPhone($request->phone);
-
+            $phone = $this->normalizeMyanmarPhone($validated['phone']);
+        
             // Generate sequential user_id
             $lastUser = User::withTrashed()->orderBy('id', 'desc')->first();
-            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0', STR_PAD_LEFT) : '000001';
-
+            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0', STR_PAD_LEFT) :    '000001';
+        
             // Create user
             $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email ?? null,
+                'name' => $validated['name'],
+                'email' => $validated['email'] ?? null,
                 'phone' => $phone,
-                'password' => Hash::make($request->password),
-                'type' => $request->type, // ✅ Store the type field
-                'address' => $request->address ?? null,
-                'city' => $request->city ?? null,
-                'state' => $request->state ?? null,
+                'password' => Hash::make($validated['password']),
+                'type' => $validated['type'],
+                'address' => $validated['address'] ?? null,
+                'city' => $validated['city'] ?? null,
+                'state' => $validated['state'] ?? null,
                 'user_id' => $nextUserId,
                 'status' => 'active',
                 'is_active' => true,
             ]);
+        
+            // ✅ FIX: Proper role assignment
+            $roleName = $validated['type']; // 'seller' or 'buyer'
+            
+            // Assign role using syncRoles to ensure only one role
+            $user->syncRoles([$roleName]);
+        
+            // If user is seller, create seller profile with proper name
+            if ($validated['type'] === 'seller') {
+                // Generate store name from user's name
+                $storeName = $validated['name'] . "'s Store";
 
-            // ✅ Assign role based on type field
-            $user->assignRole($request->type); // 'buyer' or 'seller'
-
-            // ✅ DO NOT create seller profile during registration
-            if ($request->type === 'seller') {
-                Log::info('Seller user registered, profile will be created during onboarding: ' . $user->id);
+                SellerProfile::create([
+                    'user_id' => $user->id,
+                    'store_name' => $storeName,
+                    'store_slug' => SellerProfile::generateStoreSlug($storeName),
+                    'store_id' => SellerProfile::generateStoreId(),
+                    'business_type' => $user->business_type,
+                    'contact_email' => $user->email,
+                    'contact_phone' => $user->phone,
+                    'address' => '',
+                    'city' => '',
+                    'state' => '',
+                    'country' => 'Myanmar',
+                    'status' => 'setup_pending',
+                ]);
             }
-
+        
             // Generate API token
             $token = $user->createToken('auth_token')->plainTextToken;
-
+        
+            // ✅ Reload user with roles to ensure they're included in response
+            $user->load('roles');
+        
             return response()->json([
                 'success' => true,
                 'message' => 'User registered successfully',
                 'data' => [
-                    'user' => $user->load('roles'),
+                    'user' => $user,
                     'token' => $token
                 ]
             ], 201);
         });
     }
+
 
     /**
      * Normalize Myanmar phone number to +95 format
@@ -186,77 +205,82 @@ class AuthController extends Controller
      * Check seller onboarding status
      */
     public function getOnboardingStatus(Request $request)
-    {
-        try {
-            $user = $request->user();
-            
-            // ✅ Check if user is seller using both type field and role
-            $isSeller = $user->type === 'seller' || $user->hasRole('seller');
-            
-            if (!$isSeller) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'is_seller' => false,
-                        'onboarding_complete' => false,
-                        'needs_onboarding' => false,
-                        'message' => 'User is not a seller'
-                    ]
-                ]);
-            }
+{
+    try {
+        $user = $request->user();
+        
+        // ✅ Check if user is seller using both type field and role
+        $isSeller = $user->type === 'seller' || $user->hasRole('seller');
+        
+        if (!$isSeller) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'is_seller' => false,
+                    'onboarding_complete' => false,
+                    'needs_onboarding' => false,
+                    'message' => 'User is not a seller'
+                ]
+            ]);
+        }
 
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+        $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
 
-            // ✅ If no seller profile exists, onboarding hasn't started
-            if (!$sellerProfile) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'is_seller' => true,
-                        'has_profile' => false,
-                        'onboarding_complete' => false,
-                        'needs_onboarding' => true,
-                        'current_step' => 'store-basic',
-                        'profile_status' => 'not_created',
-                        'message' => 'Seller profile not created yet - start onboarding'
-                    ]
-                ]);
-            }
-
-            // Check if onboarding is complete
-            $onboardingComplete = $sellerProfile->isOnboardingComplete() && 
-                                 in_array($sellerProfile->status, ['approved', 'active']);
-            
-            // Get current step for incomplete onboarding
-            $currentStep = 'complete';
-            if (!$onboardingComplete) {
-                $currentStep = $sellerProfile->getOnboardingStep();
-            }
-
+        // ✅ If no seller profile exists, onboarding hasn't started
+        if (!$sellerProfile) {
             return response()->json([
                 'success' => true,
                 'data' => [
                     'is_seller' => true,
-                    'has_profile' => true,
-                    'onboarding_complete' => $onboardingComplete,
-                    'needs_onboarding' => !$onboardingComplete,
-                    'current_step' => $currentStep,
-                    'profile_status' => $sellerProfile->status,
-                    'profile' => $sellerProfile,
-                    'message' => $onboardingComplete ? 
-                        'Onboarding complete' : 
-                        'Onboarding in progress'
+                    'has_profile' => false,
+                    'onboarding_complete' => false,
+                    'needs_onboarding' => true,
+                    'current_step' => 'store-basic',
+                    'profile_status' => 'not_created',
+                    'message' => 'Seller profile not created yet - start onboarding'
                 ]
             ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to get onboarding status'
-            ], 500);
         }
+
+        // Check if onboarding is complete - be more strict
+        $onboardingComplete = $sellerProfile->isOnboardingComplete() && 
+                             in_array($sellerProfile->status, ['approved', 'active']);
+        
+        // Get current step for incomplete onboarding
+        $currentStep = $sellerProfile->getOnboardingStep();
+
+        // Debug info
+        Log::info("Onboarding debug - User: {$user->id}, Store Name: '{$sellerProfile->store_name}', Business Type: '{$sellerProfile->business_type}', Step: {$currentStep}");
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'is_seller' => true,
+                'has_profile' => true,
+                'onboarding_complete' => $onboardingComplete,
+                'needs_onboarding' => !$onboardingComplete,
+                'current_step' => $currentStep,
+                'profile_status' => $sellerProfile->status,
+                'profile' => $sellerProfile,
+                'debug' => [ // Add debug info
+                    'store_name_empty' => empty(trim($sellerProfile->store_name)),
+                    'business_type_empty' => empty(trim($sellerProfile->business_type)),
+                    'address_empty' => empty(trim($sellerProfile->address)),
+                ],
+                'message' => $onboardingComplete ? 
+                    'Onboarding complete' : 
+                    'Onboarding in progress - current step: ' . $currentStep
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to get onboarding status'
+        ], 500);
     }
+}
 
     /**
      * Get business types for onboarding
@@ -319,4 +343,24 @@ class AuthController extends Controller
             'data' => $businessTypes
         ]);
     }
+
+    // In AuthController.php - Add debug endpoint
+public function debugRoles(Request $request)
+{
+    $user = $request->user();
+    
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'user_id' => $user->id,
+            'user_type' => $user->type,
+            'roles' => $user->getRoleNames()->toArray(),
+            'has_seller_role' => $user->hasRole('seller'),
+            'all_roles' => Role::all()->pluck('name'),
+            'user_roles_table' => DB::table('model_has_roles')
+                ->where('model_id', $user->id)
+                ->get()
+        ]
+    ]);
+}
 }
