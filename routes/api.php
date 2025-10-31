@@ -13,6 +13,8 @@ use App\Http\Controllers\Api\SellerReviewController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
 use App\Http\Controllers\Api\CartController;
+use Illuminate\Support\Facades\Log;
+use App\Models\SellerProfile;
 
 /*
 |--------------------------------------------------------------------------
@@ -52,9 +54,35 @@ Route::group([
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
         Route::get('/', [SellerController::class, 'index']);
-        Route::get('/{seller}', [SellerController::class, 'show']);
+        Route::get('/{identifier}', [SellerController::class, 'show']);
         Route::get('/{seller}/products', [SellerController::class, 'sellerProducts']);
         Route::get('/{seller}/reviews', [SellerController::class, 'sellerReviews']);
+    });
+
+    // Add this to your routes temporarily
+    Route::get('/debug-seller-detail/{id}', function ($id) {
+        Log::info("=== DETAILED SELLER DEBUG ===");
+        Log::info("Looking for seller with: " . $id);
+
+        // Test different query methods
+        $byId = \App\Models\SellerProfile::find($id);
+        $byStoreId = \App\Models\SellerProfile::where('store_id', $id)->first();
+        $byStoreSlug = \App\Models\SellerProfile::where('store_slug', $id)->first();
+
+        $combined = \App\Models\SellerProfile::where('id', $id)
+            ->orWhere('store_id', $id)
+            ->orWhere('store_slug', $id)
+            ->first();
+
+        return response()->json([
+            'input' => $id,
+            'type' => gettype($id),
+            'by_id' => $byId ? ['id' => $byId->id, 'status' => $byId->status] : null,
+            'by_store_id' => $byStoreId ? ['id' => $byStoreId->id, 'status' => $byStoreId->status] : null,
+            'by_store_slug' => $byStoreSlug ? ['id' => $byStoreSlug->id, 'status' => $byStoreSlug->status] : null,
+            'combined_query' => $combined ? ['id' => $combined->id, 'status' => $combined->status] : null,
+            'all_sellers' => \App\Models\SellerProfile::all()->pluck('id', 'status')
+        ]);
     });
 
     // Public Routes For Products
@@ -84,16 +112,12 @@ Route::group([
         // Check onboarding status
         Route::get('/onboarding-status', [AuthController::class, 'getOnboardingStatus']);
 
-        // In api.php - Update seller routes with proper middleware
-        Route::prefix('sellers')->group(function () {
-
-            // Create/Update seller profile
-            Route::put('/update-profile', [SellerController::class, 'updateMyStore']);
-            // Business details step
-            Route::post('/business-details', [SellerController::class, 'updateBusinessDetails']);
-            // Address step
-            Route::post('/address', [SellerController::class, 'updateAddress']);
-        });
+        // Create/Update seller profile
+        Route::put('/sellers/update-profile', [SellerController::class, 'updateMyStore']);
+        // Business details step
+        Route::post('/sellers/business-details', [SellerController::class, 'updateBusinessDetails']);
+        // Address step
+        Route::post('/sellers/address', [SellerController::class, 'updateAddress']);
 
         // Dashboard
         Route::prefix('dashboard')->group(function () {

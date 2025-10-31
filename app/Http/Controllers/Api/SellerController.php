@@ -292,13 +292,13 @@ class SellerController extends Controller
     /**
      * Get seller details (public endpoint)
      */
+
     public function show($idOrSlug)
     {
         try {
             $seller = SellerProfile::where('id', $idOrSlug)
                 ->orWhere('store_id', $idOrSlug)
                 ->orWhere('store_slug', $idOrSlug)
-                ->orWhere('store_id', $idOrSlug)
                 ->with(['user', 'reviews.user'])
                 ->withAvg('reviews', 'rating')
                 ->withCount('reviews')
@@ -319,12 +319,12 @@ class SellerController extends Controller
                 ->withCount('reviews')
                 ->paginate(12);
 
-            // Get seller stats
+            // Get seller stats - FIXED total_orders calculation
             $stats = [
-                'total_products' => Product::where('seller_id', $seller->user_id)->count(),
+                'total_products' => Product::where('seller_id', $seller->user_id)->count    (),
                 'active_products' => Product::where('seller_id', $seller->user_id)
                     ->where('is_active', true)->count(),
-                'total_orders' => $seller->user->orders()->count(),
+                'total_orders' => \App\Models\Order::where('seller_id', $seller->user_id)   ->count(),
                 'member_since' => $seller->created_at->format('M Y')
             ];
 
@@ -338,6 +338,7 @@ class SellerController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('Error in seller show: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Seller not found'

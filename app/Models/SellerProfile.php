@@ -24,6 +24,10 @@ class SellerProfile extends Model
     const BUSINESS_TYPE_SERVICE = 'service';
     const BUSINESS_TYPE_INDIVIDUAL = 'individual';
     const BUSINESS_TYPE_COMPANY = 'company';
+    const BUSINESS_TYPE_PARTNERSHIP = 'partnership';
+    const BUSINESS_TYPE_PRIVATE_LIMITED = 'private_limited';
+    const BUSINESS_TYPE_PUBLIC_LIMITED = 'public_limited';
+    const BUSINESS_TYPE_COOPERATIVE = 'cooperative';
 
     protected $fillable = [
         'user_id',
