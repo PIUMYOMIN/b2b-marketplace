@@ -17,15 +17,18 @@ return new class extends Migration
             $table->string('store_name');
             $table->string('store_slug');
             $table->string('store_id')->unique();
-            $table->enum('business_type', ['retail', 'wholesale', 'service','individual','company'])->nullable();
+            $table->enum('business_type', [
+                'individual', 'company', 'retail', 'wholesale', 'manufacturer',
+                'service', 'partnership', 'private_limited', 'public_limited', 'cooperative'
+            ])->nullable();
             $table->string('business_registration_number')->nullable();
             $table->string('certificate')->nullable();
             $table->string('tax_id')->nullable();
             $table->text('description')->nullable();
             $table->string('contact_email')->nullable();
             $table->string('contact_phone')->nullable();
-            $table->string('website')->nullable();
-            $table->string('account_number')->unique()->nullable();
+            $table->string('website')->unique()->nullable();
+            $table->string('account_number')->nullable();
             $table->string('social_facebook')->nullable();
             $table->string('social_twitter')->nullable();
             $table->string('social_instagram')->nullable();
@@ -41,13 +44,13 @@ return new class extends Migration
             $table->string('location')->nullable();
 
             $table->enum('status', [
-                'setup_pending',  // Add this
+                'setup_pending',
                 'pending',
                 'approved', 
                 'active', 
                 'suspended', 
                 'closed'
-            ])->default('setup_pending'); // Use only one .default()
+            ])->default('setup_pending');
             $table->text('admin_notes')->nullable();
             $table->softDeletes();
             $table->timestamps();

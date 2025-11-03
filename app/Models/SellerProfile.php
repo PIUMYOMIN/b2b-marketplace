@@ -13,21 +13,19 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 class SellerProfile extends Model
 {
     use HasFactory, SoftDeletes;
+
     const STATUS_PENDING = 'pending';
     const STATUS_APPROVED = 'approved';
     const STATUS_ACTIVE = 'active';
     const STATUS_SUSPENDED = 'suspended';
     const STATUS_CLOSED = 'closed';
 
+    // Update these to match your database
     const BUSINESS_TYPE_RETAIL = 'retail';
     const BUSINESS_TYPE_WHOLESALE = 'wholesale';
     const BUSINESS_TYPE_SERVICE = 'service';
     const BUSINESS_TYPE_INDIVIDUAL = 'individual';
     const BUSINESS_TYPE_COMPANY = 'company';
-    const BUSINESS_TYPE_PARTNERSHIP = 'partnership';
-    const BUSINESS_TYPE_PRIVATE_LIMITED = 'private_limited';
-    const BUSINESS_TYPE_PUBLIC_LIMITED = 'public_limited';
-    const BUSINESS_TYPE_COOPERATIVE = 'cooperative';
 
     protected $fillable = [
         'user_id',
@@ -72,10 +70,10 @@ class SellerProfile extends Model
     {
         return [
             self::BUSINESS_TYPE_INDIVIDUAL => 'Individual/Sole Proprietorship',
-            self::BUSINESS_TYPE_PARTNERSHIP => 'Partnership',
-            self::BUSINESS_TYPE_PRIVATE_LIMITED => 'Private Limited Company',
-            self::BUSINESS_TYPE_PUBLIC_LIMITED => 'Public Limited Company',
-            self::BUSINESS_TYPE_COOPERATIVE => 'Cooperative',
+            self::BUSINESS_TYPE_COMPANY => 'Private Limited Company',
+            self::BUSINESS_TYPE_RETAIL => 'Retail Business',
+            self::BUSINESS_TYPE_WHOLESALE => 'Wholesale Business',
+            self::BUSINESS_TYPE_SERVICE => 'Service Business',
         ];
     }
 

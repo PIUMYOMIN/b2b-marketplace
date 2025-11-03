@@ -29,14 +29,14 @@ class AuthController extends Controller
             'city' => 'nullable|string',
             'state' => 'nullable|string'
         ]);
-    
+
         return DB::transaction(function () use ($validated) {
             // Normalize Myanmar phone number to +95 format
             $phone = $this->normalizeMyanmarPhone($validated['phone']);
         
             // Generate sequential user_id
             $lastUser = User::withTrashed()->orderBy('id', 'desc')->first();
-            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0', STR_PAD_LEFT) :    '000001';
+            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0', STR_PAD_LEFT) : '000001';
         
             // Create user
             $user = User::create([
@@ -69,14 +69,14 @@ class AuthController extends Controller
                     'store_name' => $storeName,
                     'store_slug' => SellerProfile::generateStoreSlug($storeName),
                     'store_id' => SellerProfile::generateStoreId(),
-                    'business_type' => $user->business_type,
+                    'business_type' => 'individual', // Default business type
                     'contact_email' => $user->email,
                     'contact_phone' => $user->phone,
-                    'address' => '',
-                    'city' => '',
-                    'state' => '',
+                    'address' => $validated['address'] ?? '',
+                    'city' => $validated['city'] ?? '',
+                    'state' => $validated['state'] ?? '',
                     'country' => 'Myanmar',
-                    'status' => 'setup_pending',
+                    'status' => 'setup_pending', // Important: Use setup_pending for new sellers
                 ]);
             }
         

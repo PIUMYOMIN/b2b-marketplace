@@ -142,12 +142,12 @@ class SellerController extends Controller
         $validator = Validator::make($request->all(), [
             // Store Basic Info
             'store_name' => 'required|string|max:255|unique:seller_profiles,store_name',
-            'business_type' => 'required|in:individual,company,retail,wholesale,manufacturer,service,partnership,private_limited,public_limited,cooperative',
-            'description' => 'nullable|string|max:2000', // ✅ FIXED: Remove min:100 requirement
+            'business_type' => 'required|in:individual,company,retail,wholesale,manufacturer,service,partnership,   private_limited,public_limited,cooperative',
+            'description' => 'nullable|string|max:2000',
             'contact_email' => 'required|email|max:255',
             'contact_phone' => 'required|string|max:20',
-            'store_logo' => 'nullable|string|max:500',
-            'store_banner' => 'nullable|string|max:500',
+            'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
 
             // Business Details
             'business_registration_number' => 'nullable|string|max:255',
@@ -183,15 +183,37 @@ class SellerController extends Controller
         try {
             $validated = $validator->validated();
 
+            // Remove file fields from validated data as we'll handle them separately
+            $fileFields = ['store_logo', 'store_banner'];
+            $createData = array_diff_key($validated, array_flip($fileFields));
+
             // ✅ Create new seller profile (first time creation)
-            $sellerProfile = SellerProfile::create(array_merge($validated, [
+            $sellerProfile = SellerProfile::create(array_merge($createData, [
                 'user_id' => $user->id,
                 'store_id' => SellerProfile::generateStoreId(),
                 'store_slug' => SellerProfile::generateStoreSlug($validated['store_name']),
-                'status' => SellerProfile::STATUS_PENDING // Ready for admin approval
+                'status' => SellerProfile::STATUS_PENDING,
+                'store_logo' => null,
+                'store_banner' => null
             ]));
 
-            Log::info('Seller profile created for user: ' . $user->id . ', Profile ID: ' .  $sellerProfile->id);
+            // Handle store logo upload after profile creation
+            if ($request->hasFile('store_logo')) {
+                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $sellerProfile->id);
+                if ($logoPath) {
+                    $sellerProfile->update(['store_logo' => $logoPath]);
+                }
+            }
+
+            // Handle store banner upload after profile creation
+            if ($request->hasFile('store_banner')) {
+                $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $sellerProfile->id);
+                if ($bannerPath) {
+                    $sellerProfile->update(['store_banner' => $bannerPath]);
+                }
+            }
+
+            Log::info('Seller profile created for user: ' . $user->id . ', Profile ID: ' . $sellerProfile->id);
 
             return response()->json([
                 'success' => true,
@@ -201,6 +223,13 @@ class SellerController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Failed to create seller profile: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+
+            // If profile was created but file upload failed, delete the profile
+            if (isset($sellerProfile)) {
+                $sellerProfile->delete();
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create seller profile: ' . $e->getMessage()
@@ -208,10 +237,121 @@ class SellerController extends Controller
         }
     }
 
+    /**
+     * Upload store logo to organized directory structure
+     */
+    private function uploadStoreLogo($file, $storeId)
+    {
+        try {
+            $basePath = "store_profile/{$storeId}/store_logo";
+
+            // Generate unique filename
+            $filename = 'logo_' . time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+
+            // Store the file
+            $path = $file->storeAs($basePath, $filename, 'public');
+
+            Log::info('Store logo uploaded: ' . $path);
+            return $path;
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store logo: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Upload store banner to organized directory structure
+     */
+    private function uploadStoreBanner($file, $storeId)
+    {
+        try {
+            $basePath = "store_profile/{$storeId}/store_banner";
+
+            // Generate unique filename
+            $filename = 'banner_' . time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+
+            // Store the file
+            $path = $file->storeAs($basePath, $filename, 'public');
+
+            Log::info('Store banner uploaded: ' . $path);
+            return $path;
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store banner: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Update store basic information during onboarding
+     */
+    public function updateStoreBasic(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
+                'business_type' => 'required|in:individual,company,retail,wholesale,manufacturer,service,partnership,   private_limited,public_limited,cooperative',
+                'description' => 'nullable|string|max:2000',
+                'contact_email' => 'required|email|max:255',
+                'contact_phone' => 'required|string|max:20',
+                'store_logo' => 'nullable|string|max:500',
+                'store_banner' => 'nullable|string|max:500',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Handle file uploads if provided
+            if ($request->hasFile('store_logo')) {
+                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $sellerProfile->id);
+                if ($logoPath) {
+                    $validated['store_logo'] = $logoPath;
+                }
+            }
+
+            if ($request->hasFile('store_banner')) {
+                $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $sellerProfile->id);
+                if ($bannerPath) {
+                    $validated['store_banner'] = $bannerPath;
+                }
+            }
+
+            $sellerProfile->update($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store basic information updated successfully',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update store basic info: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update store basic information'
+            ], 500);
+        }
+    }
+
     public function updateBusinessDetails(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
-        
+
         if (!$sellerProfile) {
             return response()->json([
                 'success' => false,
@@ -227,6 +367,7 @@ class SellerController extends Controller
             'social_facebook' => 'nullable|url|max:255',
             'social_instagram' => 'nullable|url|max:255',
             'social_twitter' => 'nullable|url|max:255',
+            'social_linkedin' => 'nullable|url|max:255',
         ]);
 
         $sellerProfile->update($validated);
@@ -241,7 +382,7 @@ class SellerController extends Controller
     public function updateAddress(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
-        
+
         if (!$sellerProfile) {
             return response()->json([
                 'success' => false,
@@ -259,11 +400,6 @@ class SellerController extends Controller
         ]);
 
         $sellerProfile->update($validated);
-
-        // If all required fields are filled, mark as pending for admin approval
-        if ($sellerProfile->isOnboardingComplete()) {
-            $sellerProfile->update(['status' => SellerProfile::STATUS_PENDING]);
-        }
 
         return response()->json([
             'success' => true,
@@ -382,8 +518,8 @@ class SellerController extends Controller
                 'state' => 'sometimes|string|max:100',
                 'country' => 'sometimes|string|max:100',
                 'postal_code' => 'nullable|string|max:20',
-                'store_logo' => 'nullable|string|max:500',
-                'store_banner' => 'nullable|string|max:500',
+                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048', // Updated validation
+                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // Updated validation
                 'certificate' => 'nullable|string|max:500',
                 'location' => 'nullable|string|max:255',
                 'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
@@ -403,6 +539,30 @@ class SellerController extends Controller
             }
 
             $validated = $validator->validated();
+
+            // Handle store logo upload
+            if ($request->hasFile('store_logo')) {
+                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $seller->id);
+                if ($logoPath) {
+                    // Delete old logo if exists
+                    if ($seller->store_logo) {
+                        Storage::disk('public')->delete($seller->store_logo);
+                    }
+                    $validated['store_logo'] = $logoPath;
+                }
+            }
+
+            // Handle store banner upload
+            if ($request->hasFile('store_banner')) {
+                $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $seller->id);
+                if ($bannerPath) {
+                    // Delete old banner if exists
+                    if ($seller->store_banner) {
+                        Storage::disk('public')->delete($seller->store_banner);
+                    }
+                    $validated['store_banner'] = $bannerPath;
+                }
+            }
 
             // Only admin can change status
             if (!isset($user->type) || $user->type !== 'admin' && isset($validated['status'])) {
@@ -473,8 +633,8 @@ class SellerController extends Controller
                 'state' => 'sometimes|string|max:100',
                 'country' => 'sometimes|string|max:100',
                 'postal_code' => 'nullable|string|max:20',
-                'store_logo' => 'nullable|string|max:500',
-                'store_banner' => 'nullable|string|max:500',
+                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048', // Updated validation
+                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // Updated validation
                 'account_number' => 'nullable|string|max:255',
                 'location' => 'nullable|string|max:255',
                 'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
@@ -492,6 +652,30 @@ class SellerController extends Controller
             }
 
             $validated = $validator->validated();
+
+            // Handle store logo upload
+            if ($request->hasFile('store_logo')) {
+                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $seller->id);
+                if ($logoPath) {
+                    // Delete old logo if exists
+                    if ($seller->store_logo) {
+                        Storage::disk('public')->delete($seller->store_logo);
+                    }
+                    $validated['store_logo'] = $logoPath;
+                }
+            }
+
+            // Handle store banner upload
+            if ($request->hasFile('store_banner')) {
+                $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $seller->id);
+                if ($bannerPath) {
+                    // Delete old banner if exists
+                    if ($seller->store_banner) {
+                        Storage::disk('public')->delete($seller->store_banner);
+                    }
+                    $validated['store_banner'] = $bannerPath;
+                }
+            }
 
             // Regenerate slug if store name changes
             if (isset($validated['store_name']) && $validated['store_name'] !== $seller->store_name) {
@@ -530,7 +714,7 @@ class SellerController extends Controller
         try {
             $seller = SellerProfile::findOrFail($id);
             
-            // Delete associated files
+            // Delete associated files and directories
             if ($seller->store_logo) {
                 Storage::disk('public')->delete($seller->store_logo);
             }
@@ -539,6 +723,12 @@ class SellerController extends Controller
             }
             if ($seller->certificate) {
                 Storage::disk('public')->delete($seller->certificate);
+            }
+
+            // Delete the entire store profile directory if it exists
+            $storeProfilePath = "store_profile/{$seller->id}";
+            if (Storage::disk('public')->exists($storeProfilePath)) {
+                Storage::disk('public')->deleteDirectory($storeProfilePath);
             }
 
             $seller->delete();
@@ -572,62 +762,183 @@ class SellerController extends Controller
                 'requires_registration' => true,
             ],
             [
-                'value' => 'partnership',
-                'label' => 'Partnership',
-                'description' => 'Business owned by two or more individuals',
+                'value' => 'retail',
+                'label' => 'Retail Business',
+                'description' => 'Business that sells directly to consumers',
                 'requires_registration' => true,
             ],
             [
-                'value' => 'cooperative',
-                'label' => 'Cooperative',
-                'description' => 'Member-owned business organization',
+                'value' => 'wholesale',
+                'label' => 'Wholesale Business',
+                'description' => 'Business that sells in bulk to retailers',
                 'requires_registration' => true,
+            ],
+            [
+                'value' => 'service',
+                'label' => 'Service Business',
+                'description' => 'Business that provides services rather than products',
+                'requires_registration' => false,
             ]
         ];
-
+    
         return response()->json([
             'success' => true,
             'data' => $businessTypes
         ]);
     }
 
-    public function debugSellerStatus(Request $request)
+    /**
+     * Complete seller onboarding
+     */
+    public function completeOnboarding(Request $request)
     {
         try {
             $user = $request->user();
-            
-            Log::info('Debug Seller Status - User ID: ' . $user->id);
-            Log::info('User Type: ' . $user->type);
-            
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-            
-            if ($sellerProfile) {
-                Log::info('Seller Profile Found - ID: ' . $sellerProfile->id . ', Status: ' . $sellerProfile->status);
+
+            // Check if user is seller
+            if ($user->type !== 'seller') {
                 return response()->json([
-                    'success' => true,
-                    'user_id' => $user->id,
-                    'user_type' => $user->type,
-                    'seller_profile_exists' => true,
-                    'seller_id' => $sellerProfile->id,
-                    'seller_status' => $sellerProfile->status,
-                    'store_name' => $sellerProfile->store_name
-                ]);
-            } else {
-                Log::info('No Seller Profile Found for User ID: ' . $user->id);
-                return response()->json([
-                    'success' => true,
-                    'user_id' => $user->id,
-                    'user_type' => $user->type,
-                    'seller_profile_exists' => false,
-                    'message' => 'No seller profile found for this user'
-                ]);
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
             }
+        
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+        
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+        
+            $validator = Validator::make($request->all(), [
+                // Store Basic Info
+                'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
+                // Use only the business types that exist in your database
+                'business_type' => 'required|in:individual,company,retail,wholesale,service',
+                'description' => 'nullable|string|max:2000',
+                'contact_email' => 'required|email|max:255',
+                'contact_phone' => 'required|string|max:20',
+                'store_logo' => 'nullable|string|max:500',
+                'store_banner' => 'nullable|string|max:500',
             
+                // Business Details
+                'business_registration_number' => 'nullable|string|max:255',
+                'tax_id' => 'nullable|string|max:255',
+                'website' => 'nullable|url|max:255',
+                'account_number' => 'nullable|string|max:255',
+                'social_facebook' => 'nullable|url|max:255',
+                'social_instagram' => 'nullable|url|max:255',
+                'social_twitter' => 'nullable|url|max:255',
+                'social_linkedin' => 'nullable|url|max:255',
+            
+                // Address Info
+                'address' => 'required|string|max:500',
+                'city' => 'required|string|max:255',
+                'state' => 'required|string|max:255',
+                'country' => 'required|string|max:255',
+                'postal_code' => 'nullable|string|max:20',
+                'location' => 'nullable|string|max:255',
+            
+                // Additional Info
+                'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
+                'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
+                'production_capacity' => 'nullable|string|max:255',
+            ]);
+        
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+        
+            $validated = $validator->validated();
+        
+            // Handle file uploads if provided as files
+            if ($request->hasFile('store_logo')) {
+                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $sellerProfile->id);
+                if ($logoPath) {
+                    $validated['store_logo'] = $logoPath;
+                }
+            } elseif ($request->has('store_logo') && is_string($request->store_logo)) {
+                // If it's already a string path, use it directly
+                $validated['store_logo'] = $request->store_logo;
+            }
+        
+            if ($request->hasFile('store_banner')) {
+                $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $sellerProfile->id);
+                if ($bannerPath) {
+                    $validated['store_banner'] = $bannerPath;
+                }
+            } elseif ($request->has('store_banner') && is_string($request->store_banner)) {
+                // If it's already a string path, use it directly
+                $validated['store_banner'] = $request->store_banner;
+            }
+        
+            // Update seller profile
+            $sellerProfile->update($validated);
+        
+            // Update status to pending for admin approval
+            $sellerProfile->update(['status' => SellerProfile::STATUS_PENDING]);
+        
+            Log::info('Seller onboarding completed for user: ' . $user->id . ', Profile ID: ' . $sellerProfile->id);
+        
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller onboarding completed successfully and submitted for approval',
+                'data' => $sellerProfile->fresh()
+            ]);
+        
         } catch (\Exception $e) {
-            Log::error('Debug Seller Status Error: ' . $e->getMessage());
+            Log::error('Failed to complete seller onboarding: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Debug error: ' . $e->getMessage()
+                'message' => 'Failed to complete seller onboarding: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Get seller onboarding status
+     */
+    public function getOnboardingStatus(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+        
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'has_profile' => false,
+                        'onboarding_complete' => false,
+                        'current_step' => 'store-basic',
+                        'status' => 'not_started'
+                    ]
+                ]);
+            }
+        
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'has_profile' => true,
+                    'onboarding_complete' => $sellerProfile->isOnboardingComplete(),
+                    'current_step' => $sellerProfile->getOnboardingStep(),
+                    'status' => $sellerProfile->status,
+                    'profile' => $sellerProfile
+                ]
+            ]);
+        
+        } catch (\Exception $e) {
+            Log::error('Error getting onboarding status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get onboarding status'
             ], 500);
         }
     }
