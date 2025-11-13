@@ -165,4 +165,10 @@ class Product extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    //seller profile relationship
+    public function sellerProfile(): BelongsTo
+    {
+        return $this->belongsTo(SellerProfile::class, 'seller_id', 'user_id');
+    }
+
 }

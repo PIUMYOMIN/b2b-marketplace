@@ -13,8 +13,6 @@ use App\Http\Controllers\Api\SellerReviewController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
 use App\Http\Controllers\Api\CartController;
-use Illuminate\Support\Facades\Log;
-use App\Models\SellerProfile;
 
 /*
 |--------------------------------------------------------------------------
@@ -183,7 +181,7 @@ Route::group([
         });
 
         // Buyer Cart Management
-        Route::prefix('cart')->middleware('role:buyer')->group(function () {
+        Route::prefix('cart')->group(function () {
             Route::get('/', [CartController::class, 'index']);
             Route::post('/', [CartController::class, 'store']);
             Route::put('/{cart}', [CartController::class, 'update']);
@@ -236,11 +234,13 @@ Route::group([
             });
         });
 
-        // Wishlist
-        Route::prefix('wishlist')->middleware('role:buyer|admin')->group(function () {
+        // In api.php
+        Route::prefix('wishlist')->middleware('auth:sanctum')->group(function () {
             Route::get('/', [WishlistController::class, 'index']);
-            Route::post('/add/{product}', [WishlistController::class, 'add']);
-            Route::delete('/remove/{product}', [WishlistController::class, 'remove']);
+            Route::post('/', [WishlistController::class, 'store']);
+            Route::get('/count', [WishlistController::class, 'count']);
+            Route::get('/check/{productId}', [WishlistController::class, 'check']);
+            Route::delete('/{productId}', [WishlistController::class, 'destroy']);
         });
 
         // Payments

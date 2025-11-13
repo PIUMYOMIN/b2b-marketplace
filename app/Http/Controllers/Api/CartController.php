@@ -22,13 +22,13 @@ class CartController extends Controller
             $user = Auth::user();
             
             // Check if user has buyer role
-            if (!$user->hasRole('buyer')) {
-                Log::warning('User does not have buyer role', ['user_id' => $user->id, 'roles' => $user->getRoleNames()]);
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only buyers can access cart'
-                ], 403);
-            }
+            // if (!$user->hasRole('buyer')) {
+            //     Log::warning('User does not have buyer role', ['user_id' => $user->id, 'roles' => $user->getRoleNames()]);
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Only buyers can access cart'
+            //     ], 403);
+            // }
 
             $cartItems = Cart::with(['product.category'])
                 ->where('user_id', Auth::id())
@@ -111,12 +111,12 @@ class CartController extends Controller
             $user = Auth::user();
             
             // Check if user has buyer role
-            if (!$user->hasRole('buyer')) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only buyers can add items to cart'
-                ], 403);
-            }
+            // if (!$user->hasRole('buyer')) {
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Only buyers can add items to cart'
+            //     ], 403);
+            // }
 
             $request->validate([
                 'product_id' => 'required|exists:products,id',
@@ -294,13 +294,13 @@ class CartController extends Controller
     public function clear()
     {
         // Only buyers can clear cart
-        if (Auth::user()->roles->pluck('name')->contains('admin') || 
-            Auth::user()->roles->pluck('name')->contains('seller')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only buyers can clear cart'
-            ], 403);
-        }
+        // if (Auth::user()->roles->pluck('name')->contains('admin') || 
+        //     Auth::user()->roles->pluck('name')->contains('seller')) {
+        //     return response()->json([
+        //         'success' => false,
+        //         'message' => 'Only buyers can clear cart'
+        //     ], 403);
+        // }
 
         Cart::where('user_id', Auth::id())->delete();
 
@@ -316,13 +316,13 @@ class CartController extends Controller
     public function count()
     {
         // Only buyers can access cart count
-        if (Auth::user()->roles->pluck('name')->contains('admin') || 
-            Auth::user()->roles->pluck('name')->contains('seller')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only buyers can access cart'
-            ], 403);
-        }
+        // if (Auth::user()->roles->pluck('name')->contains('admin') || 
+        //     Auth::user()->roles->pluck('name')->contains('seller')) {
+        //     return response()->json([
+        //         'success' => false,
+        //         'message' => 'Only buyers can access cart'
+        //     ], 403);
+        // }
 
         $count = Cart::where('user_id', Auth::id())->sum('quantity');
 
