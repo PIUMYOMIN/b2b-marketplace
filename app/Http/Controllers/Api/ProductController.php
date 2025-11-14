@@ -214,108 +214,173 @@ class ProductController extends Controller
      * Store a newly created product
      */
     public function store(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'name' => 'required|string|max:255',
-        'description' => 'required|string',
-        'price' => 'required|numeric|min:0',
-        'quantity' => 'required|integer|min:0',
-        'category_id' => 'required|exists:categories,id',
-        'specifications' => 'nullable|array',
-        'images' => 'nullable|array',
-        'images.*.url' => 'required|string',
-        'images.*.angle' => 'sometimes|string',
-        'images.*.is_primary' => 'sometimes|boolean',
-        'moq' => 'required|integer|min:1',
-        'min_order_unit' => 'required|string|in:piece,kg,gram,meter,set,pack,box,pallet',
-        'lead_time' => 'nullable|string|max:255',
-        'is_active' => 'sometimes|boolean',
-        // New fields
-        'brand' => 'nullable|string|max:255',
-        'model' => 'nullable|string|max:255',
-        'color' => 'nullable|string|max:255',
-        'material' => 'nullable|string|max:255',
-        'origin' => 'nullable|string|max:255',
-        'weight_kg' => 'nullable|numeric|min:0',
-        'warranty' => 'nullable|string|max:255',
-        'warranty_type' => 'nullable|string|in:manufacturer,seller,international,no_warranty',
-        'warranty_period' => 'nullable|string|max:255',
-        'return_policy' => 'nullable|string|max:255',
-        'shipping_cost' => 'nullable|numeric|min:0',
-        'shipping_time' => 'nullable|string|max:255',
-        'packaging_details' => 'nullable|string',
-        'additional_info' => 'nullable|string'
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'errors' => $validator->errors()
-        ], 422);
-    }
-
-    try {
-        $productData = $request->only([
-            'name', 'description', 'price', 'quantity',
-            'category_id', 'specifications', 'moq', 'min_order_unit', 
-            'lead_time', 'is_active', 'brand', 'model', 'color', 
-            'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
-            'warranty_period', 'return_policy', 'shipping_cost', 
-            'shipping_time', 'packaging_details', 'additional_info'
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'description' => 'required|string',
+            'price' => 'required|numeric|min:0',
+            'quantity' => 'required|integer|min:0',
+            'category_id' => 'required|exists:categories,id',
+            'specifications' => 'nullable|array',
+            'images' => 'nullable|array',
+            'images.*.url' => 'required|string',
+            'images.*.angle' => 'sometimes|string',
+            'images.*.is_primary' => 'sometimes|boolean',
+            'moq' => 'required|integer|min:1',
+            'min_order_unit' => 'required|string|in:piece,kg,gram,meter,set,pack,box,   pallet',
+            'lead_time' => 'nullable|string|max:255',
+            'is_active' => 'sometimes|boolean',
+            'brand' => 'nullable|string|max:255',
+            'model' => 'nullable|string|max:255',
+            'color' => 'nullable|string|max:255',
+            'material' => 'nullable|string|max:255',
+            'origin' => 'nullable|string|max:255',
+            'weight_kg' => 'nullable|numeric|min:0',
+            'warranty' => 'nullable|string|max:255',
+            'warranty_type' => 'nullable|string|in:manufacturer,seller,international,   no_warranty',
+            'warranty_period' => 'nullable|string|max:255',
+            'return_policy' => 'nullable|string|max:255',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            'shipping_time' => 'nullable|string|max:255',
+            'packaging_details' => 'nullable|string',
+            'additional_info' => 'nullable|string'
         ]);
-        
-        $productData['seller_id'] = Auth::id();
-        $productData['is_active'] = $request->get('is_active', true);
-        
-        // Handle images - move from temp to permanent location
-        if ($request->has('images') && is_array($request->images)) {
-            $permanentImages = [];
-            
-            foreach ($request->images as $image) {
-                $tempPath = $image['url'];
-                
-                // Extract filename from temp path
-                $filename = basename($tempPath);
-                $newPath = 'products/' . Auth::id() . '/' . $filename;
-                
-                // Move from temp to permanent location
-                if (Storage::disk('public')->exists($tempPath)) {
-                    Storage::disk('public')->move($tempPath, $newPath);
-                    
-                    $permanentImages[] = [
-                        'url' => $newPath,
-                        'angle' => $image['angle'] ?? 'default',
-                        'is_primary' => $image['is_primary'] ?? false
-                    ];
-                } else {
-                    // If file doesn't exist in temp, use the path as is (might already be permanent)
-                    $permanentImages[] = [
-                        'url' => $tempPath,
-                        'angle' => $image['angle'] ?? 'default',
-                        'is_primary' => $image['is_primary'] ?? false
-                    ];
-                }
-            }
-            
-            $productData['images'] = $permanentImages;
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
         }
-        
-        $product = Product::create($productData);
 
-        return response()->json([
-            'success' => true,
-            'data' => new ProductResource($product),
-            'message' => 'Product created successfully'
-        ], 201);
+        try {
+            // Check for duplicate submission within last 30 seconds
+            $recentProduct = Product::where('seller_id', Auth::id())
+                ->where('name', $request->name)
+                ->where('created_at', '>=', now()->subSeconds(30))
+                ->first();
 
-    } catch (\Exception $e) {
-        \Log::error('Product creation error: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to create product: ' . $e->getMessage()
-        ], 500);
+            if ($recentProduct) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product was recently created. Please wait a moment.'
+                ], 422);
+            }
+
+            $productData = $request->only([
+                'name', 'description', 'price', 'quantity',
+                'category_id', 'specifications', 'moq', 'min_order_unit', 
+                'lead_time', 'is_active', 'brand', 'model', 'color', 
+                'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
+                'warranty_period', 'return_policy', 'shipping_cost', 
+                'shipping_time', 'packaging_details', 'additional_info'
+            ]);
+
+            $productData['seller_id'] = Auth::id();
+            $productData['is_active'] = $request->get('is_active', true);
+
+            // Handle images - move from temp to permanent location
+            if ($request->has('images') && is_array($request->images)) {
+                $permanentImages = [];
+
+                foreach ($request->images as $image) {
+                    $tempPath = $image['url'];
+
+                    // Extract filename from temp path
+                    $filename = basename($tempPath);
+                    $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' .    $filename;
+
+                    // Move from temp to permanent location
+                    if (Storage::disk('public')->exists($tempPath)) {
+                        Storage::disk('public')->move($tempPath, $newPath);
+
+                        $permanentImages[] = [
+                            'url' => $newPath,
+                            'angle' => $image['angle'] ?? 'default',
+                            'is_primary' => $image['is_primary'] ?? false
+                        ];
+                    } else {
+                        // If file doesn't exist in temp, use the path as is
+                        $permanentImages[] = [
+                            'url' => $tempPath,
+                            'angle' => $image['angle'] ?? 'default',
+                            'is_primary' => $image['is_primary'] ?? false
+                        ];
+                    }
+                }
+
+                $productData['images'] = $permanentImages;
+            }
+
+            $product = Product::create($productData);
+
+            return response()->json([
+                'success' => true,
+                'data' => new ProductResource($product),
+                'message' => 'Product created successfully'
+            ], 201);
+
+        } catch (\Exception $e) {
+            \Log::error('Product creation error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create product: ' . $e->getMessage()
+            ], 500);
+        }
     }
-}
+
+    /**
+     * Upload image for a new product (temporary storage)
+     */
+    public function uploadImage(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'angle' => 'sometimes|string|in:front,back,side,top,default'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $user = Auth::user();
+            $angle = $request->angle ?? 'default';
+
+            // Store image in user-specific temp directory
+            $path = $request->file('image')->store(
+                'products/' . $user->id, 
+                'public'
+            );
+
+            // Generate full URL for the image
+            $fullUrl = Storage::disk('public')->url($path);
+
+            $imageData = [
+                'url' => $path, // Store the path for later use when moving to permanent    location
+                'full_url' => $fullUrl, // Provide full URL for immediate frontend use
+                'angle' => $angle,
+                'is_primary' => false,
+                'uploaded_at' => now()->toISOString()
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $imageData,
+                'message' => 'Image uploaded successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Image upload error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload image: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
 
     /**
@@ -454,6 +519,28 @@ class ProductController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to delete product: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get categories for product form
+     */
+    public function getProductCategories()
+    {
+        try {
+            $categories = Category::with('children')
+                ->whereNull('parent_id')
+                ->get()
+                ->toArray();
+            return response()->json([
+                'success' => true,
+                'data' => $categories
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch categories'
             ], 500);
         }
     }
@@ -839,59 +926,6 @@ public function myProducts(Request $request)
     }
 
     return $formattedImages;
-}
-
-    /**
- * Upload image for a new product (before product creation)
- */
-public function uploadImage(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-        'angle' => 'sometimes|string|in:front,back,side,top,default'
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'errors' => $validator->errors()
-        ], 422);
-    }
-
-    try {
-        $user = Auth::user();
-        $angle = $request->angle ?? 'default';
-        
-        // Store image in user-specific directory
-        $path = $request->file('image')->store(
-            'products/temp/' . $user->id, 
-            'public'
-        );
-        
-        // Generate full URL for the image
-        $fullUrl = Storage::disk('public')->url($path);
-        
-        $imageData = [
-            'url' => $path, // Store the path for later use when moving to permanent location
-            'full_url' => $fullUrl, // Provide full URL for immediate frontend use
-            'angle' => $angle,
-            'is_primary' => false,
-            'uploaded_at' => now()->toISOString()
-        ];
-        
-        return response()->json([
-            'success' => true,
-            'data' => $imageData,
-            'message' => 'Image uploaded successfully'
-        ]);
-        
-    } catch (\Exception $e) {
-        \Log::error('Image upload error: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to upload image: ' . $e->getMessage()
-        ], 500);
-    }
 }
 
 /**
