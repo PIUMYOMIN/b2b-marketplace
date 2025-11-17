@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\SellerReviewController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
+use App\Http\Controllers\Api\DeliveryController;
 use App\Http\Controllers\Api\CartController;
 
 /*
@@ -116,6 +117,17 @@ Route::group([
                 Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
             });
 
+            Route::prefix('deliveries')->group(function () {
+                Route::get('/', [DeliveryController::class, 'index']);
+                Route::get('/{delivery}/tracking', [DeliveryController::class, 'getTrackingUpdates']);
+                Route::post('/{delivery}/status', [DeliveryController::class, 'updateStatus']);
+                Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
+                Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
+            });
+
+            // Order delivery method selection
+            Route::post('/orders/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
+
             // Admin/Seller review management
             Route::get('/reviews', [ReviewController::class, 'index'])->middleware('role:admin|seller');
 
@@ -139,9 +151,6 @@ Route::group([
             Route::put('/{review}', [SellerReviewController::class, 'update'])->middleware('role:buyer|admin');
             Route::delete('/{review}', [SellerReviewController::class, 'destroy'])->middleware('role:buyer|admin');
         });
-
-        // Debug routes
-        Route::get('/debug/seller-status', [SellerController::class, 'debugSellerStatus']);
 
         // Users
         Route::prefix('users')->group(function () {
@@ -220,6 +229,7 @@ Route::group([
             Route::post('/', [OrderController::class, 'store'])->middleware('role:buyer|admin');
             Route::get('/{order}', [OrderController::class, 'show']);
             Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
+            Route::patch('/{order}/payment', [OrderController::class, 'updatePayment']);
         
             // Seller order management
             Route::middleware('role:seller|admin')->group(function () {

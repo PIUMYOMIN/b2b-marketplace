@@ -115,6 +115,185 @@ class SellerController extends Controller
         ]);
     }
 
+    public function dashboard(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint'
+                ], 403);
+            }
+
+            // Get store data
+            $store = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$store) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Get quick stats
+            $quickStats = $this->getQuickStats($user->id);
+
+            // Get recent activity
+            $recentActivity = $this->getRecentActivity($user->id);
+
+            // Get performance metrics
+            $performance = $this->getPerformanceMetrics($user->id);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'store' => $store,
+                    'quick_stats' => $quickStats,
+                    'recent_activity' => $recentActivity,
+                    'performance' => $performance
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in seller dashboard: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch dashboard data'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get quick stats for dashboard
+     */
+    private function getQuickStats($sellerId)
+    {
+        $startDate = Carbon::now()->subDays(30);
+        $endDate = Carbon::now();
+    
+        // Total products
+        $totalProducts = Product::where('seller_id', $sellerId)->count();
+        $activeProducts = Product::where('seller_id', $sellerId)
+            ->where('is_active', true)
+            ->count();
+    
+        // Sales data
+        $salesData = DB::table('orders')
+            ->where('seller_id', $sellerId)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->select(
+                DB::raw('COUNT(*) as total_orders'),
+                DB::raw('SUM(total_amount) as total_revenue'),
+                DB::raw('AVG(total_amount) as average_order_value')
+            )
+            ->first();
+            
+        // Pending orders
+        $pendingOrders = DB::table('orders')
+            ->where('seller_id', $sellerId)
+            ->where('status', 'pending')
+            ->count();
+            
+        // Total customers (unique buyers)
+        $totalCustomers = DB::table('orders')
+            ->where('seller_id', $sellerId)
+            ->distinct('buyer_id')
+            ->count('buyer_id');
+            
+        return [
+            'total_products' => $totalProducts,
+            'active_products' => $activeProducts,
+            'total_orders' => $salesData->total_orders ?? 0,
+            'total_revenue' => $salesData->total_revenue ?? 0,
+            'average_order_value' => $salesData->average_order_value ?? 0,
+            'pending_orders' => $pendingOrders,
+            'total_customers' => $totalCustomers
+        ];
+    }
+    
+    /**
+     * Get recent activity for dashboard
+     */
+    private function getRecentActivity($sellerId)
+    {
+        $recentOrders = Order::where('seller_id', $sellerId)
+            ->with(['buyer:id,name,email'])
+            ->select(['id', 'order_number', 'status', 'total_amount', 'created_at',     'buyer_id'])
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'status' => $order->status,
+                    'total_amount' => $order->total_amount,
+                    'created_at' => $order->created_at->format('M j, Y g:i A'),
+                    'buyer' => $order->buyer ? [
+                        'name' => $order->buyer->name,
+                        'email' => $order->buyer->email
+                    ] : null
+                ];
+            });
+        
+        $recentReviews = DB::table('reviews')
+            ->join('products', 'reviews.product_id', '=', 'products.id')
+            ->join('users', 'reviews.user_id', '=', 'users.id')
+            ->where('products.seller_id', $sellerId)
+            ->select('reviews.*', 'products.name as product_name', 'users.name as   user_name')
+            ->orderBy('reviews.created_at', 'desc')
+            ->limit(5)
+            ->get();
+        
+        return [
+            'recent_orders' => $recentOrders,
+            'recent_reviews' => $recentReviews
+        ];
+    }
+    
+    /**
+     * Get performance metrics
+     */
+    private function getPerformanceMetrics($sellerId)
+    {
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        
+        // Order completion rate
+        $totalOrders = Order::where('seller_id', $sellerId)
+            ->where('created_at', '>=', $thirtyDaysAgo)
+            ->count();
+            
+        $completedOrders = Order::where('seller_id', $sellerId)
+            ->where('status', 'delivered')
+            ->where('created_at', '>=', $thirtyDaysAgo)
+            ->count();
+            
+        $completionRate = $totalOrders > 0 ? ($completedOrders / $totalOrders) * 100 : 0;
+    
+        // Average rating
+        $averageRating = DB::table('reviews')
+            ->join('products', 'reviews.product_id', '=', 'products.id')
+            ->where('products.seller_id', $sellerId)
+            ->avg('reviews.rating');
+    
+        // Response time (average time to confirm orders)
+        $avgResponseTime = DB::table('orders')
+            ->where('seller_id', $sellerId)
+            ->whereNotNull('confirmed_at')
+            ->where('created_at', '>=', $thirtyDaysAgo)
+            ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, confirmed_at)) as    avg_minutes')
+            ->first();
+    
+        return [
+            'order_completion_rate' => round($completionRate, 2),
+            'average_rating' => $averageRating ? round($averageRating, 2) : 0,
+            'average_response_time_minutes' => $avgResponseTime->avg_minutes ? round    ($avgResponseTime->avg_minutes) : 0,
+            'customer_satisfaction' => $averageRating ? round(($averageRating / 5) * 100,   2) : 0
+        ];
+    }
+
     /**
      * Store a newly created resource in storage.
      */
@@ -411,25 +590,25 @@ class SellerController extends Controller
     public function myStore(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
-    
+
         if (!$sellerProfile) {
             return response()->json([
                 'success' => false,
                 'message' => 'Seller profile not found'
             ], 404);
         }
-    
+
         $sellerProfileData = $sellerProfile->toArray();
-    
+
         // Convert store logo/banner to full URLs
         $sellerProfileData['store_logo'] = !empty($sellerProfileData['store_logo'])
             ? url('storage/' . ltrim($sellerProfileData['store_logo'], '/'))
             : null;
-    
+
         $sellerProfileData['store_banner'] = !empty($sellerProfileData['store_banner'])
             ? url('storage/' . ltrim($sellerProfileData['store_banner'], '/'))
             : null;
-    
+
         // Convert product images to full URLs
         if (isset($sellerProfileData['products']['data'])) {
             foreach ($sellerProfileData['products']['data'] as &$product) {
@@ -442,7 +621,7 @@ class SellerController extends Controller
                 }
             }
         }
-    
+
         return response()->json([
             'success' => true,
             'data' => $sellerProfileData

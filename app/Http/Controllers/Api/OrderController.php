@@ -7,6 +7,7 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\OrderItem;
+use App\Models\Delivery; // Add this import
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -90,7 +91,7 @@ class OrderController extends Controller
         try {
             $user = Auth::user();
             
-            // Validate request
+            // Validate request - UPDATED PAYMENT METHODS
             $request->validate([
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',
@@ -99,7 +100,7 @@ class OrderController extends Controller
                 'shipping_address.full_name' => 'required|string',
                 'shipping_address.phone' => 'required|string',
                 'shipping_address.address' => 'required|string',
-                'payment_method' => 'required|in:kbz_pay,wave_pay,cb_pay,cash_on_delivery',
+                'payment_method' => 'required|in:kbz_pay,wave_pay,cb_pay,aya_pay,mmqr,cash_on_delivery', // UPDATED
             ]);
 
             // Get cart items or use provided items
@@ -190,13 +191,26 @@ class OrderController extends Controller
                             'description' => $item['product']->description,
                             'images' => $item['product']->images,
                             'specifications' => $item['product']->specifications,
-                            'category' => $item['product']->category->name ?? 'Uncategorized'
+                            'category' => $item['product']->category->name ?? 'Uncategorized',
+                            'seller_name' => $item['product']->seller->name ?? 'Unknown Seller'
                         ]
                     ]);
 
                     // Update product stock
                     $item['product']->decrement('quantity', $item['quantity']);
                 }
+
+                // Create delivery record for each order
+                Delivery::create([
+                    'order_id' => $order->id,
+                    'supplier_id' => $sellerId,
+                    'delivery_method' => 'supplier', // Default to supplier delivery
+                    'pickup_address' => $this->getSupplierAddress($sellerId),
+                    'delivery_address' => $request->shipping_address['address'],
+                    'status' => 'pending',
+                    'package_weight' => $this->calculateOrderWeight($sellerItems),
+                    'estimated_delivery_date' => now()->addDays(5),
+                ]);
 
                 $orders[] = $order;
             }
@@ -246,7 +260,7 @@ class OrderController extends Controller
         }
     
         // Load relations
-        $order->load(['items.product', 'buyer', 'seller']);
+        $order->load(['items.product', 'buyer', 'seller', 'delivery']);
     
         // Modify images URLs in product_data and product
         foreach ($order->items as $item) {
@@ -278,6 +292,43 @@ class OrderController extends Controller
             'success' => true,
             'data' => $order
         ]);
+    }
+
+    // Add payment update method
+    public function updatePayment(Request $request, Order $order)
+    {
+        $request->validate([
+            'payment_status' => 'required|in:paid,failed,refunded',
+            'payment_data' => 'nullable|array'
+        ]);
+    
+        DB::beginTransaction();
+        try {
+            $order->update([
+                'payment_status' => $request->payment_status,
+                'payment_data' => $request->payment_data
+            ]);
+        
+            // If payment is successful, update order status
+            if ($request->payment_status === 'paid') {
+                $order->update(['status' => 'confirmed']);
+            }
+        
+            DB::commit();
+        
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment status updated successfully',
+                'data' => $order
+            ]);
+        
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update payment status: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
 
@@ -326,32 +377,37 @@ class OrderController extends Controller
     /**
      * Confirm order (for sellers)
      */
-    public function confirm(Order $order)
+    public function confirm($id)
     {
-        $user = Auth::user();
+        $order = Order::findOrFail($id);
         
-        // Only seller can confirm their own orders
-        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized to confirm this order'
-            ], 403);
-        }
-
-        if ($order->status !== self::STATUS_PENDING) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Order cannot be confirmed in current status'
-            ], 400);
-        }
-
-        $order->update([
-            'status' => self::STATUS_CONFIRMED
+        // Update order status
+        $order->status = 'confirmed';
+        $order->save();
+    
+        // Create delivery record
+        $delivery = new Delivery();
+        $delivery->order_id = $order->id;
+        $delivery->supplier_id = $order->seller_id;
+        $delivery->delivery_method = 'supplier'; // Default to supplier delivery
+        $delivery->pickup_address = ''; // Will be set by seller
+        $delivery->delivery_address = $order->shipping_address;
+        $delivery->status = 'pending';
+        $delivery->estimated_delivery_date = now()->addDays(5);
+        $delivery->save();
+    
+        // Create initial delivery update
+        DeliveryUpdate::create([
+            'delivery_id' => $delivery->id,
+            'user_id' => Auth::id(),
+            'status' => 'pending',
+            'notes' => 'Delivery record created. Waiting for seller to choose delivery method.',
         ]);
-
+    
         return response()->json([
             'success' => true,
-            'message' => 'Order confirmed successfully'
+            'message' => 'Order confirmed successfully',
+            'data' => $order->load(['items', 'delivery'])
         ]);
     }
 
@@ -520,5 +576,23 @@ class OrderController extends Controller
                     ->sum('total_amount')
             ]
         ]);
+    }
+
+    // Helper methods for delivery
+    private function getSupplierAddress($sellerId)
+    {
+        // This should fetch the supplier's address from their profile
+        // For now, return a default address
+        return "Supplier Warehouse Address";
+    }
+
+    private function calculateOrderWeight($items)
+    {
+        // Calculate total weight from items
+        $totalWeight = 0;
+        foreach ($items as $item) {
+            $totalWeight += ($item['product']->weight_kg ?? 1) * $item['quantity'];
+        }
+        return $totalWeight;
     }
 }

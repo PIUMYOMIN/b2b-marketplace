@@ -610,4 +610,14 @@ class Order extends Model
         // Default: 3-7 business days from now
         return now()->addDays(rand(3, 7));
     }
+
+    public function delivery()
+    {
+        return $this->hasOne(Delivery::class);
+    }
+    
+    public function getDeliveryStatusAttribute()
+    {
+        return $this->delivery ? $this->delivery->status : 'pending';
+    }
 }

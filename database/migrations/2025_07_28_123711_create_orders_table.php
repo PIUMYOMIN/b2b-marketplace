@@ -41,6 +41,8 @@ return new class extends Migration
             
             // Payment
             $table->enum('payment_method', [
+                'mmqr',
+                'aya_pay',
                 'kbz_pay',
                 'wave_pay', 
                 'cb_pay',
