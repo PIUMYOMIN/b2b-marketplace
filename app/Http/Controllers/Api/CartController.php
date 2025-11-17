@@ -52,6 +52,11 @@ class CartController extends Controller
                             }
                         }
                     }
+                    
+                    // Convert relative path to full URL
+                    $image = url('storage/' . ltrim($image, '/'));
+
+
 
                     return [
                         'id' => $item->id,

@@ -29,7 +29,8 @@ class OrderController extends Controller
     public function index()
     {
         $user = Auth::user();
-        
+        $baseUrl = config('app.url') . '/storage/';
+
         // Check user role to determine which orders to show
         if ($user->hasRole('seller')) {
             // For sellers, show orders where they are the seller
@@ -49,6 +50,32 @@ class OrderController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
         }
+
+        // Map items to prepend full URL for images
+        $orders->transform(function ($order) use ($baseUrl) {
+            $order->items->transform(function ($item) use ($baseUrl) {
+                $productData = $item->product_data;
+                if (isset($productData['images']) && is_array($productData['images'])) {
+                    foreach ($productData['images'] as &$image) {
+                        if (!empty($image['url']) && !str_starts_with($image['url'], 'http')) {
+                            $image['url'] = config('app.url') . '/storage/' . ltrim($image['url'], '/');
+                        }
+                    }
+                }
+
+                // handle fallback
+                if (!empty($productData['image']) && !str_starts_with($productData['image'], 'http')) {
+                    $productData['image'] = config('app.url') . '/storage/' . ltrim($productData['image'], '/');
+                }
+
+                // assign back
+                $item->product_data = $productData;
+            
+                return $item;
+            });
+        
+            return $order;
+        });
 
         return response()->json([
             'success' => true,
@@ -202,7 +229,7 @@ class OrderController extends Controller
     public function show(Order $order)
     {
         $user = Auth::user();
-        
+    
         // Authorization check
         if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
             return response()->json([
@@ -210,19 +237,49 @@ class OrderController extends Controller
                 'message' => 'Unauthorized to view this order'
             ], 403);
         }
-        
+    
         if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to view this order'
             ], 403);
         }
-
+    
+        // Load relations
+        $order->load(['items.product', 'buyer', 'seller']);
+    
+        // Modify images URLs in product_data and product
+        foreach ($order->items as $item) {
+            // Update product_data images
+            $productData = $item->product_data;
+        
+            if (!empty($productData['images']) && is_array($productData['images'])) {
+                $productData['images'] = array_map(function ($img) {
+                    $img['url'] = url('storage/' . ltrim($img['url'], '/'));
+                    return $img;
+                }, $productData['images']);
+            }
+        
+            $item->product_data = $productData;
+        
+            // Update product images
+            if ($item->product) {
+                $productImages = $item->product->images;
+                if (!empty($productImages) && is_array($productImages)) {
+                    $item->product->images = array_map(function ($img) {
+                        $img['url'] = url('storage/' . ltrim($img['url'], '/'));
+                        return $img;
+                    }, $productImages);
+                }
+            }
+        }
+    
         return response()->json([
             'success' => true,
-            'data' => $order->load(['items.product', 'buyer', 'seller'])
+            'data' => $order
         ]);
     }
+
 
     public function cancel(Order $order)
     {

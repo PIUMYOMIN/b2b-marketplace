@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\Wishlist;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
 
@@ -37,17 +38,37 @@ class WishlistController extends Controller
             
             // Handle product images (same as above)
             $images = [];
+
             if ($product->images) {
                 if (is_array($product->images)) {
-                    $images = $product->images;
+                    // Make sure each element is a string
+                    $images = array_map(function ($img) {
+                        if (is_array($img) && isset($img['url'])) {
+                            return url('storage/' . ltrim($img['url'], '/'));
+                        } elseif (is_string($img)) {
+                            return url('storage/' . ltrim($img, '/'));
+                        }
+                        return url('storage/placeholder-product.jpg');
+                    }, $product->images);
                 } elseif (is_string($product->images)) {
-                    try {
-                        $images = json_decode($product->images, true) ?: [];
-                    } catch (\Exception $e) {
-                        $images = [$product->images];
+                    $decoded = json_decode($product->images, true);
+                    if (is_array($decoded)) {
+                        $images = array_map(function ($img) {
+                            if (is_array($img) && isset($img['url'])) {
+                                return url('storage/' . ltrim($img['url'], '/'));
+                            } elseif (is_string($img)) {
+                                return url('storage/' . ltrim($img, '/'));
+                            }
+                            return url('storage/placeholder-product.jpg');
+                        }, $decoded);
+                    } else {
+                        $images = [url('storage/' . ltrim($product->images, '/'))];
                     }
                 }
+            } else {
+                $images = [url('storage/placeholder-product.jpg')];
             }
+
             
             $wishlistItem = [
                 'id' => $product->id,

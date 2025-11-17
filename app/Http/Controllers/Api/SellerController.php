@@ -411,19 +411,44 @@ class SellerController extends Controller
     public function myStore(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
-
+    
         if (!$sellerProfile) {
             return response()->json([
                 'success' => false,
                 'message' => 'Seller profile not found'
             ], 404);
         }
-
+    
+        $sellerProfileData = $sellerProfile->toArray();
+    
+        // Convert store logo/banner to full URLs
+        $sellerProfileData['store_logo'] = !empty($sellerProfileData['store_logo'])
+            ? url('storage/' . ltrim($sellerProfileData['store_logo'], '/'))
+            : null;
+    
+        $sellerProfileData['store_banner'] = !empty($sellerProfileData['store_banner'])
+            ? url('storage/' . ltrim($sellerProfileData['store_banner'], '/'))
+            : null;
+    
+        // Convert product images to full URLs
+        if (isset($sellerProfileData['products']['data'])) {
+            foreach ($sellerProfileData['products']['data'] as &$product) {
+                if (isset($product['images'])) {
+                    foreach ($product['images'] as &$image) {
+                        if (!str_starts_with($image['url'], 'http')) {
+                            $image['url'] = url('storage/' . ltrim($image['url'], '/'));
+                        }
+                    }
+                }
+            }
+        }
+    
         return response()->json([
             'success' => true,
-            'data' => $sellerProfile
+            'data' => $sellerProfileData
         ]);
     }
+
 
     /**
      * Get seller details (public endpoint)
