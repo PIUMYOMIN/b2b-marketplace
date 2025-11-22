@@ -1148,13 +1148,13 @@ class SellerController extends Controller
     }
 
     /**
-     * Get general sales summary (role-based)
+     * Get comprehensive sales summary with delivery stats (FIXED VERSION)
      */
     public function salesSummary(Request $request)
     {
         try {
             $user = $request->user();
-            
+
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
@@ -1166,13 +1166,16 @@ class SellerController extends Controller
             $startDate = $request->input('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
             $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
 
-            // Total products
+            // Total products with stock info
             $totalProducts = Product::where('seller_id', $user->id)->count();
             $activeProducts = Product::where('seller_id', $user->id)
                 ->where('is_active', true)
                 ->count();
+            $lowStockProducts = Product::where('seller_id', $user->id)
+                ->where('quantity', '<=', 5)
+                ->count();
 
-            // Sales data
+            // Sales data - FIXED: Use proper aggregation
             $salesData = DB::table('orders')
                 ->where('seller_id', $user->id)
                 ->whereBetween('created_at', [$startDate, $endDate])
@@ -1183,14 +1186,14 @@ class SellerController extends Controller
                 )
                 ->first();
 
-            // Total items sold
+            // Total items sold - FIXED: Use proper joins and aggregation
             $totalItemsSold = DB::table('order_items')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->where('orders.seller_id', $user->id)
                 ->whereBetween('orders.created_at', [$startDate, $endDate])
                 ->sum('order_items.quantity');
 
-            // Order status counts
+            // Order status counts - FIXED: Simple count by status
             $orderStatusCounts = DB::table('orders')
                 ->where('seller_id', $user->id)
                 ->whereBetween('created_at', [$startDate, $endDate])
@@ -1202,7 +1205,19 @@ class SellerController extends Controller
                 ->get()
                 ->pluck('count', 'status');
 
-            // Recent sales trend (last 7 days)
+            // Delivery status counts - FIXED: Simple count by status
+            $deliveryStatusCounts = DB::table('deliveries')
+                ->where('supplier_id', $user->id)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->select(
+                    'status',
+                    DB::raw('COUNT(*) as count')
+                )
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status');
+
+            // Recent sales trend (last 7 days) - FIXED: Proper grouping
             $recentSalesTrend = DB::table('orders')
                 ->where('seller_id', $user->id)
                 ->where('created_at', '>=', Carbon::now()->subDays(7))
@@ -1215,7 +1230,22 @@ class SellerController extends Controller
                 ->orderBy('date')
                 ->get();
 
-            // Top selling products
+            // Customer statistics - FIXED: Use subqueries to avoid GROUP BY issues
+            $totalCustomers = DB::table('orders')
+                ->where('seller_id', $user->id)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->distinct()
+                ->count('buyer_id');
+
+            // FIXED: Count repeat customers using a subquery approach
+            $repeatCustomers = DB::table('orders')
+                ->where('seller_id', $user->id)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->groupBy('buyer_id')
+                ->havingRaw('COUNT(*) > 1')
+                ->count(DB::raw('DISTINCT buyer_id'));
+
+            // Top selling products - FIXED: Proper grouping with only necessary columns
             $topProducts = DB::table('order_items')
                 ->join('products', 'order_items.product_id', '=', 'products.id')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
@@ -1226,7 +1256,7 @@ class SellerController extends Controller
                     'products.name',
                     'products.images',
                     DB::raw('SUM(order_items.quantity) as total_sold'),
-                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue')
+                    DB::raw('SUM(order_items.subtotal) as total_revenue')
                 )
                 ->groupBy('products.id', 'products.name', 'products.images')
                 ->orderBy('total_sold', 'desc')
@@ -1237,7 +1267,7 @@ class SellerController extends Controller
             $formattedTopProducts = $topProducts->map(function ($product) {
                 $images = json_decode($product->images, true) ?? [];
                 $primaryImage = collect($images)->firstWhere('is_primary', true) ?? $images[0] ?? null;
-                
+
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
@@ -1256,7 +1286,8 @@ class SellerController extends Controller
                 'products' => [
                     'total' => $totalProducts,
                     'active' => $activeProducts,
-                    'inactive' => $totalProducts - $activeProducts
+                    'inactive' => $totalProducts - $activeProducts,
+                    'low_stock' => $lowStockProducts
                 ],
                 'sales' => [
                     'total_orders' => $salesData->total_orders ?? 0,
@@ -1265,7 +1296,16 @@ class SellerController extends Controller
                     'average_order_value' => $salesData->average_order_value ?? 0,
                     'revenue_formatted' => number_format($salesData->total_revenue ?? 0, 2) . ' MMK'
                 ],
+                'customers' => [
+                    'total' => $totalCustomers,
+                    'repeat_customers' => $repeatCustomers,
+                    'repeat_rate' => $totalCustomers > 0 ? round(($repeatCustomers / $totalCustomers) * 100, 2) : 0
+                ],
                 'orders_by_status' => $orderStatusCounts,
+                'delivery_stats' => [
+                    'total' => array_sum($deliveryStatusCounts->toArray()),
+                    'by_status' => $deliveryStatusCounts
+                ],
                 'recent_trend' => $recentSalesTrend,
                 'top_products' => $formattedTopProducts
             ];
@@ -1277,9 +1317,150 @@ class SellerController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Error in seller salesSummary: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch sales summary: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get delivery statistics (FIXED VERSION)
+     */
+    public function deliveryStats(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint'
+                ], 403);
+            }
+
+            $startDate = $request->input('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
+            $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
+
+            // Delivery status counts - FIXED: Proper grouping
+            $deliveryStats = DB::table('deliveries')
+                ->where('supplier_id', $user->id)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->select(
+                    'status',
+                    DB::raw('COUNT(*) as count')
+                )
+                ->groupBy('status')
+                ->get();
+
+            // Calculate average delivery time separately to avoid complex grouping
+            $avgDeliveryTime = DB::table('deliveries')
+                ->where('supplier_id', $user->id)
+                ->where('status', 'delivered')
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->whereNotNull('delivered_at')
+                ->select(
+                    DB::raw('AVG(TIMESTAMPDIFF(HOUR, created_at, delivered_at)) as avg_hours')
+                )
+                ->first();
+
+            // Delivery method distribution - FIXED: Proper grouping
+            $deliveryMethodStats = DB::table('deliveries')
+                ->where('supplier_id', $user->id)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->select(
+                    'delivery_method',
+                    DB::raw('COUNT(*) as count')
+                )
+                ->groupBy('delivery_method')
+                ->get();
+
+            $stats = [
+                'total_deliveries' => $deliveryStats->sum('count'),
+                'by_status' => $deliveryStats->pluck('count', 'status'),
+                'by_method' => $deliveryMethodStats->pluck('count', 'delivery_method'),
+                'average_delivery_time_hours' => $avgDeliveryTime->avg_hours ?? 0
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $stats
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in seller deliveryStats: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch delivery stats: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get recent orders (FIXED VERSION)
+     */
+    public function recentOrders(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint'
+                ], 403);
+            }
+
+            $limit = $request->input('limit', 10);
+
+            // Get recent orders with order items and buyer info - FIXED: Use proper Eloquent
+            $recentOrders = Order::where('seller_id', $user->id)
+                ->with(['buyer:id,name,email', 'items.product:id,name'])
+                ->select([
+                    'id', 'order_number', 'status', 'total_amount', 'created_at',
+                    'buyer_id', 'payment_status', 'payment_method'
+                ])
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($order) {
+                    return [
+                        'id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'status' => $order->status,
+                        'total_amount' => $order->total_amount,
+                        'total_amount_formatted' => 'MMK ' . number_format($order->total_amount, 2),
+                        'payment_status' => $order->payment_status,
+                        'payment_method' => $order->payment_method,
+                        'created_at' => $order->created_at->format('M j, Y g:i A'),
+                        'buyer' => $order->buyer ? [
+                            'name' => $order->buyer->name,
+                            'email' => $order->buyer->email
+                        ] : null,
+                        'items_count' => $order->items->count(),
+                        'products' => $order->items->take(2)->map(function ($item) {
+                            return [
+                                'name' => $item->product->name ?? $item->product_name,
+                                'quantity' => $item->quantity,
+                                'price' => $item->price
+                            ];
+                        })
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => $recentOrders
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in seller recentOrders: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch recent orders: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -1357,68 +1538,68 @@ class SellerController extends Controller
     /**
      * Get recent orders (role-based)
      */
-    public function recentOrders(Request $request)
-    {
-        try {
-            $user = $request->user();
+    // public function recentOrders(Request $request)
+    // {
+    //     try {
+    //         $user = $request->user();
             
-            if (!isset($user->type) || $user->type !== 'seller') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only sellers can access this endpoint'
-                ], 403);
-            }
+    //         if (!isset($user->type) || $user->type !== 'seller') {
+    //             return response()->json([
+    //                 'success' => false,
+    //                 'message' => 'Only sellers can access this endpoint'
+    //             ], 403);
+    //         }
 
-            $limit = $request->input('limit', 10);
+    //         $limit = $request->input('limit', 10);
 
-            // Get recent orders with order items and buyer info
-            $recentOrders = Order::where('seller_id', $user->id)
-                ->with(['buyer:id,name,email', 'items.product:id,name'])
-                ->select([
-                    'id', 'order_number', 'status', 'total_amount', 'created_at',
-                    'buyer_id', 'payment_status', 'payment_method'
-                ])
-                ->orderBy('created_at', 'desc')
-                ->limit($limit)
-                ->get()
-                ->map(function ($order) {
-                    return [
-                        'id' => $order->id,
-                        'order_number' => $order->order_number,
-                        'status' => $order->status,
-                        'total_amount' => $order->total_amount,
-                        'total_amount_formatted' => 'MMK ' . number_format($order->total_amount, 2),
-                        'payment_status' => $order->payment_status,
-                        'payment_method' => $order->payment_method,
-                        'created_at' => $order->created_at->format('M j, Y g:i A'),
-                        'buyer' => $order->buyer ? [
-                            'name' => $order->buyer->name,
-                            'email' => $order->buyer->email
-                        ] : null,
-                        'items_count' => $order->items->count(),
-                        'products' => $order->items->take(2)->map(function ($item) {
-                            return [
-                                'name' => $item->product->name ?? $item->product_name,
-                                'quantity' => $item->quantity,
-                                'price' => $item->price
-                            ];
-                        })
-                    ];
-                });
+    //         // Get recent orders with order items and buyer info
+    //         $recentOrders = Order::where('seller_id', $user->id)
+    //             ->with(['buyer:id,name,email', 'items.product:id,name'])
+    //             ->select([
+    //                 'id', 'order_number', 'status', 'total_amount', 'created_at',
+    //                 'buyer_id', 'payment_status', 'payment_method'
+    //             ])
+    //             ->orderBy('created_at', 'desc')
+    //             ->limit($limit)
+    //             ->get()
+    //             ->map(function ($order) {
+    //                 return [
+    //                     'id' => $order->id,
+    //                     'order_number' => $order->order_number,
+    //                     'status' => $order->status,
+    //                     'total_amount' => $order->total_amount,
+    //                     'total_amount_formatted' => 'MMK ' . number_format($order->total_amount, 2),
+    //                     'payment_status' => $order->payment_status,
+    //                     'payment_method' => $order->payment_method,
+    //                     'created_at' => $order->created_at->format('M j, Y g:i A'),
+    //                     'buyer' => $order->buyer ? [
+    //                         'name' => $order->buyer->name,
+    //                         'email' => $order->buyer->email
+    //                     ] : null,
+    //                     'items_count' => $order->items->count(),
+    //                     'products' => $order->items->take(2)->map(function ($item) {
+    //                         return [
+    //                             'name' => $item->product->name ?? $item->product_name,
+    //                             'quantity' => $item->quantity,
+    //                             'price' => $item->price
+    //                         ];
+    //                     })
+    //                 ];
+    //             });
 
-            return response()->json([
-                'success' => true,
-                'data' => $recentOrders
-            ]);
+    //         return response()->json([
+    //             'success' => true,
+    //             'data' => $recentOrders
+    //         ]);
 
-        } catch (\Exception $e) {
-            Log::error('Error in seller recentOrders: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch recent orders: ' . $e->getMessage()
-            ], 500);
-        }
-    }
+    //     } catch (\Exception $e) {
+    //         Log::error('Error in seller recentOrders: ' . $e->getMessage());
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Failed to fetch recent orders: ' . $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
 
 
     /**

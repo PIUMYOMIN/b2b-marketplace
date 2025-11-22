@@ -115,7 +115,10 @@ Route::group([
                 Route::get('/top-products', [SellerController::class, 'topProducts']);
                 Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
                 Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
+                Route::get('/delivery-stats', [SellerController::class, 'deliveryStats'])->middleware('role:seller');
+                Route::get('/products/my-products', [ProductController::class, 'myProducts'])->middleware('role:seller');
             });
+
 
             Route::prefix('deliveries')->group(function () {
                 Route::get('/', [DeliveryController::class, 'index']);
