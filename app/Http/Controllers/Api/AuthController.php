@@ -17,12 +17,13 @@ use Illuminate\Validation\Rules\Password;
 class AuthController extends Controller
 {
 
+    //User Registration
     public function register(Request $request)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'nullable|string|email|max:255|unique:users',
-            'phone' => ['required', 'regex:/^(\+?95|0|9)\d{7,10}$/', 'unique:users'],
+            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/', 'unique:users'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'type' => 'required|in:buyer,seller',
             'address' => 'nullable|string',
@@ -31,9 +32,17 @@ class AuthController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated) {
-            // Normalize Myanmar phone number to +95 format
+            // Normalize Myanmar phone number to +959 format
             $phone = $this->normalizeMyanmarPhone($validated['phone']);
-        
+            
+            // Validate normalized phone
+            if (!$this->isValidMyanmarPhone($phone)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid Myanmar phone number format'
+                ], 422);
+            }
+
             // Generate sequential user_id
             $lastUser = User::withTrashed()->orderBy('id', 'desc')->first();
             $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0', STR_PAD_LEFT) : '000001';
@@ -97,9 +106,8 @@ class AuthController extends Controller
         });
     }
 
-
     /**
-     * Normalize Myanmar phone number to +95 format
+     * Normalize Myanmar phone number to +959 format
      */
     private function normalizeMyanmarPhone($phone)
     {
@@ -107,35 +115,56 @@ class AuthController extends Controller
         $cleanPhone = preg_replace('/[^0-9+]/', '', $phone);
 
         // Handle different Myanmar phone formats
-        if (str_starts_with($cleanPhone, '0')) {
+        if (str_starts_with($cleanPhone, '09')) {
             // Format: 09xxxxxxxxx -> +959xxxxxxxxx
             return '+95' . substr($cleanPhone, 1);
-        } elseif (str_starts_with($cleanPhone, '9')) {
-            // Format: 9xxxxxxxxx -> +959xxxxxxxxx
+        } elseif (str_starts_with($cleanPhone, '9') && !str_starts_with($cleanPhone, '95')) {
+            // Format: 9xxxxxxxx -> +959xxxxxxxx
             return '+95' . $cleanPhone;
-        } elseif (str_starts_with($cleanPhone, '95')) {
-            // Format: 95xxxxxxxxx -> +95xxxxxxxxx
-            return '+' . $cleanPhone;
         } elseif (str_starts_with($cleanPhone, '959')) {
-            // Format: 959xxxxxxxxx -> +959xxxxxxxxx
+            // Format: 959xxxxxxxx -> +959xxxxxxxx
             return '+' . $cleanPhone;
-        } elseif (!str_starts_with($cleanPhone, '+')) {
-            // If it doesn't start with +, add it
-            return '+' . $cleanPhone;
+        } elseif (str_starts_with($cleanPhone, '95') && !str_starts_with($cleanPhone, '959')) {
+            // Format: 95xxxxxxxx -> +959xxxxxxxx
+            return '+9' . $cleanPhone;
+        } elseif (str_starts_with($cleanPhone, '+959')) {
+            // Already in correct format
+            return $cleanPhone;
+        } elseif (str_starts_with($cleanPhone, '+95')) {
+            // Format: +95xxxxxxxx -> +959xxxxxxxx
+            return '+9' . substr($cleanPhone, 1);
         }
 
+        // If no pattern matches, return as is (will be validated)
         return $cleanPhone;
+    }
+
+    /**
+     * Validate Myanmar phone number after normalization
+     */
+    private function isValidMyanmarPhone($phone)
+    {
+        // Should start with +959 and have 7-9 digits after
+        return preg_match('/^\+959\d{7,9}$/', $phone);
     }
 
     public function login(Request $request)
     {
         $request->validate([
-            'phone' => ['required', 'regex:/^(\+?95|0|9)\d{7,10}$/'],
+            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
             'password' => 'required'
         ]);
 
-        // Normalize Myanmar phone number to +95 format
+        // Normalize Myanmar phone number to +959 format
         $phone = $this->normalizeMyanmarPhone($request->phone);
+
+        // Validate normalized phone
+        if (!$this->isValidMyanmarPhone($phone)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid Myanmar phone number format'
+            ], 422);
+        }
 
         // Find user by normalized phone
         $user = User::where('phone', $phone)->first();
