@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
 use App\Http\Controllers\Api\DeliveryController;
 use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\FollowController;
 
 /*
 |--------------------------------------------------------------------------
@@ -254,6 +255,16 @@ Route::group([
             Route::get('/count', [WishlistController::class, 'count']);
             Route::get('/check/{productId}', [WishlistController::class, 'check']);
             Route::delete('/{productId}', [WishlistController::class, 'destroy']);
+        });
+
+        // Follow routes
+        Route::prefix('follow')->middleware('auth:sanctum')->group(function () {
+            Route::post('/seller/{seller}', [FollowController::class, 'followSeller']);
+            Route::delete('/seller/{seller}', [FollowController::class, 'unfollowSeller']);
+            Route::post('/seller/{seller}/toggle', [FollowController::class, 'toggleFollow']);
+            Route::get('/seller/{seller}/status', [FollowController::class, 'checkFollowStatus']);
+            Route::get('/my-sellers', [FollowController::class, 'getFollowedSellers']);
+            Route::get('/seller/{seller}/followers', [FollowController::class, 'getSellerFollowers']);
         });
 
         // Payments

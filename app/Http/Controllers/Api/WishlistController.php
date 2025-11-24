@@ -16,43 +16,32 @@ class WishlistController extends Controller
      * Get user's wishlist
      */
     public function index(Request $request)
-{
-    try {
-        $user = auth()->user();
-        
-        $wishlist = Wishlist::with([
-            'product.sellerProfile', // Adjust based on your actual relationship name
-            'product.sellerProfile.user'
-        ])
-        ->where('user_id', $user->id)
-        ->latest()
-        ->get();
-        
-        // Transform the data
-        $wishlistItems = $wishlist->map(function($item) {
-            $product = $item->product;
+    {
+        try {
+            $user = auth()->user();
             
-            if (!$product) {
-                return null;
-            }
+            $wishlist = Wishlist::with([
+                'product.sellerProfile',
+                'product.sellerProfile.user'
+            ])
+            ->where('user_id', $user->id)
+            ->latest()
+            ->get();
             
-            // Handle product images (same as above)
-            $images = [];
-
-            if ($product->images) {
-                if (is_array($product->images)) {
-                    // Make sure each element is a string
-                    $images = array_map(function ($img) {
-                        if (is_array($img) && isset($img['url'])) {
-                            return url('storage/' . ltrim($img['url'], '/'));
-                        } elseif (is_string($img)) {
-                            return url('storage/' . ltrim($img, '/'));
-                        }
-                        return url('storage/placeholder-product.jpg');
-                    }, $product->images);
-                } elseif (is_string($product->images)) {
-                    $decoded = json_decode($product->images, true);
-                    if (is_array($decoded)) {
+            // Transform the data
+            $wishlistItems = $wishlist->map(function($item) {
+                $product = $item->product;
+                
+                if (!$product) {
+                    return null;
+                }
+                
+                // Handle product images (same as above)
+                $images = [];
+            
+                if ($product->images) {
+                    if (is_array($product->images)) {
+                        // Make sure each element is a string
                         $images = array_map(function ($img) {
                             if (is_array($img) && isset($img['url'])) {
                                 return url('storage/' . ltrim($img['url'], '/'));
@@ -60,64 +49,75 @@ class WishlistController extends Controller
                                 return url('storage/' . ltrim($img, '/'));
                             }
                             return url('storage/placeholder-product.jpg');
-                        }, $decoded);
-                    } else {
-                        $images = [url('storage/' . ltrim($product->images, '/'))];
+                        }, $product->images);
+                    } elseif (is_string($product->images)) {
+                        $decoded = json_decode($product->images, true);
+                        if (is_array($decoded)) {
+                            $images = array_map(function ($img) {
+                                if (is_array($img) && isset($img['url'])) {
+                                    return url('storage/' . ltrim($img['url'], '/'));
+                                } elseif (is_string($img)) {
+                                    return url('storage/' . ltrim($img, '/'));
+                                }
+                                return url('storage/placeholder-product.jpg');
+                            }, $decoded);
+                        } else {
+                            $images = [url('storage/' . ltrim($product->images, '/'))];
+                        }
                     }
+                } else {
+                    $images = [url('storage/placeholder-product.jpg')];
                 }
-            } else {
-                $images = [url('storage/placeholder-product.jpg')];
-            }
-
             
-            $wishlistItem = [
-                'id' => $product->id,
-                'name' => $product->name,
-                'name_mm' => $product->name_mm,
-                'price' => $product->price,
-                'images' => $images,
-                'quantity' => $product->quantity,
-                'min_order' => $product->min_order,
-                'average_rating' => $product->average_rating,
-                'review_count' => $product->review_count,
-                'created_at' => $item->created_at,
-                'wishlist_id' => $item->id
-            ];
-            
-            // Add seller information based on your actual relationship structure
-            if ($product->sellerProfile) {
-                $wishlistItem['seller'] = [
-                    'id' => $product->sellerProfile->id,
-                    'store_name' => $product->sellerProfile->store_name,
-                    'business_type' => $product->sellerProfile->business_type
+                
+                $wishlistItem = [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'name_mm' => $product->name_mm,
+                    'price' => $product->price,
+                    'images' => $images,
+                    'quantity' => $product->quantity,
+                    'min_order' => $product->min_order,
+                    'average_rating' => $product->average_rating,
+                    'review_count' => $product->review_count,
+                    'created_at' => $item->created_at,
+                    'wishlist_id' => $item->id
                 ];
-            } elseif ($product->seller) {
-                // Fallback to seller relationship if it exists
-                $wishlistItem['seller'] = [
-                    'id' => $product->seller->id,
-                    'store_name' => $product->seller->store_name ?? 'Unknown Store',
-                    'business_type' => $product->seller->business_type ?? 'General'
-                ];
-            }
+                
+                // Add seller information based on your actual relationship structure
+                if ($product->sellerProfile) {
+                    $wishlistItem['seller'] = [
+                        'id' => $product->sellerProfile->id,
+                        'store_name' => $product->sellerProfile->store_name,
+                        'business_type' => $product->sellerProfile->business_type
+                    ];
+                } elseif ($product->seller) {
+                    // Fallback to seller relationship if it exists
+                    $wishlistItem['seller'] = [
+                        'id' => $product->seller->id,
+                        'store_name' => $product->seller->store_name ?? 'Unknown Store',
+                        'business_type' => $product->seller->business_type ?? 'General'
+                    ];
+                }
+                
+                return $wishlistItem;
+            })->filter();
             
-            return $wishlistItem;
-        })->filter();
-        
-        return response()->json([
-            'success' => true,
-            'data' => $wishlistItems->values(),
-            'message' => 'Wishlist retrieved successfully'
-        ]);
-        
-    } catch (\Exception $e) {
-        \Log::error('Wishlist retrieval error:', ['error' => $e->getMessage()]);
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to retrieve wishlist',
-            'error' => $e->getMessage()
-        ], 500);
+            return response()->json([
+                'success' => true,
+                'data' => $wishlistItems->values(),
+                'message' => 'Wishlist retrieved successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Wishlist retrieval error:', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve wishlist',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
-}
 
     /**
      * Add product to wishlist

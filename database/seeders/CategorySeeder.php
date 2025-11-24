@@ -33,6 +33,14 @@ class CategorySeeder extends Seeder
             'image' => 'https://picsum.photos/seed/laptops/600/400'
         ]);
 
+        $laptops = Category::create([
+            'name' => 'Accessories',
+            'slug' => 'accessories',
+            'commission_rate' => 0.10,
+            'parent_id' => $electronics->id,
+            'image' => 'https://picsum.photos/seed/airpods/600/400'
+        ]);
+
         $tablets = Category::create([
             'name' => 'Tablets',
             'slug' => 'tablets',

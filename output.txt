@@ -45,6 +45,60 @@
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 
+### Delivery (`App\Models\Delivery`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `order_id` (bigint)
+- `delivery_method` (enum)
+- `supplier_id` (bigint)
+- `platform_courier_id` (bigint)
+- `platform_delivery_fee` (decimal)
+- `assigned_driver_name` (varchar)
+- `assigned_driver_phone` (varchar)
+- `assigned_vehicle_type` (varchar)
+- `assigned_vehicle_number` (varchar)
+- `pickup_address` (text)
+- `delivery_address` (text)
+- `pickup_scheduled_at` (timestamp)
+- `picked_up_at` (timestamp)
+- `estimated_delivery_date` (timestamp)
+- `delivered_at` (timestamp)
+- `tracking_number` (varchar)
+- `carrier_name` (varchar)
+- `status` (enum)
+- `package_weight` (decimal)
+- `package_dimensions` (longtext)
+- `package_count` (int)
+- `delivery_proof_image` (varchar)
+- `recipient_name` (varchar)
+- `recipient_phone` (varchar)
+- `recipient_signature` (varchar)
+- `delivery_notes` (text)
+- `failure_reason` (text)
+- `actual_delivery_cost` (decimal)
+- `delivery_cost_paid` (tinyint)
+- `delivery_cost_paid_at` (timestamp)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+- `deleted_at` (timestamp)
+
+### DeliveryUpdate (`App\Models\DeliveryUpdate`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `delivery_id` (bigint)
+- `user_id` (bigint)
+- `status` (varchar)
+- `location` (varchar)
+- `notes` (text)
+- `latitude` (decimal)
+- `longitude` (decimal)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
 ### Order (`App\Models\Order`)
 
 #### Attributes:
@@ -271,6 +325,18 @@
 - **BelongsTo** `order` to Order (Local Key: `order_id`, Foreign Key: `id`)
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
 
+### Delivery Relationships
+
+- **BelongsTo** `order` to Order (Local Key: `order_id`, Foreign Key: `id`)
+- **BelongsTo** `supplier` to User (Local Key: `supplier_id`, Foreign Key: `id`)
+- **BelongsTo** `platformCourier` to User (Local Key: `platform_courier_id`, Foreign Key: `id`)
+- **HasMany** `deliveryUpdates` to DeliveryUpdate (Local Key: `id`, Foreign Key: `delivery_id`)
+
+### DeliveryUpdate Relationships
+
+- **BelongsTo** `delivery` to Delivery (Local Key: `delivery_id`, Foreign Key: `id`)
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+
 ### Order Relationships
 
 - **BelongsTo** `buyer` to User (Local Key: `buyer_id`, Foreign Key: `id`)
@@ -278,6 +344,7 @@
 - **HasMany** `items` to OrderItem (Local Key: `id`, Foreign Key: `order_id`)
 - **HasOne** `commission` to Commission (Local Key: `id`, Foreign Key: `order_id`)
 - **HasMany** `reviews` to Review (Local Key: `id`, Foreign Key: `order_id`)
+- **HasOne** `delivery` to Delivery (Local Key: `id`, Foreign Key: `order_id`)
 
 ### OrderItem Relationships
 

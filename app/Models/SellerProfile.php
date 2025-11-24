@@ -184,7 +184,7 @@ class SellerProfile extends Model
     }
 
     /**
-     * Generate store slug // this function is duplicated, consider removing one
+     * Generate store slug
      */
     public static function generateStoreSlug($storeName)
     {

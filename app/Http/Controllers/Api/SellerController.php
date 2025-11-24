@@ -34,13 +34,27 @@ class SellerController extends Controller
                 ->orderByDesc('reviews_count')
                 ->take(6)
                 ->get();
-
+            
+            // Convert store logo and banner to full URLs for top sellers
+            $topSellers->transform(function ($seller) {
+                $sellerData = $seller->toArray();
+                $sellerData['store_logo'] = !empty($sellerData['store_logo'])
+                    ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
+                    : null;
+            
+                $sellerData['store_banner'] = !empty($sellerData['store_banner'])
+                    ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
+                    : null;
+            
+                return $sellerData;
+            });
+        
             return response()->json([
                 'success' => true,
                 'data' => $topSellers
             ]);
         }
-
+    
         // Validate filters and pagination
         $validator = Validator::make($request->all(), [
             'per_page' => 'sometimes|integer|min:1|max:100',
@@ -50,7 +64,7 @@ class SellerController extends Controller
             'min_rating' => 'sometimes|numeric|min:0|max:5',
             'sort' => 'sometimes|in:newest,rating,name'
         ]);
-
+    
         // Validation failed
         if ($validator->fails()) {
             return response()->json([
@@ -58,7 +72,7 @@ class SellerController extends Controller
                 'errors' => $validator->errors()
             ], 422);
         }
-
+    
         // Pagination
         $perPage = $request->input('per_page', 15);
         
@@ -67,7 +81,7 @@ class SellerController extends Controller
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->whereIn('status', ['approved','active']);
-
+    
         // Apply filters
         if ($request->has('search') && $request->search !== null) {
             $query->where(function($q) use ($request) {
@@ -75,20 +89,20 @@ class SellerController extends Controller
                   ->orWhere('description', 'like', '%'.$request->search.'%');
             });
         }
-
+    
         if ($request->has('business_type') && $request->business_type !== null) {
             $query->where('business_type', $request->business_type);
         }
-
+    
         if ($request->has('city') && $request->city !== null) {
             $query->where('city', $request->city);
         }
-
+    
         if ($request->has('min_rating') && $request->input('min_rating') !== null) {
             // use proper PHP request access and ensure numeric comparison
             $query->having('reviews_avg_rating', '>=', (float) $request->input('min_rating'));
         }
-
+    
         // Apply sorting
         switch ($request->input('sort', 'newest')) {
             case 'rating':
@@ -100,9 +114,23 @@ class SellerController extends Controller
             default: // newest
                 $query->latest();
         }
-
+    
         $sellers = $query->paginate($perPage);
-
+    
+        // Convert store logo and banner to full URLs for paginated results
+        $sellers->getCollection()->transform(function ($seller) {
+            $sellerData = $seller->toArray();
+            $sellerData['store_logo'] = !empty($sellerData['store_logo'])
+                ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
+                : null;
+        
+            $sellerData['store_banner'] = !empty($sellerData['store_banner'])
+                ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
+                : null;
+        
+            return $sellerData;
+        });
+    
         return response()->json([
             'success' => true,
             'data' => $sellers,
@@ -632,7 +660,6 @@ class SellerController extends Controller
     /**
      * Get seller details (public endpoint)
      */
-
     public function show($idOrSlug)
     {
         try {
@@ -644,7 +671,7 @@ class SellerController extends Controller
                 ->withCount('reviews')
                 ->firstOrFail();
 
-            if ($seller->status !== 'approved') {
+            if ($seller->status !== 'approved' && $seller->status !== 'active') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Seller profile not found'
@@ -659,21 +686,70 @@ class SellerController extends Controller
                 ->withCount('reviews')
                 ->paginate(12);
 
-            // Get seller stats - FIXED total_orders calculation
+            // Convert seller logo and banner to full URLs
+            $sellerData = $seller->toArray();
+            $sellerData['store_logo'] = !empty($sellerData['store_logo'])
+                ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
+                : null;
+
+            $sellerData['store_banner'] = !empty($sellerData['store_banner'])
+                ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
+                : null;
+
+            // Convert product images to full URLs
+            if ($products->count() > 0) {
+                $products->getCollection()->transform(function ($product) {
+                    if (isset($product['images'])) {
+                        $images = is_string($product['images']) ? json_decode($product['images'], true) : $product['images'];
+                        if (is_array($images)) {
+                            foreach ($images as &$image) {
+                                if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
+                                    $image['url'] = url('storage/' . ltrim($image['url'], '/'));
+                                }
+                            }
+                            $product['images'] = $images;
+                        }
+                    }
+                    return $product;
+                });
+            }
+
+            // Get follow status and count
+            $isFollowing = false;
+            $followersCount = 0;
+
+            try {
+                if ($seller->user && method_exists($seller->user, 'followers')) {
+                    $followersCount = $seller->user->followers()->count();
+
+                    if (auth()->check() && method_exists(auth()->user(), 'isFollowing')) {
+                        $isFollowing = auth()->user()->isFollowing($seller->user->id);
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::warning('Follow functionality not available: ' . $e->getMessage());
+                // Continue without follow data
+            }
+
+            // Get seller stats
             $stats = [
-                'total_products' => Product::where('seller_id', $seller->user_id)->count    (),
+                'total_products' => Product::where('seller_id', $seller->user_id)->count(),
                 'active_products' => Product::where('seller_id', $seller->user_id)
                     ->where('is_active', true)->count(),
-                'total_orders' => \App\Models\Order::where('seller_id', $seller->user_id)   ->count(),
-                'member_since' => $seller->created_at->format('M Y')
+                'total_orders' => \App\Models\Order::where('seller_id', $seller->user_id)->count(),
+                'total_sales' => \App\Models\Order::where('seller_id', $seller->user_id)
+                    ->where('status', 'delivered')->count(),
+                'member_since' => $seller->created_at->format('M Y'),
+                'followers_count' => $followersCount
             ];
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'seller' => $seller,
+                    'seller' => $sellerData,
                     'products' => $products,
-                    'stats' => $stats
+                    'stats' => $stats,
+                    'is_following' => $isFollowing
                 ]
             ]);
 
@@ -722,8 +798,8 @@ class SellerController extends Controller
                 'state' => 'sometimes|string|max:100',
                 'country' => 'sometimes|string|max:100',
                 'postal_code' => 'nullable|string|max:20',
-                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048', // Updated validation
-                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // Updated validation
+                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
                 'certificate' => 'nullable|string|max:500',
                 'location' => 'nullable|string|max:255',
                 'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),

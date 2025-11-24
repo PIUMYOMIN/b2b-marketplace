@@ -107,4 +107,46 @@ class User extends Authenticatable
     {
         return $this->status === 'suspended';
     }
+
+    // Follow relationships
+    public function following()
+    {
+        return $this->hasMany(Follow::class, 'user_id');
+    }
+
+    public function followers()
+    {
+        return $this->hasMany(Follow::class, 'seller_id');
+    }
+
+    public function followingSellers()
+    {
+        return $this->belongsToMany(User::class, 'follows', 'user_id', 'seller_id')
+                    ->withTimestamps();
+    }
+
+    public function followerUsers()
+    {
+        return $this->belongsToMany(User::class, 'follows', 'seller_id', 'user_id')
+                    ->withTimestamps();
+    }
+
+    // Helper methods
+    public function isFollowing($sellerId)
+    {
+        return $this->following()->where('seller_id', $sellerId)->exists();
+    }
+
+    public function follow($sellerId)
+    {
+        if (!$this->isFollowing($sellerId)) {
+            return $this->following()->create(['seller_id' => $sellerId]);
+        }
+        return null;
+    }
+
+    public function unfollow($sellerId)
+    {
+        return $this->following()->where('seller_id', $sellerId)->delete();
+    }
 }
