@@ -5,7 +5,7 @@ return [
     'allowed_methods' => ['*'],
     'allowed_origins' => [
         'http://localhost:5173',        // your frontend
-        'https://b2bdb.piueducation.org' // production frontend
+        'https://b2b.piueducation.org' // production frontend
     ],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
