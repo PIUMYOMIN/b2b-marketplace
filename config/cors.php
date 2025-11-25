@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'paths' => ['/api/v1/*', 'login', 'logout', 'sanctum/csrf-cookie'],
+    'paths' => ['api/v1/*', 'login', 'logout', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
     'allowed_origins' => [
         'https://b2b.piueducation.org',

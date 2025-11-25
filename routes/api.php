@@ -292,4 +292,8 @@ Route::group([
             'message' => 'API endpoint not found'
         ], 404);
     });
+
+    Route::get('/test-cors', function() {
+        return response()->json(['message' => 'CORS is working']);
+    });
 });
