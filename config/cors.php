@@ -1,12 +1,9 @@
 <?php
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/v1/*', 'sanctum/csrf-cookie','storage/*'],
     'allowed_methods' => ['*'],
-    'allowed_origins' => [
-        'http://localhost:5173',        // your frontend
-        'https://b2b.piueducation.org' // production frontend
-    ],
+    'allowed_origins' => ['https://b2b.piueducation.org','http://localhost:5173'],
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
     'max_age' => 0,
