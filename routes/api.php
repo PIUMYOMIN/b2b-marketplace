@@ -144,7 +144,7 @@ Route::group([
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
             // Admin only routes
-            Route::middleware('role:admin')->group(function () {
+            Route::middleware('role:admin|seller')->group(function () {
                 Route::put('/{seller}', [SellerController::class, 'update']);
                 Route::delete('/{seller}', [SellerController::class, 'destroy']);
             });
