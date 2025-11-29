@@ -445,50 +445,6 @@ class SellerController extends Controller
     }
 
     /**
-     * Upload store logo to organized directory structure
-     */
-    private function uploadStoreLogo($file, $storeId)
-    {
-        try {
-            $basePath = "store_profile/{$storeId}/store_logo";
-
-            // Generate unique filename
-            $filename = 'logo_' . time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
-
-            // Store the file
-            $path = $file->storeAs($basePath, $filename, 'public');
-
-            Log::info('Store logo uploaded: ' . $path);
-            return $path;
-        } catch (\Exception $e) {
-            Log::error('Failed to upload store logo: ' . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Upload store banner to organized directory structure
-     */
-    private function uploadStoreBanner($file, $storeId)
-    {
-        try {
-            $basePath = "store_profile/{$storeId}/store_banner";
-
-            // Generate unique filename
-            $filename = 'banner_' . time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
-
-            // Store the file
-            $path = $file->storeAs($basePath, $filename, 'public');
-
-            Log::info('Store banner uploaded: ' . $path);
-            return $path;
-        } catch (\Exception $e) {
-            Log::error('Failed to upload store banner: ' . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
      * Update store basic information during onboarding
      */
     public function updateStoreBasic(Request $request)
@@ -896,7 +852,7 @@ class SellerController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'store_name' => 'sometimes|string|max:255|unique:seller_profiles,store_name,'.$seller->id,
-                'business_type' => 'sometimes|in:individual,company,retail,wholesale,manufacturer',
+                'business_type' => 'sometimes|in:individual,company,retail,wholesale,manufacturer,service',
                 'business_registration_number' => 'nullable|string|max:255',
                 'tax_id' => 'nullable|string|max:255',
                 'description' => 'nullable|string|max:2000',
@@ -907,21 +863,18 @@ class SellerController extends Controller
                 'social_twitter' => 'nullable|url|max:255',
                 'social_instagram' => 'nullable|url|max:255',
                 'social_linkedin' => 'nullable|url|max:255',
-                'social_youtube' => 'nullable|url|max:255',
                 'address' => 'sometimes|string|max:500',
                 'city' => 'sometimes|string|max:100',
                 'state' => 'sometimes|string|max:100',
                 'country' => 'sometimes|string|max:100',
                 'postal_code' => 'nullable|string|max:20',
-                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048', // Updated validation
-                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // Updated validation
+                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
                 'account_number' => 'nullable|string|max:255',
                 'location' => 'nullable|string|max:255',
                 'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
                 'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
                 'production_capacity' => 'nullable|string|max:255',
-                'quality_certifications' => 'nullable|array',
-                'quality_certifications.*' => 'string|max:255'
             ]);
 
             if ($validator->fails()) {
@@ -933,16 +886,27 @@ class SellerController extends Controller
 
             $validated = $validator->validated();
 
+            \Log::info('Updating store profile', [
+                'user_id' => $user->id,
+                'seller_id' => $seller->id,
+                'has_logo_file' => $request->hasFile('store_logo'),
+                'has_banner_file' => $request->hasFile('store_banner')
+            ]);
+
             // Handle store logo upload
             if ($request->hasFile('store_logo')) {
                 $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $seller->id);
                 if ($logoPath) {
                     // Delete old logo if exists
-                    if ($seller->store_logo) {
+                    if ($seller->store_logo && Storage::disk('public')->exists($seller->store_logo)) {
                         Storage::disk('public')->delete($seller->store_logo);
                     }
                     $validated['store_logo'] = $logoPath;
+                    \Log::info('Logo uploaded successfully', ['path' => $logoPath]);
                 }
+            } elseif ($request->has('store_logo') && is_string($request->store_logo)) {
+                // Keep existing logo path if provided as string
+                $validated['store_logo'] = $request->store_logo;
             }
 
             // Handle store banner upload
@@ -950,24 +914,28 @@ class SellerController extends Controller
                 $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $seller->id);
                 if ($bannerPath) {
                     // Delete old banner if exists
-                    if ($seller->store_banner) {
+                    if ($seller->store_banner && Storage::disk('public')->exists($seller->store_banner)) {
                         Storage::disk('public')->delete($seller->store_banner);
                     }
                     $validated['store_banner'] = $bannerPath;
+                    \Log::info('Banner uploaded successfully', ['path' => $bannerPath]);
                 }
+            } elseif ($request->has('store_banner') && is_string($request->store_banner)) {
+                // Keep existing banner path if provided as string
+                $validated['store_banner'] = $request->store_banner;
             }
 
             // Regenerate slug if store name changes
             if (isset($validated['store_name']) && $validated['store_name'] !== $seller->store_name) {
-                $validated['store_slug'] = SellerProfile::generateUniqueSlug($validated['store_name']);
+                $validated['store_slug'] = \App\Models\SellerProfile::generateUniqueSlug($validated['store_name']);
             }
 
             $seller->update($validated);
 
-            // Update status to pending if onboarding is complete
-            if ($seller->isOnboardingComplete()) {
-                $seller->update(['status' => SellerProfile::STATUS_PENDING]);
-            }
+            \Log::info('Store profile updated successfully', [
+                'seller_id' => $seller->id,
+                'updated_fields' => array_keys($validated)
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -976,13 +944,79 @@ class SellerController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to update store profile: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
-            
+            \Log::error('Failed to update store profile: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update store profile: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Upload store logo to organized directory structure
+     */
+    private function uploadStoreLogo($file, $storeId)
+    {
+        try {
+            // Create organized path structure
+            $basePath = "stores/{$storeId}/logo";
+            
+            // Generate unique filename with timestamp and random string
+            $timestamp = time();
+            $random = Str::random(8);
+            $extension = $file->getClientOriginalExtension();
+            $filename = "logo_{$timestamp}_{$random}.{$extension}";
+        
+            // Store the file
+            $path = $file->storeAs($basePath, $filename, 'public');
+        
+            Log::info('Store logo uploaded successfully', [
+                'store_id' => $storeId,
+                'path' => $path,
+                'filename' => $filename,
+                'size' => $file->getSize(),
+                'mime_type' => $file->getMimeType()
+            ]);
+            
+            return $path;
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store logo: ' . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Upload store banner to organized directory structure
+     */
+    private function uploadStoreBanner($file, $storeId)
+    {
+        try {
+            // Create organized path structure
+            $basePath = "stores/{$storeId}/banner";
+            
+            // Generate unique filename with timestamp and random string
+            $timestamp = time();
+            $random = Str::random(8);
+            $extension = $file->getClientOriginalExtension();
+            $filename = "banner_{$timestamp}_{$random}.{$extension}";
+        
+            // Store the file
+            $path = $file->storeAs($basePath, $filename, 'public');
+        
+            Log::info('Store banner uploaded successfully', [
+                'store_id' => $storeId,
+                'path' => $path,
+                'filename' => $filename,
+                'size' => $file->getSize(),
+                'mime_type' => $file->getMimeType()
+            ]);
+            
+            return $path;
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store banner: ' . $e->getMessage());
+            return null;
         }
     }
 

@@ -143,6 +143,12 @@ Route::group([
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
+
+            Route::middleware('role:seller')->group(function () {
+                Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
+                Route::get('/my-store', [SellerController::class, 'myStore']);
+            });
+
             // Admin only routes
             Route::middleware('role:admin|seller')->group(function () {
                 Route::put('/{seller}', [SellerController::class, 'update']);
