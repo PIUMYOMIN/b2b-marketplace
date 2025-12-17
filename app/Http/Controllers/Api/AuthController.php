@@ -1,15 +1,16 @@
 <?php
 
 namespace App\Http\Controllers\Api;
+use App\Http\Controllers\Controller;
 
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
+use App\Models\BusinessType;
 use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Log;
-use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
@@ -17,13 +18,15 @@ use Illuminate\Validation\Rules\Password;
 class AuthController extends Controller
 {
 
-    //User Registration
+    /**
+     * Register a new user
+     */
     public function register(Request $request)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'nullable|string|email|max:255|unique:users',
-            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/', 'unique:users'],
+            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/',   'unique:users'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'type' => 'required|in:buyer,seller',
             'address' => 'nullable|string',
@@ -32,10 +35,9 @@ class AuthController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated) {
-            // Normalize Myanmar phone number to +959 format
+            // Normalize Myanmar phone number
             $phone = $this->normalizeMyanmarPhone($validated['phone']);
-            
-            // Validate normalized phone
+
             if (!$this->isValidMyanmarPhone($phone)) {
                 return response()->json([
                     'success' => false,
@@ -45,8 +47,8 @@ class AuthController extends Controller
 
             // Generate sequential user_id
             $lastUser = User::withTrashed()->orderBy('id', 'desc')->first();
-            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0', STR_PAD_LEFT) : '000001';
-        
+            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0',    STR_PAD_LEFT) : '000001';
+
             // Create user
             $user = User::create([
                 'name' => $validated['name'],
@@ -61,46 +63,63 @@ class AuthController extends Controller
                 'status' => 'active',
                 'is_active' => true,
             ]);
-        
-            // ✅ FIX: Proper role assignment
-            $roleName = $validated['type']; // 'seller' or 'buyer'
-            
-            // Assign role using syncRoles to ensure only one role
-            $user->syncRoles([$roleName]);
-        
-            // If user is seller, create seller profile with proper name
+
+            // Assign role
+            $user->syncRoles([$validated['type']]);
+
+            // If user is seller, create seller profile
             if ($validated['type'] === 'seller') {
-                // Generate store name from user's name
                 $storeName = $validated['name'] . "'s Store";
+                $storeSlug = SellerProfile::generateStoreSlug($storeName);
+
+                // Get default individual business type
+                $defaultBusinessType = BusinessType::where('slug', 'individual')
+                    ->where('is_active', true)
+                    ->first();
+
+                if (!$defaultBusinessType) {
+                    throw new \Exception('Default business type not found');
+                }
 
                 SellerProfile::create([
                     'user_id' => $user->id,
                     'store_name' => $storeName,
-                    'store_slug' => SellerProfile::generateStoreSlug($storeName),
+                    'store_slug' => $storeSlug,
                     'store_id' => SellerProfile::generateStoreId(),
-                    'business_type' => 'individual', // Default business type
+                    'business_type_id' => $defaultBusinessType->id,
+                    'business_type' => $defaultBusinessType->slug,
                     'contact_email' => $user->email,
                     'contact_phone' => $user->phone,
                     'address' => $validated['address'] ?? '',
                     'city' => $validated['city'] ?? '',
                     'state' => $validated['state'] ?? '',
                     'country' => 'Myanmar',
-                    'status' => 'setup_pending', // Important: Use setup_pending for new sellers
+                    'status' => SellerProfile::STATUS_SETUP_PENDING,
+                    'verification_status' => 'pending',
+                ]);
+
+                Log::info('Seller profile created during registration', [
+                    'user_id' => $user->id,
+                    'business_type_id' => $defaultBusinessType->id,
+                    'store_name' => $storeName,
+                    'store_slug' => $storeSlug,
+                    'status' => SellerProfile::STATUS_SETUP_PENDING
                 ]);
             }
-        
+
             // Generate API token
             $token = $user->createToken('auth_token')->plainTextToken;
-        
-            // ✅ Reload user with roles to ensure they're included in response
+
+            // Reload user with roles
             $user->load('roles');
-        
+
             return response()->json([
                 'success' => true,
                 'message' => 'User registered successfully',
                 'data' => [
                     'user' => $user,
-                    'token' => $token
+                    'token' => $token,
+                    'requires_onboarding' => $validated['type'] === 'seller'
                 ]
             ], 201);
         });
@@ -237,10 +256,10 @@ class AuthController extends Controller
 {
     try {
         $user = $request->user();
-        
+
         // ✅ Check if user is seller using both type field and role
         $isSeller = $user->type === 'seller' || $user->hasRole('seller');
-        
+
         if (!$isSeller) {
             return response()->json([
                 'success' => true,
@@ -272,9 +291,9 @@ class AuthController extends Controller
         }
 
         // Check if onboarding is complete - be more strict
-        $onboardingComplete = $sellerProfile->isOnboardingComplete() && 
+        $onboardingComplete = $sellerProfile->isOnboardingComplete() &&
                              in_array($sellerProfile->status, ['approved', 'active']);
-        
+
         // Get current step for incomplete onboarding
         $currentStep = $sellerProfile->getOnboardingStep();
 
@@ -296,8 +315,8 @@ class AuthController extends Controller
                     'business_type_empty' => empty(trim($sellerProfile->business_type)),
                     'address_empty' => empty(trim($sellerProfile->address)),
                 ],
-                'message' => $onboardingComplete ? 
-                    'Onboarding complete' : 
+                'message' => $onboardingComplete ?
+                    'Onboarding complete' :
                     'Onboarding in progress - current step: ' . $currentStep
             ]
         ]);
@@ -324,7 +343,7 @@ class AuthController extends Controller
                 'requires_registration' => false,
             ],
             [
-                'value' => 'partnership', 
+                'value' => 'partnership',
                 'label' => 'Partnership',
                 'description' => 'Business owned by two or more individuals',
                 'requires_registration' => true,
@@ -377,7 +396,7 @@ class AuthController extends Controller
 public function debugRoles(Request $request)
 {
     $user = $request->user();
-    
+
     return response()->json([
         'success' => true,
         'data' => [

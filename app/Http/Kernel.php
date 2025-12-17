@@ -36,6 +36,8 @@ class Kernel extends HttpKernel
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            'seller.onboarding' => \App\Http\Middleware\CheckSellerOnboarding::class,
+            'seller.verification' => \App\Http\Middleware\CheckSellerVerification::class,
         ],
     ];
 }

@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\SellerController;
 use App\Http\Controllers\Api\DeliveryController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\FollowController;
+use App\Http\Controllers\Api\BusinessTypeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,7 +48,8 @@ Route::group([
     // --------------------
 
     // Business Type (Public)
-    Route::get('/business-types', [SellerController::class, 'getBusinessTypes']);
+    Route::get('/business-types', [BusinessTypeController::class, 'index']);
+    Route::get('/business-types/{slug}', [BusinessTypeController::class, 'show']);
 
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
@@ -70,23 +72,58 @@ Route::group([
         Route::get('/', [CategoryController::class, 'index']);
         Route::get('/{category}', [CategoryController::class, 'show']);
     });
-    
+
     // Reviews
     Route::prefix('reviews')->group(function () {
         Route::get('/products/{product}', [ReviewController::class, 'productReviews']);
     });
-    
+
     // --------------------
     // Authenticated Routes
     // --------------------
     Route::middleware(['auth:sanctum'])->group(function () {
 
         Route::prefix('seller')->middleware('role:seller')->group(function () {
-            Route::get('/onboarding/status', [SellerController::class, 'getOnboardingStatus']);
-            Route::post('/onboarding/complete', [SellerController::class, 'completeOnboarding']);
-            Route::post('/onboarding/store-basic', [SellerController::class, 'updateStoreBasic']);
-            Route::post('/onboarding/business-details', [SellerController::class, 'updateBusinessDetails']);
-            Route::post('/onboarding/address', [SellerController::class, 'updateAddress']);
+
+            Route::prefix('seller/onboarding')->middleware(['auth:sanctum', 'role:seller'])->group(function () {
+                // Onboarding Status
+                Route::get('/status', [SellerController::class, 'getOnboardingStatus']);
+                Route::get('/check-status', [SellerController::class, 'checkProfileStatus']);
+
+                // Onboarding Steps
+                // Basic store info save endpoint
+                Route::post('/store-basic', [SellerController::class, 'updateStoreBasic']);
+                //Business save endpoint
+                Route::post('/business-details', [SellerController::class, 'updateBusinessDetails']);
+                // Address save endpoint
+                Route::post('/address', [SellerController::class, 'updateAddress']);
+                // Document upload endpoint
+                Route::post('/documents', [SellerController::class, 'uploadDocument']);
+                // Document completion endpoint
+                Route::post('/mark-documents-complete', [SellerController::class, 'markDocumentsComplete']);
+
+                Route::post('/step/{step}', [SellerController::class, 'saveStep']);
+
+                // Get current onboarding data
+                Route::get('/data', [SellerController::class, 'getOnboardingData']);
+
+                // Final submission endpoint
+                Route::post('/submit', [SellerController::class, 'submitOnboarding']);
+                Route::post('/upload-document', [SellerController::class, 'uploadDocument']);
+            });
+
+
+            // Document Upload & Management
+            Route::get('/document-requirements', [SellerController::class, 'getDocumentRequirements']);
+            Route::get('/documents', [SellerController::class, 'getUploadedDocuments']);
+            Route::delete('/documents/{documentId}', [SellerController::class, 'deleteDocument']);
+
+            // Complete Onboarding
+            Route::post('/complete-onboarding', [SellerController::class, 'completeOnboardingWithDocuments']);
+
+            // Verification Status
+            Route::get('/verification-status', [SellerController::class, 'getVerificationStatus']);
+            Route::get('/verification-history', [SellerController::class, 'getVerificationHistory']);
         });
 
         // Dashboard
@@ -141,6 +178,13 @@ Route::group([
             Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders'])->middleware('role:seller');
         });
 
+
+        Route::prefix('admin/business-types')->middleware('role:admin')->group(function () {
+            Route::post('/', [BusinessTypeController::class, 'store']);
+            Route::put('/{id}', [BusinessTypeController::class, 'update']);
+            Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
+        });
+
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
 
@@ -183,7 +227,7 @@ Route::group([
         Route::prefix('products')->group(function () {
             Route::get('/search', [ProductController::class, 'search']);
             Route::post('/{product}/reviews', [ReviewController::class, 'store'])->middleware('role:buyer');
-            
+
             // Image Management
             Route::post('/upload-image', [ProductController::class, 'uploadImage']);
             Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct']);
@@ -240,14 +284,14 @@ Route::group([
             Route::get('/{order}', [OrderController::class, 'show']);
             Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
             Route::patch('/{order}/payment', [OrderController::class, 'updatePayment']);
-        
+
             // Seller order management
             Route::middleware('role:seller|admin')->group(function () {
                 Route::post('/{order}/confirm', [OrderController::class, 'confirm']);
                 Route::post('/{order}/process', [OrderController::class, 'process']);
                 Route::post('/{order}/ship', [OrderController::class, 'ship']);
             });
-        
+
             // Buyer order management
             Route::middleware('role:buyer|admin')->group(function () {
                 Route::post('/{order}/confirm-delivery', [OrderController::class, 'confirmDelivery']);
@@ -299,7 +343,7 @@ Route::group([
         ], 404);
     });
 
-    Route::get('/test-cors', function() {
+    Route::get('/test-cors', function () {
         return response()->json(['message' => 'CORS is working']);
     });
 });

@@ -13,47 +13,126 @@ return new class extends Migration
     {
         Schema::create('seller_profiles', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+
+            // Store Information
             $table->string('store_name');
             $table->string('store_slug');
             $table->string('store_id')->unique();
-            $table->enum('business_type', [
-                'individual', 'company', 'retail', 'wholesale', 'manufacturer',
-                'service', 'partnership', 'private_limited', 'public_limited', 'cooperative'
-            ])->nullable();
+            $table->foreignId('business_type_id')->nullable()->constrained('business_types')->onDelete('set null');
+
+            $table->string('business_type')->nullable();
+
+            // Business Registration Details
             $table->string('business_registration_number')->nullable();
             $table->string('certificate')->nullable();
             $table->string('tax_id')->nullable();
+
+            // Store Description
             $table->text('description')->nullable();
-            $table->string('contact_email')->nullable();
-            $table->string('contact_phone')->nullable();
-            $table->string('website')->unique()->nullable();
+
+            // Contact Information
+            $table->string('contact_email');
+            $table->string('contact_phone');
+            $table->string('website')->nullable();
             $table->string('account_number')->nullable();
+
+            // Social Media
             $table->string('social_facebook')->nullable();
             $table->string('social_twitter')->nullable();
             $table->string('social_instagram')->nullable();
             $table->string('social_linkedin')->nullable();
             $table->string('social_youtube')->nullable();
-            $table->string('address')->nullable();
-            $table->string('city')->nullable();
-            $table->string('state')->nullable();
-            $table->string('country')->nullable();
+
+            // Address
+            $table->string('address');
+            $table->string('city');
+            $table->string('state');
+            $table->string('country');
             $table->string('postal_code')->nullable();
-            $table->string('store_logo')->nullable();
-            $table->string('store_banner')->nullable();
             $table->string('location')->nullable();
 
+            // Store Media
+            $table->string('store_logo')->nullable();
+            $table->string('store_banner')->nullable();
+
+            // Document Fields
+            $table->string('business_registration_document')->nullable();
+            $table->string('tax_registration_document')->nullable();
+            $table->string('identity_document_front')->nullable();
+            $table->string('identity_document_back')->nullable();
+            $table->longText('additional_documents')->nullable(); // JSON array
+            $table->enum('identity_document_type', [
+                'national_id',
+                'passport',
+                'driving_license',
+                'other'
+            ])->nullable();
+
+            // Status Fields
             $table->enum('status', [
                 'setup_pending',
                 'pending',
-                'approved', 
-                'active', 
-                'suspended', 
+                'approved',
+                'active',
+                'rejected',
+                'suspended',
                 'closed'
             ])->default('setup_pending');
+
+            $table->enum('verification_status', [
+                'pending',
+                'under_review',
+                'verified',
+                'rejected'
+            ])->default('pending');
+
+            $table->enum('verification_level', [
+                'unverified',
+                'basic',
+                'verified',
+                'premium'
+            ])->default('unverified');
+
+            $table->foreignId('verified_by')->nullable()->constrained('users');
+            $table->timestamp('verified_at')->nullable();
+            $table->text('verification_notes')->nullable();
+
+            // Document Submission
+            $table->boolean('documents_submitted')->default(false);
+            $table->timestamp('documents_submitted_at')->nullable();
+
+            // Badge System
+            $table->string('badge_type')->nullable();
+            $table->timestamp('badge_expires_at')->nullable();
+
+            // Onboarding
+            $table->timestamp('onboarding_completed_at')->nullable();
+
+            // Document Review
+            $table->enum('document_status', [
+                'not_submitted',
+                'pending',
+                'under_review',
+                'approved',
+                'rejected'
+            ])->default('not_submitted');
+
+            $table->text('document_rejection_reason')->nullable();
+
+            // Admin Notes
             $table->text('admin_notes')->nullable();
-            $table->softDeletes();
+
+            // Timestamps
             $table->timestamps();
+            $table->softDeletes();
+
+            // Indexes
+            $table->index('store_slug');
+            $table->index('status');
+            $table->index('verification_status');
+            $table->index('business_type_id');
+            $table->index(['status', 'verification_status']);
         });
     }
 

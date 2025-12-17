@@ -2,6 +2,27 @@
 
 ## Entities
 
+### BusinessType (`App\Models\BusinessType`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `name` (varchar)
+- `slug` (varchar)
+- `description` (varchar)
+- `requires_registration` (tinyint)
+- `requires_tax_document` (tinyint)
+- `requires_identity_document` (tinyint)
+- `requires_business_certificate` (tinyint)
+- `additional_requirements` (longtext)
+- `is_active` (tinyint)
+- `sort_order` (int)
+- `icon` (varchar)
+- `color` (varchar)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+- `deleted_at` (timestamp)
+
 ### Cart (`App\Models\Cart`)
 
 #### Attributes:
@@ -96,6 +117,16 @@
 - `notes` (text)
 - `latitude` (decimal)
 - `longitude` (decimal)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### Follow (`App\Models\Follow`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `user_id` (bigint)
+- `seller_id` (bigint)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 
@@ -227,7 +258,8 @@
 - `store_name` (varchar)
 - `store_slug` (varchar)
 - `store_id` (varchar)
-- `business_type` (enum)
+- `business_type_id` (bigint)
+- `business_type` (varchar)
 - `business_registration_number` (varchar)
 - `certificate` (varchar)
 - `tax_id` (varchar)
@@ -246,14 +278,32 @@
 - `state` (varchar)
 - `country` (varchar)
 - `postal_code` (varchar)
+- `location` (varchar)
 - `store_logo` (varchar)
 - `store_banner` (varchar)
-- `location` (varchar)
+- `business_registration_document` (varchar)
+- `tax_registration_document` (varchar)
+- `identity_document_front` (varchar)
+- `identity_document_back` (varchar)
+- `additional_documents` (longtext)
+- `identity_document_type` (enum)
 - `status` (enum)
+- `verification_status` (enum)
+- `verification_level` (enum)
+- `verified_by` (bigint)
+- `verified_at` (timestamp)
+- `verification_notes` (text)
+- `documents_submitted` (tinyint)
+- `documents_submitted_at` (timestamp)
+- `badge_type` (varchar)
+- `badge_expires_at` (timestamp)
+- `onboarding_completed_at` (timestamp)
+- `document_status` (enum)
+- `document_rejection_reason` (text)
 - `admin_notes` (text)
-- `deleted_at` (timestamp)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
+- `deleted_at` (timestamp)
 
 ### SellerReview (`App\Models\SellerReview`)
 
@@ -307,6 +357,10 @@
 
 ## Relationships
 
+### BusinessType Relationships
+
+- **HasMany** `sellerProfiles` to SellerProfile (Local Key: `id`, Foreign Key: `business_type_id`)
+
 ### Cart Relationships
 
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
@@ -336,6 +390,11 @@
 
 - **BelongsTo** `delivery` to Delivery (Local Key: `delivery_id`, Foreign Key: `id`)
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+
+### Follow Relationships
+
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+- **BelongsTo** `seller` to User (Local Key: `seller_id`, Foreign Key: `id`)
 
 ### Order Relationships
 
@@ -369,6 +428,7 @@
 
 ### SellerProfile Relationships
 
+- **BelongsTo** `businessType` to BusinessType (Local Key: `business_type_id`, Foreign Key: `id`)
 - **HasMany** `reviews` to SellerReview (Local Key: `id`, Foreign Key: `seller_id`)
 - **HasMany** `products` to Product (Local Key: `user_id`, Foreign Key: `seller_id`)
 - **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `seller_id`)
@@ -387,6 +447,10 @@
 - **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `buyer_id`)
 - **HasMany** `products` to Product (Local Key: `id`, Foreign Key: `user_id`)
 - **BelongsToMany** `wishlist` to Product (Local Key: ``, Foreign Key: ``)
+- **HasMany** `following` to Follow (Local Key: `id`, Foreign Key: `user_id`)
+- **HasMany** `followers` to Follow (Local Key: `id`, Foreign Key: `seller_id`)
+- **BelongsToMany** `followingSellers` to User (Local Key: ``, Foreign Key: ``)
+- **BelongsToMany** `followerUsers` to User (Local Key: ``, Foreign Key: ``)
 
 ### Wishlist Relationships
 

@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
+use App\Models\BusinessType;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class SellerController extends Controller
 {
@@ -26,35 +28,37 @@ class SellerController extends Controller
             $topSellers = SellerProfile::with(['user'])
                 ->withAvg('reviews', 'rating')
                 ->withCount(['reviews', 'products']) // products_count
-                ->withCount(['orders as customers_count' => function($q) {
-                    $q->distinct('user_id'); // unique customers
-                }])
-                ->whereIn('status', ['approved','active'])
+                ->withCount([
+                    'orders as customers_count' => function ($q) {
+                        $q->distinct('user_id'); // unique customers
+                    }
+                ])
+                ->whereIn('status', ['approved', 'active'])
                 ->orderByDesc('reviews_avg_rating')
                 ->orderByDesc('reviews_count')
                 ->take(6)
                 ->get();
-            
+
             // Convert store logo and banner to full URLs for top sellers
             $topSellers->transform(function ($seller) {
                 $sellerData = $seller->toArray();
                 $sellerData['store_logo'] = !empty($sellerData['store_logo'])
                     ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
                     : null;
-            
+
                 $sellerData['store_banner'] = !empty($sellerData['store_banner'])
                     ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
                     : null;
-            
+
                 return $sellerData;
             });
-        
+
             return response()->json([
                 'success' => true,
                 'data' => $topSellers
             ]);
         }
-    
+
         // Validate filters and pagination
         $validator = Validator::make($request->all(), [
             'per_page' => 'sometimes|integer|min:1|max:100',
@@ -64,7 +68,7 @@ class SellerController extends Controller
             'min_rating' => 'sometimes|numeric|min:0|max:5',
             'sort' => 'sometimes|in:newest,rating,name'
         ]);
-    
+
         // Validation failed
         if ($validator->fails()) {
             return response()->json([
@@ -72,37 +76,37 @@ class SellerController extends Controller
                 'errors' => $validator->errors()
             ], 422);
         }
-    
+
         // Pagination
         $perPage = $request->input('per_page', 15);
-        
+
         // Base query
         $query = SellerProfile::with(['user', 'reviews'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->whereIn('status', ['approved','active']);
-    
+            ->whereIn('status', ['approved', 'active']);
+
         // Apply filters
         if ($request->has('search') && $request->search !== null) {
-            $query->where(function($q) use ($request) {
-                $q->where('store_name', 'like', '%'.$request->search.'%')
-                  ->orWhere('description', 'like', '%'.$request->search.'%');
+            $query->where(function ($q) use ($request) {
+                $q->where('store_name', 'like', '%' . $request->search . '%')
+                    ->orWhere('description', 'like', '%' . $request->search . '%');
             });
         }
-    
+
         if ($request->has('business_type') && $request->business_type !== null) {
             $query->where('business_type', $request->business_type);
         }
-    
+
         if ($request->has('city') && $request->city !== null) {
             $query->where('city', $request->city);
         }
-    
+
         if ($request->has('min_rating') && $request->input('min_rating') !== null) {
             // use proper PHP request access and ensure numeric comparison
             $query->having('reviews_avg_rating', '>=', (float) $request->input('min_rating'));
         }
-    
+
         // Apply sorting
         switch ($request->input('sort', 'newest')) {
             case 'rating':
@@ -114,23 +118,23 @@ class SellerController extends Controller
             default: // newest
                 $query->latest();
         }
-    
+
         $sellers = $query->paginate($perPage);
-    
+
         // Convert store logo and banner to full URLs for paginated results
         $sellers->getCollection()->transform(function ($seller) {
             $sellerData = $seller->toArray();
             $sellerData['store_logo'] = !empty($sellerData['store_logo'])
                 ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
                 : null;
-        
+
             $sellerData['store_banner'] = !empty($sellerData['store_banner'])
                 ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
                 : null;
-        
+
             return $sellerData;
         });
-    
+
         return response()->json([
             'success' => true,
             'data' => $sellers,
@@ -200,13 +204,13 @@ class SellerController extends Controller
     {
         $startDate = Carbon::now()->subDays(30);
         $endDate = Carbon::now();
-    
+
         // Total products
         $totalProducts = Product::where('seller_id', $sellerId)->count();
         $activeProducts = Product::where('seller_id', $sellerId)
             ->where('is_active', true)
             ->count();
-    
+
         // Sales data
         $salesData = DB::table('orders')
             ->where('seller_id', $sellerId)
@@ -217,19 +221,19 @@ class SellerController extends Controller
                 DB::raw('AVG(total_amount) as average_order_value')
             )
             ->first();
-            
+
         // Pending orders
         $pendingOrders = DB::table('orders')
             ->where('seller_id', $sellerId)
             ->where('status', 'pending')
             ->count();
-            
+
         // Total customers (unique buyers)
         $totalCustomers = DB::table('orders')
             ->where('seller_id', $sellerId)
             ->distinct('buyer_id')
             ->count('buyer_id');
-            
+
         return [
             'total_products' => $totalProducts,
             'active_products' => $activeProducts,
@@ -240,7 +244,7 @@ class SellerController extends Controller
             'total_customers' => $totalCustomers
         ];
     }
-    
+
     /**
      * Get recent activity for dashboard
      */
@@ -248,7 +252,7 @@ class SellerController extends Controller
     {
         $recentOrders = Order::where('seller_id', $sellerId)
             ->with(['buyer:id,name,email'])
-            ->select(['id', 'order_number', 'status', 'total_amount', 'created_at',     'buyer_id'])
+            ->select(['id', 'order_number', 'status', 'total_amount', 'created_at', 'buyer_id'])
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get()
@@ -265,7 +269,7 @@ class SellerController extends Controller
                     ] : null
                 ];
             });
-        
+
         $recentReviews = DB::table('reviews')
             ->join('products', 'reviews.product_id', '=', 'products.id')
             ->join('users', 'reviews.user_id', '=', 'users.id')
@@ -274,38 +278,38 @@ class SellerController extends Controller
             ->orderBy('reviews.created_at', 'desc')
             ->limit(5)
             ->get();
-        
+
         return [
             'recent_orders' => $recentOrders,
             'recent_reviews' => $recentReviews
         ];
     }
-    
+
     /**
      * Get performance metrics
      */
     private function getPerformanceMetrics($sellerId)
     {
         $thirtyDaysAgo = Carbon::now()->subDays(30);
-        
+
         // Order completion rate
         $totalOrders = Order::where('seller_id', $sellerId)
             ->where('created_at', '>=', $thirtyDaysAgo)
             ->count();
-            
+
         $completedOrders = Order::where('seller_id', $sellerId)
             ->where('status', 'delivered')
             ->where('created_at', '>=', $thirtyDaysAgo)
             ->count();
-            
+
         $completionRate = $totalOrders > 0 ? ($completedOrders / $totalOrders) * 100 : 0;
-    
+
         // Average rating
         $averageRating = DB::table('reviews')
             ->join('products', 'reviews.product_id', '=', 'products.id')
             ->where('products.seller_id', $sellerId)
             ->avg('reviews.rating');
-    
+
         // Response time (average time to confirm orders)
         $avgResponseTime = DB::table('orders')
             ->where('seller_id', $sellerId)
@@ -313,12 +317,12 @@ class SellerController extends Controller
             ->where('created_at', '>=', $thirtyDaysAgo)
             ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, confirmed_at)) as    avg_minutes')
             ->first();
-    
+
         return [
             'order_completion_rate' => round($completionRate, 2),
             'average_rating' => $averageRating ? round($averageRating, 2) : 0,
-            'average_response_time_minutes' => $avgResponseTime->avg_minutes ? round    ($avgResponseTime->avg_minutes) : 0,
-            'customer_satisfaction' => $averageRating ? round(($averageRating / 5) * 100,   2) : 0
+            'average_response_time_minutes' => $avgResponseTime->avg_minutes ? round($avgResponseTime->avg_minutes) : 0,
+            'customer_satisfaction' => $averageRating ? round(($averageRating / 5) * 100, 2) : 0
         ];
     }
 
@@ -375,7 +379,7 @@ class SellerController extends Controller
             'location' => 'nullable|string|max:255',
 
             // Additional Info
-            'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
+            'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
             'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
             'production_capacity' => 'nullable|string|max:255',
         ]);
@@ -442,133 +446,6 @@ class SellerController extends Controller
                 'message' => 'Failed to create seller profile: ' . $e->getMessage()
             ], 500);
         }
-    }
-
-    /**
-     * Update store basic information during onboarding
-     */
-    public function updateStoreBasic(Request $request)
-    {
-        try {
-            $user = $request->user();
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-
-            if (!$sellerProfile) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
-            }
-
-            $validator = Validator::make($request->all(), [
-                'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
-                'business_type' => 'required|in:individual,company,retail,wholesale,manufacturer,service,partnership,   private_limited,public_limited,cooperative',
-                'description' => 'nullable|string|max:2000',
-                'contact_email' => 'required|email|max:255',
-                'contact_phone' => 'required|string|max:20',
-                'store_logo' => 'nullable|string|max:500',
-                'store_banner' => 'nullable|string|max:500',
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $validated = $validator->validated();
-
-            // Handle file uploads if provided
-            if ($request->hasFile('store_logo')) {
-                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $sellerProfile->id);
-                if ($logoPath) {
-                    $validated['store_logo'] = $logoPath;
-                }
-            }
-
-            if ($request->hasFile('store_banner')) {
-                $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $sellerProfile->id);
-                if ($bannerPath) {
-                    $validated['store_banner'] = $bannerPath;
-                }
-            }
-
-            $sellerProfile->update($validated);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Store basic information updated successfully',
-                'data' => $sellerProfile->fresh()
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to update store basic info: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update store basic information'
-            ], 500);
-        }
-    }
-
-    public function updateBusinessDetails(Request $request)
-    {
-        $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
-
-        if (!$sellerProfile) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Seller profile not found'
-            ], 404);
-        }
-
-        $validated = $request->validate([
-            'business_registration_number' => 'nullable|string|max:255',
-            'tax_id' => 'nullable|string|max:255',
-            'website' => 'nullable|url|max:255',
-            'account_number' => 'nullable|string|max:255|unique:seller_profiles,account_number,' . $sellerProfile->id,
-            'social_facebook' => 'nullable|url|max:255',
-            'social_instagram' => 'nullable|url|max:255',
-            'social_twitter' => 'nullable|url|max:255',
-            'social_linkedin' => 'nullable|url|max:255',
-        ]);
-
-        $sellerProfile->update($validated);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Business details updated successfully',
-            'data' => $sellerProfile->fresh()
-        ]);
-    }
-
-    public function updateAddress(Request $request)
-    {
-        $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
-
-        if (!$sellerProfile) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Seller profile not found'
-            ], 404);
-        }
-
-        $validated = $request->validate([
-            'address' => 'required|string|max:500',
-            'city' => 'required|string|max:255',
-            'state' => 'required|string|max:255',
-            'country' => 'required|string|max:255',
-            'postal_code' => 'nullable|string|max:20',
-            'location' => 'nullable|string|max:255',
-        ]);
-
-        $sellerProfile->update($validated);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Address information updated successfully',
-            'data' => $sellerProfile->fresh()
-        ]);
     }
 
     public function myStore(Request $request)
@@ -736,7 +613,7 @@ class SellerController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'store_name' => 'sometimes|string|max:255|unique:seller_profiles,store_name,'.$id,
+                'store_name' => 'sometimes|string|max:255|unique:seller_profiles,store_name,' . $id,
                 'business_type' => 'sometimes|in:individual,company,retail,wholesale,manufacturer',
                 'business_registration_number' => 'nullable|string|max:255',
                 'tax_id' => 'nullable|string|max:255',
@@ -758,7 +635,7 @@ class SellerController extends Controller
                 'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
                 'certificate' => 'nullable|string|max:500',
                 'location' => 'nullable|string|max:255',
-                'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
+                'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
                 'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
                 'production_capacity' => 'nullable|string|max:255',
                 'quality_certifications' => 'nullable|array',
@@ -851,7 +728,7 @@ class SellerController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'store_name' => 'sometimes|string|max:255|unique:seller_profiles,store_name,'.$seller->id,
+                'store_name' => 'sometimes|string|max:255|unique:seller_profiles,store_name,' . $seller->id,
                 'business_type' => 'sometimes|in:individual,company,retail,wholesale,manufacturer,service',
                 'business_registration_number' => 'nullable|string|max:255',
                 'tax_id' => 'nullable|string|max:255',
@@ -872,7 +749,7 @@ class SellerController extends Controller
                 'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
                 'account_number' => 'nullable|string|max:255',
                 'location' => 'nullable|string|max:255',
-                'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
+                'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
                 'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
                 'production_capacity' => 'nullable|string|max:255',
             ]);
@@ -962,16 +839,16 @@ class SellerController extends Controller
         try {
             // Create organized path structure
             $basePath = "stores/{$storeId}/logo";
-            
+
             // Generate unique filename with timestamp and random string
             $timestamp = time();
-            $random = Str::random(8);
+            $random = Str::random(8); // Fixed: Now Str is imported
             $extension = $file->getClientOriginalExtension();
             $filename = "logo_{$timestamp}_{$random}.{$extension}";
-        
+
             // Store the file
             $path = $file->storeAs($basePath, $filename, 'public');
-        
+
             Log::info('Store logo uploaded successfully', [
                 'store_id' => $storeId,
                 'path' => $path,
@@ -979,14 +856,14 @@ class SellerController extends Controller
                 'size' => $file->getSize(),
                 'mime_type' => $file->getMimeType()
             ]);
-            
+
             return $path;
         } catch (\Exception $e) {
             Log::error('Failed to upload store logo: ' . $e->getMessage());
             return null;
         }
     }
-    
+
     /**
      * Upload store banner to organized directory structure
      */
@@ -995,16 +872,16 @@ class SellerController extends Controller
         try {
             // Create organized path structure
             $basePath = "stores/{$storeId}/banner";
-            
+
             // Generate unique filename with timestamp and random string
             $timestamp = time();
             $random = Str::random(8);
             $extension = $file->getClientOriginalExtension();
             $filename = "banner_{$timestamp}_{$random}.{$extension}";
-        
+
             // Store the file
             $path = $file->storeAs($basePath, $filename, 'public');
-        
+
             Log::info('Store banner uploaded successfully', [
                 'store_id' => $storeId,
                 'path' => $path,
@@ -1012,7 +889,7 @@ class SellerController extends Controller
                 'size' => $file->getSize(),
                 'mime_type' => $file->getMimeType()
             ]);
-            
+
             return $path;
         } catch (\Exception $e) {
             Log::error('Failed to upload store banner: ' . $e->getMessage());
@@ -1027,7 +904,7 @@ class SellerController extends Controller
     {
         try {
             $seller = SellerProfile::findOrFail($id);
-            
+
             // Delete associated files and directories
             if ($seller->store_logo) {
                 Storage::disk('public')->delete($seller->store_logo);
@@ -1060,41 +937,27 @@ class SellerController extends Controller
         }
     }
 
+    /**
+     * Get business types
+     */
     public function getBusinessTypes()
     {
-        $businessTypes = [
-            [
-                'value' => 'individual',
-                'label' => 'Individual/Sole Proprietorship',
-                'description' => 'A business owned and operated by one person',
-                'requires_registration' => false,
-            ],
-            [
-                'value' => 'company', 
-                'label' => 'Private Limited Company',
-                'description' => 'A registered company with limited liability',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'retail',
-                'label' => 'Retail Business',
-                'description' => 'Business that sells directly to consumers',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'wholesale',
-                'label' => 'Wholesale Business',
-                'description' => 'Business that sells in bulk to retailers',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'service',
-                'label' => 'Service Business',
-                'description' => 'Business that provides services rather than products',
-                'requires_registration' => false,
-            ]
-        ];
-    
+        $businessTypes = BusinessType::active()
+            ->ordered()
+            ->get()
+            ->map(function ($type) {
+                return [
+                    'value' => $type->slug,
+                    'label' => $type->name,
+                    'description' => $type->description,
+                    'requires_registration' => $type->requires_registration,
+                    'document_requirements' => $type->getDocumentRequirements(),
+                    'icon' => $type->icon,
+                    'color' => $type->color,
+                    'is_individual' => !$type->requires_business_certificate && !$type->requires_tax_document
+                ];
+            });
+
         return response()->json([
             'success' => true,
             'data' => $businessTypes
@@ -1116,16 +979,16 @@ class SellerController extends Controller
                     'message' => 'User is not a seller'
                 ], 403);
             }
-        
+
             $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-        
+
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Seller profile not found'
                 ], 404);
             }
-        
+
             $validator = Validator::make($request->all(), [
                 // Store Basic Info
                 'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
@@ -1136,7 +999,7 @@ class SellerController extends Controller
                 'contact_phone' => 'required|string|max:20',
                 'store_logo' => 'nullable|string|max:500',
                 'store_banner' => 'nullable|string|max:500',
-            
+
                 // Business Details
                 'business_registration_number' => 'nullable|string|max:255',
                 'tax_id' => 'nullable|string|max:255',
@@ -1146,7 +1009,7 @@ class SellerController extends Controller
                 'social_instagram' => 'nullable|url|max:255',
                 'social_twitter' => 'nullable|url|max:255',
                 'social_linkedin' => 'nullable|url|max:255',
-            
+
                 // Address Info
                 'address' => 'required|string|max:500',
                 'city' => 'required|string|max:255',
@@ -1154,22 +1017,22 @@ class SellerController extends Controller
                 'country' => 'required|string|max:255',
                 'postal_code' => 'nullable|string|max:20',
                 'location' => 'nullable|string|max:255',
-            
+
                 // Additional Info
-                'year_established' => 'nullable|integer|min:1900|max:'.date('Y'),
+                'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
                 'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
                 'production_capacity' => 'nullable|string|max:255',
             ]);
-        
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors()
                 ], 422);
             }
-        
+
             $validated = $validator->validated();
-        
+
             // Handle file uploads if provided as files
             if ($request->hasFile('store_logo')) {
                 $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $sellerProfile->id);
@@ -1180,7 +1043,7 @@ class SellerController extends Controller
                 // If it's already a string path, use it directly
                 $validated['store_logo'] = $request->store_logo;
             }
-        
+
             if ($request->hasFile('store_banner')) {
                 $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $sellerProfile->id);
                 if ($bannerPath) {
@@ -1190,21 +1053,21 @@ class SellerController extends Controller
                 // If it's already a string path, use it directly
                 $validated['store_banner'] = $request->store_banner;
             }
-        
+
             // Update seller profile
             $sellerProfile->update($validated);
-        
+
             // Update status to pending for admin approval
             $sellerProfile->update(['status' => SellerProfile::STATUS_PENDING]);
-        
+
             Log::info('Seller onboarding completed for user: ' . $user->id . ', Profile ID: ' . $sellerProfile->id);
-        
+
             return response()->json([
                 'success' => true,
                 'message' => 'Seller onboarding completed successfully and submitted for approval',
                 'data' => $sellerProfile->fresh()
             ]);
-        
+
         } catch (\Exception $e) {
             Log::error('Failed to complete seller onboarding: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -1215,7 +1078,7 @@ class SellerController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Get seller onboarding status
      */
@@ -1223,39 +1086,1498 @@ class SellerController extends Controller
     {
         try {
             $user = $request->user();
+            $isSeller = $user->type === 'seller' || $user->hasRole('seller');
+
+            if (!$isSeller) {
+                return response()->json([
+                    'success' => true,
+                    'data' => ['is_seller' => false]
+                ]);
+            }
+
             $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-        
+
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => true,
                     'data' => [
+                        'is_seller' => true,
                         'has_profile' => false,
                         'onboarding_complete' => false,
-                        'current_step' => 'store-basic',
-                        'status' => 'not_started'
+                        'needs_onboarding' => true,
+                        'current_step' => 'store-basic'
                     ]
                 ]);
             }
-        
+
+            // Simplified step detection
+            $currentStep = 'store-basic';
+
+            if ($sellerProfile->store_name && $sellerProfile->business_type_id) {
+                $currentStep = 'business-details';
+            }
+
+            if ($sellerProfile->contact_email && $sellerProfile->contact_phone) {
+                $currentStep = 'address';
+            }
+
+            if ($sellerProfile->address && $sellerProfile->city && $sellerProfile->state) {
+                $currentStep = 'documents';
+            }
+
+            if ($sellerProfile->hasRequiredDocuments()) {
+                $currentStep = 'review-submit';
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => [
+                    'is_seller' => true,
                     'has_profile' => true,
                     'onboarding_complete' => $sellerProfile->isOnboardingComplete(),
-                    'current_step' => $sellerProfile->getOnboardingStep(),
-                    'status' => $sellerProfile->status,
-                    'profile' => $sellerProfile
+                    'needs_onboarding' => !$sellerProfile->isOnboardingComplete(),
+                    'current_step' => $currentStep,
+                    'profile_status' => $sellerProfile->status
                 ]
             ]);
-        
+
         } catch (\Exception $e) {
-            Log::error('Error getting onboarding status: ' . $e->getMessage());
+            Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to get status'], 500);
+        }
+    }
+
+    /**
+     * Check and redirect seller based on profile status
+     */
+    public function checkProfileStatus(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => true,
+                    'redirect_to' => '/seller/onboarding/store-basic',
+                    'message' => 'Seller profile not found. Redirect to onboarding.',
+                    'data' => [
+                        'has_profile' => false,
+                        'profile_status' => 'not_created'
+                    ]
+                ]);
+            }
+
+            // Check if profile is complete
+            if (!$sellerProfile->hasCompleteProfile()) {
+                $missingFields = $sellerProfile->getMissingFields();
+                $currentStep = $sellerProfile->getOnboardingStep();
+
+                return response()->json([
+                    'success' => true,
+                    'redirect_to' => "/seller/onboarding/{$currentStep}",
+                    'message' => 'Profile incomplete. Please complete missing information.',
+                    'data' => [
+                        'has_profile' => true,
+                        'profile_complete' => false,
+                        'missing_fields' => $missingFields,
+                        'current_step' => $currentStep,
+                        'profile_status' => $sellerProfile->status
+                    ]
+                ]);
+            }
+
+            // Check if required documents are uploaded
+            if (!$sellerProfile->hasRequiredDocuments()) {
+                $missingDocuments = $sellerProfile->getMissingDocuments();
+                return response()->json([
+                    'success' => true,
+                    'redirect_to' => '/seller/onboarding/documents',
+                    'message' => 'Documents required. Please upload required documents.',
+                    'data' => [
+                        'has_profile' => true,
+                        'profile_complete' => true,
+                        'documents_complete' => false,
+                        'missing_documents' => $missingDocuments,
+                        'profile_status' => $sellerProfile->status
+                    ]
+                ]);
+            }
+
+            // Check if documents are submitted for review
+            if (!$sellerProfile->documents_submitted) {
+                return response()->json([
+                    'success' => true,
+                    'redirect_to' => '/seller/onboarding/submit',
+                    'message' => 'Documents uploaded. Please review and submit for verification.',
+                    'data' => [
+                        'has_profile' => true,
+                        'profile_complete' => true,
+                        'documents_complete' => true,
+                        'documents_submitted' => false,
+                        'profile_status' => $sellerProfile->status
+                    ]
+                ]);
+            }
+
+            // Check if profile is verified
+            if (!$sellerProfile->isVerified()) {
+                return response()->json([
+                    'success' => true,
+                    'redirect_to' => '/seller/dashboard',
+                    'message' => 'Profile under review. You can view dashboard but cannot sell yet.',
+                    'data' => [
+                        'has_profile' => true,
+                        'profile_complete' => true,
+                        'documents_complete' => true,
+                        'documents_submitted' => true,
+                        'verified' => false,
+                        'verification_status' => $sellerProfile->verification_status,
+                        'profile_status' => $sellerProfile->status,
+                        'can_sell' => false
+                    ]
+                ]);
+            }
+
+            // Profile is complete and verified
+            return response()->json([
+                'success' => true,
+                'redirect_to' => '/seller/dashboard',
+                'message' => 'Profile complete and verified.',
+                'data' => [
+                    'has_profile' => true,
+                    'profile_complete' => true,
+                    'documents_complete' => true,
+                    'documents_submitted' => true,
+                    'verified' => true,
+                    'verified_at' => $sellerProfile->verified_at,
+                    'verification_status' => $sellerProfile->verification_status,
+                    'verification_level' => $sellerProfile->verification_level,
+                    'profile_status' => $sellerProfile->status,
+                    'can_sell' => true
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error checking profile status: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get onboarding status'
+                'message' => 'Failed to check profile status'
             ], 500);
         }
     }
+
+    /**
+     * Update store basic information
+     */
+    public function updateStoreBasic(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
+                'business_type_slug' => 'required|exists:business_types,slug',
+                'description' => 'nullable|string|max:2000',
+                'contact_email' => 'required|email|max:255',
+                'contact_phone' => 'required|string|max:20',
+                'store_logo' => 'nullable|string|max:500',
+                'store_banner' => 'nullable|string|max:500',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Get business type by slug
+            $businessType = BusinessType::where('slug', $validated['business_type_slug'])->first();
+
+            if (!$businessType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business type not found'
+                ], 422);
+            }
+
+            // Handle file uploads if files are sent
+            if ($request->hasFile('store_logo_file')) {
+                $logoPath = $this->uploadStoreLogo($request->file('store_logo_file'), $sellerProfile->id);
+                if ($logoPath) {
+                    $validated['store_logo'] = $logoPath;
+                }
+            }
+
+            if ($request->hasFile('store_banner_file')) {
+                $bannerPath = $this->uploadStoreBanner($request->file('store_banner_file'), $sellerProfile->id);
+                if ($bannerPath) {
+                    $validated['store_banner'] = $bannerPath;
+                }
+            }
+
+            // Generate store slug if store name changed
+            $storeSlug = $sellerProfile->store_slug;
+            if ($validated['store_name'] !== $sellerProfile->store_name) {
+                $storeSlug = SellerProfile::generateStoreSlug($validated['store_name']);
+            }
+
+            // Update seller profile - Use business_type_id
+            $sellerProfile->update([
+                'store_name' => $validated['store_name'],
+                'store_slug' => $storeSlug,
+                'business_type_id' => $businessType->id,
+                'business_type' => $businessType->slug,
+                'description' => $validated['description'] ?? null,
+                'contact_email' => $validated['contact_email'],
+                'contact_phone' => $validated['contact_phone'],
+                'store_logo' => $validated['store_logo'] ?? $sellerProfile->store_logo,
+                'store_banner' => $validated['store_banner'] ?? $sellerProfile->store_banner,
+                'status' => $sellerProfile->status === SellerProfile::STATUS_SETUP_PENDING
+                    ? SellerProfile::STATUS_PENDING
+                    : $sellerProfile->status,
+            ]);
+
+            // Load the business type relationship
+            $sellerProfile->load('businessType');
+
+            Log::info('Store basic info updated', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'business_type_id' => $businessType->id,
+                'store_name' => $validated['store_name']
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store basic information updated successfully',
+                'data' => [
+                    'seller_profile' => $sellerProfile,
+                    'business_type' => [
+                        'id' => $businessType->id,
+                        'slug' => $businessType->slug,
+                        'name' => $businessType->name,
+                        'description' => $businessType->description,
+                        'is_individual' => $businessType->isIndividualType(),
+                        'requires_registration' => $businessType->requires_registration,
+                        'requires_tax_document' => $businessType->requires_tax_document,
+                        'document_requirements' => $businessType->getDocumentRequirements()
+                    ]
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update store basic info: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update store basic information: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    // Update getDocumentRequirements method
+    public function getDocumentRequirements(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            if (!$sellerProfile->businessType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business type not found'
+                ], 404);
+            }
+
+            $businessType = $sellerProfile->businessType;
+
+            // Get document requirements from business type
+            $requirements = $businessType->getDocumentRequirements();
+
+            // Check which documents are already uploaded
+            $uploadedDocuments = [];
+            foreach ($requirements as $req) {
+                $field = $req['type'];
+                $uploadedDocuments[$field] = [
+                    'uploaded' => !empty($sellerProfile->$field),
+                    'url' => $sellerProfile->getDocumentUrl($field)
+                ];
+            }
+
+            // Get additional documents
+            $additionalDocuments = $sellerProfile->getAdditionalDocuments();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'business_type' => [
+                        'id' => $businessType->id,
+                        'slug' => $businessType->slug,
+                        'name' => $businessType->name,
+                    ],
+                    'is_individual' => $sellerProfile->isIndividual(),
+                    'requirements' => $requirements,
+                    'uploaded_documents' => $uploadedDocuments,
+                    'additional_documents' => $additionalDocuments,
+                    'missing_documents' => $sellerProfile->getMissingDocuments(),
+                    'documents_submitted' => $sellerProfile->documents_submitted,
+                    'document_status' => $sellerProfile->document_status,
+                    'business_type_info' => [
+                        'requires_registration' => $businessType->requires_registration,
+                        'requires_tax_document' => $businessType->requires_tax_document,
+                        'requires_business_certificate' => $businessType->requires_business_certificate,
+                        'description' => $businessType->description,
+                        'icon' => $businessType->icon,
+                        'color' => $businessType->color
+                    ]
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get document requirements: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get document requirements'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update business details
+     */
+    public function updateBusinessDetails(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Get business type requirements
+            $businessType = $sellerProfile->businessType;
+            $requiresRegistration = $businessType ? $businessType->requires_registration : false;
+            $requiresTaxDocument = $businessType ? $businessType->requires_tax_document : false;
+            $isIndividual = $businessType ? $businessType->isIndividualType() : true;
+
+            $validator = Validator::make($request->all(), [
+                'business_registration_number' => $requiresRegistration && !$isIndividual ? 'required|string|max:255' : 'nullable|string|max:255',
+                'tax_id' => $requiresTaxDocument && !$isIndividual ? 'required|string|max:255' : 'nullable|string|max:255',
+                'contact_email' => 'required|email|max:255',
+                'contact_phone' => 'required|string|max:20',
+                'website' => 'nullable|url|max:255',
+                'account_number' => 'nullable|string|max:255',
+                'social_facebook' => 'nullable|url|max:255',
+                'social_instagram' => 'nullable|url|max:255',
+                'social_twitter' => 'nullable|url|max:255',
+                'social_linkedin' => 'nullable|url|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            $sellerProfile->update($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Business details updated successfully',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update business details: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update business details'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update address information
+     */
+    public function updateAddress(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Get country options for validation
+            $countries = [
+                'Myanmar',
+                'Thailand',
+                'China',
+                'India',
+                'Bangladesh',
+                'Laos',
+                'Cambodia',
+                'Vietnam',
+                'Singapore',
+                'Malaysia',
+                'Indonesia',
+                'Philippines',
+                'Japan',
+                'South Korea'
+            ];
+
+            $validator = Validator::make($request->all(), [
+                'address' => 'required|string|max:500',
+                'city' => 'required|string|max:100',
+                'state' => 'required|string|max:100',
+                'country' => 'required|string|max:100|in:' . implode(',', $countries),
+                'postal_code' => 'nullable|string|max:20',
+                'location' => 'nullable|string|max:255',
+                'latitude' => 'nullable|numeric|between:-90,90',
+                'longitude' => 'nullable|numeric|between:-180,180',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Handle location from coordinates if provided
+            if (isset($validated['latitude']) && isset($validated['longitude'])) {
+                if (!isset($validated['location'])) {
+                    $validated['location'] = $validated['latitude'] . ',' . $validated['longitude'];
+                }
+            }
+
+            // Prepare update data
+            $updateData = [
+                'address' => $validated['address'],
+                'city' => $validated['city'],
+                'state' => $validated['state'],
+                'country' => $validated['country'],
+                'postal_code' => $validated['postal_code'] ?? null,
+                'location' => $validated['location'] ?? null,
+            ];
+
+            // Update the seller profile
+            $sellerProfile->update($updateData);
+
+            // Update status if still in pending state
+            if ($sellerProfile->status === SellerProfile::STATUS_SETUP_PENDING) {
+                $sellerProfile->update(['status' => SellerProfile::STATUS_PENDING]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Address information updated successfully',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update address info: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update address information: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function uploadDocument(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can upload documents'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'document_type' => 'required|in:business_registration_document, tax_registration_document,identity_document_front,identity_document_back,    additional_document',
+                'document' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $documentType = $request->document_type;
+            $file = $request->file('document');
+
+            // Generate unique filename
+            $filename = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+            $path = "sellers/{$sellerProfile->id}/documents";
+
+            // Store file
+            $filePath = $file->storeAs($path, $filename, 'public');
+
+            // Update seller profile with document path
+            if ($documentType === 'additional_document') {
+                // Handle additional documents array
+                $additionalDocs = $sellerProfile->additional_documents ?? [];
+                $additionalDocs[] = [
+                    'name' => $file->getClientOriginalName(),
+                    'path' => $filePath,
+                    'type' => $file->getMimeType(),
+                    'uploaded_at' => now()->toISOString()
+                ];
+                $sellerProfile->additional_documents = $additionalDocs;
+            } else {
+                $sellerProfile->$documentType = $filePath;
+            }
+
+            $sellerProfile->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document uploaded successfully',
+                'data' => [
+                    'url' => Storage::url($filePath),
+                    'type' => $documentType
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Document upload failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload document'
+            ], 500);
+        }
+    }
+
+    public function getOnboardingData(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'store_basic' => [
+                        'store_name' => $sellerProfile->store_name,
+                        'business_type_slug' => $sellerProfile->business_type,
+                        'business_type_id' => $sellerProfile->business_type_id,
+                        'contact_email' => $sellerProfile->contact_email,
+                        'contact_phone' => $sellerProfile->contact_phone,
+                        'description' => $sellerProfile->description,
+                        'store_logo' => $sellerProfile->store_logo,
+                        'store_banner' => $sellerProfile->store_banner,
+                    ],
+                    'business_details' => [
+                        'business_registration_number' => $sellerProfile->business_registration_number,
+                        'tax_id' => $sellerProfile->tax_id,
+                        'website' => $sellerProfile->website,
+                        'account_number' => $sellerProfile->account_number,
+                        // social fields...
+                    ],
+                    'address' => [
+                        'address' => $sellerProfile->address,
+                        'city' => $sellerProfile->city,
+                        'state' => $sellerProfile->state,
+                        'country' => $sellerProfile->country,
+                        'postal_code' => $sellerProfile->postal_code,
+                    ],
+                    'documents' => $sellerProfile->getUploadedDocuments()
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get onboarding data: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to get data'], 500);
+        }
+    }
+
+    public function submitOnboarding(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json(['success' => false, 'message' => 'Profile not found'], 404);
+            }
+
+            // Mark as complete
+            $sellerProfile->update([
+                'onboarding_completed_at' => now(),
+                'status' => SellerProfile::STATUS_PENDING,
+                'verification_status' => SellerProfile::VERIFICATION_PENDING
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Onboarding submitted successfully',
+                'data' => $sellerProfile
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to submit onboarding: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Submission failed'], 500);
+        }
+    }
+
+    /**
+     * Get uploaded documents
+     */
+    public function getUploadedDocuments(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $documents = [];
+
+            // Get regular document fields
+            $documentFields = [
+                'business_registration_document',
+                'tax_registration_document',
+                'identity_document_front',
+                'identity_document_back'
+            ];
+
+            foreach ($documentFields as $field) {
+                if (!empty($sellerProfile->$field)) {
+                    $documents[$field] = [
+                        'name' => basename($sellerProfile->$field),
+                        'url' => $sellerProfile->getDocumentUrl($field),
+                        'uploaded_at' => $sellerProfile->updated_at
+                    ];
+                }
+            }
+
+            // Get additional documents
+            $additionalDocuments = $sellerProfile->getAdditionalDocuments();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'documents' => $documents,
+                    'additional_documents' => $additionalDocuments,
+                    'documents_submitted' => $sellerProfile->documents_submitted,
+                    'document_status' => $sellerProfile->document_status,
+                    'document_rejection_reason' => $sellerProfile->document_rejection_reason
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get uploaded documents: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get uploaded documents'
+            ], 500);
+        }
+    }
+
+    /**
+     * Mark documents as complete
+     */
+    public function markDocumentsComplete(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Check if required documents are uploaded
+            if (!$sellerProfile->hasRequiredDocuments()) {
+                $missing = $sellerProfile->getMissingDocuments();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please upload all required documents',
+                    'missing_documents' => $missing
+                ], 422);
+            }
+
+            // Mark documents as submitted
+            $sellerProfile->update([
+                'documents_submitted' => true,
+                'documents_submitted_at' => now(),
+                'document_status' => SellerProfile::DOCUMENT_PENDING,
+                'verification_status' => SellerProfile::VERIFICATION_UNDER_REVIEW,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Documents marked as complete',
+                'data' => $sellerProfile
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to mark documents complete: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to mark documents as complete'
+            ], 500);
+        }
+    }
+
+    /**
+     * Submit final onboarding
+     */
+    // public function submitOnboarding(Request $request)
+    // {
+    //     try {
+    //         $user = $request->user();
+    //         $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+    //         if (!$sellerProfile) {
+    //             return response()->json([
+    //                 'success' => false,
+    //                 'message' => 'Seller profile not found'
+    //             ], 404);
+    //         }
+
+    //         // Validate profile is complete
+    //         if (!$sellerProfile->hasCompleteProfile()) {
+    //             $missing = $sellerProfile->getMissingFields();
+    //             return response()->json([
+    //                 'success' => false,
+    //                 'message' => 'Profile is incomplete',
+    //                 'missing_fields' => $missing
+    //             ], 422);
+    //         }
+
+    //         // Mark onboarding as complete
+    //         $sellerProfile->update([
+    //             'onboarding_completed_at' => now(),
+    //             'status' => SellerProfile::STATUS_PENDING,
+    //             'verification_status' => SellerProfile::VERIFICATION_PENDING,
+    //         ]);
+
+    //         // Log onboarding completion
+    //         Log::info('Seller onboarding completed', [
+    //             'user_id' => $user->id,
+    //             'seller_profile_id' => $sellerProfile->id,
+    //             'store_name' => $sellerProfile->store_name
+    //         ]);
+
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Onboarding submitted successfully. Your store is now under review.',
+    //             'data' => $sellerProfile,
+    //             'next_steps' => [
+    //                 'review_time' => '1-3 business days',
+    //                 'notification' => 'You will receive an email when your store is approved',
+    //                 'dashboard_access' => 'You can access your seller dashboard'
+    //             ]
+    //         ]);
+
+    //     } catch (\Exception $e) {
+    //         Log::error('Failed to submit onboarding: ' . $e->getMessage());
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Failed to submit onboarding'
+    //         ], 500);
+    //     }
+    // }
+
+    /**
+     * Delete a document
+     */
+    public function deleteDocument(Request $request, $documentId)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Check if document exists
+            $documentFields = [
+                'business_registration_document',
+                'tax_registration_document',
+                'identity_document_front',
+                'identity_document_back'
+            ];
+
+            if (in_array($documentId, $documentFields)) {
+                // Delete regular document
+                if (!empty($sellerProfile->$documentId)) {
+                    Storage::disk('public')->delete($sellerProfile->$documentId);
+                    $sellerProfile->update([$documentId => null]);
+                }
+            } else {
+                // Delete from additional documents
+                $additionalDocs = $sellerProfile->additional_documents ?? [];
+                if (isset($additionalDocs[$documentId])) {
+                    if (isset($additionalDocs[$documentId]['path'])) {
+                        Storage::disk('public')->delete($additionalDocs[$documentId]['path']);
+                    }
+                    unset($additionalDocs[$documentId]);
+                    $sellerProfile->additional_documents = array_values($additionalDocs);
+                    $sellerProfile->save();
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to delete document: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete document'
+            ], 500);
+        }
+    }
+
+    /**
+     * Complete onboarding with documents
+     */
+    public function completeOnboardingWithDocuments(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Check if all required documents are uploaded
+            if (!$sellerProfile->hasRequiredDocuments()) {
+                $missingDocs = $sellerProfile->getMissingDocuments();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please upload all required documents',
+                    'missing_documents' => $missingDocs
+                ], 422);
+            }
+
+            // Check if profile is complete
+            if (!$sellerProfile->hasCompleteProfile()) {
+                $missingFields = $sellerProfile->getMissingFields();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please complete all required fields',
+                    'missing_fields' => $missingFields
+                ], 422);
+            }
+
+            // Mark documents as submitted
+            $sellerProfile->markDocumentsSubmitted();
+
+            // Mark onboarding as complete
+            $sellerProfile->markOnboardingComplete();
+
+            // Log the submission
+            Log::info('Seller onboarding completed with documents', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'business_type' => $sellerProfile->business_type,
+                'verification_status' => $sellerProfile->verification_status
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Onboarding completed successfully. Your application is under review.',
+                'data' => [
+                    'seller_profile' => $sellerProfile->fresh(),
+                    'estimated_review_time' => '1-3 business days',
+                    'next_steps' => 'Our team will review your documents and notify you via email.',
+                    'verification_status' => $sellerProfile->verification_status,
+                    'document_status' => $sellerProfile->document_status
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to complete onboarding with documents: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to complete onboarding: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get verification status
+     */
+    public function getVerificationStatus(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $verificationHistory = DB::table('verification_logs')
+                ->where('seller_profile_id', $sellerProfile->id)
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'verification_status' => $sellerProfile->verification_status,
+                    'verification_level' => $sellerProfile->verification_level,
+                    'document_status' => $sellerProfile->document_status,
+                    'status' => $sellerProfile->status,
+                    'verified_at' => $sellerProfile->verified_at,
+                    'verified_by' => $sellerProfile->verified_by,
+                    'verification_notes' => $sellerProfile->verification_notes,
+                    'document_rejection_reason' => $sellerProfile->document_rejection_reason,
+                    'documents_submitted_at' => $sellerProfile->documents_submitted_at,
+                    'onboarding_completed_at' => $sellerProfile->onboarding_completed_at,
+                    'history' => $verificationHistory,
+                    'has_verification_badge' => $sellerProfile->hasVerificationBadge(),
+                    'badge_type' => $sellerProfile->badge_type,
+                    'badge_expires_at' => $sellerProfile->badge_expires_at
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get verification status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get verification status'
+            ], 500);
+        }
+    }
+
+
+    /**
+     * Get verification history
+     */
+    public function getVerificationHistory(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $history = DB::table('verification_logs')
+                ->where('seller_profile_id', $sellerProfile->id)
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($log) {
+                    return [
+                        'action' => $log->action,
+                        'notes' => $log->notes,
+                        'performed_by' => $log->performed_by,
+                        'created_at' => $log->created_at,
+                        'previous_status' => $log->previous_status,
+                        'new_status' => $log->new_status
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => $history
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get verification history: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get verification history'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get sellers pending verification (Admin)
+     */
+    public function getPendingVerification(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can access this endpoint'
+                ], 403);
+            }
+
+            $perPage = $request->input('per_page', 15);
+
+            $sellers = SellerProfile::pendingVerification()
+                ->with(['user:id,name,email,phone'])
+                ->orderBy('onboarding_completed_at', 'desc')
+                ->paginate($perPage);
+
+            // Add document URLs
+            $sellers->getCollection()->transform(function ($seller) {
+                $sellerData = $seller->toArray();
+
+                // Get document URLs
+                $documents = [];
+                $documentFields = [
+                    'business_registration_document',
+                    'tax_registration_document',
+                    'identity_document_front',
+                    'identity_document_back'
+                ];
+
+                foreach ($documentFields as $field) {
+                    if (!empty($seller->$field)) {
+                        $documents[$field] = $seller->getDocumentUrl($field);
+                    }
+                }
+
+                $sellerData['documents'] = $documents;
+                $sellerData['additional_documents'] = $seller->getAdditionalDocuments();
+
+                return $sellerData;
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $sellers,
+                'meta' => [
+                    'current_page' => $sellers->currentPage(),
+                    'per_page' => $sellers->perPage(),
+                    'total' => $sellers->total(),
+                    'last_page' => $sellers->lastPage(),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get pending verification: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get pending verification'
+            ], 500);
+        }
+    }
+
+    /**
+     * Verify seller (Admin)
+     */
+    public function verifySeller(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+
+            if ($admin->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can verify sellers'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::findOrFail($id);
+
+            // Check if profile is complete
+            if (!$sellerProfile->hasCompleteProfile()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot verify seller with incomplete profile',
+                    'missing_fields' => $sellerProfile->getMissingFields()
+                ], 422);
+            }
+
+            // Check if required documents are uploaded
+            if (!$sellerProfile->hasRequiredDocuments()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot verify seller with missing documents',
+                    'missing_documents' => $sellerProfile->getMissingDocuments()
+                ], 422);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'verification_level' => 'required|in:basic,verified,premium',
+                'badge_type' => 'nullable|in:verified,premium,featured,top_rated',
+                'notes' => 'nullable|string|max:1000',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Verify seller
+            $sellerProfile->verify(
+                $admin->id,
+                $validated['verification_level'],
+                $validated['badge_type'] ?? 'verified',
+                $validated['notes'] ?? null
+            );
+
+            // Log verification
+            $this->logVerificationAction(
+                $sellerProfile->id,
+                $admin->id,
+                'verified',
+                'Seller verified by admin',
+                $validated['notes'] ?? null
+            );
+
+            // Send notification to seller (you can implement this)
+            // $sellerProfile->user->notify(new SellerVerifiedNotification($sellerProfile));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller verified successfully',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to verify seller: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to verify seller: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Reject verification (Admin)
+     */
+    public function rejectVerification(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+
+            if ($admin->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can reject verification'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::findOrFail($id);
+
+            $validator = Validator::make($request->all(), [
+                'reason' => 'required|string|max:1000',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Reject verification
+            $sellerProfile->rejectVerification($validated['reason']);
+
+            // Log rejection
+            $this->logVerificationAction(
+                $sellerProfile->id,
+                $admin->id,
+                'rejected',
+                'Seller verification rejected',
+                $validated['reason']
+            );
+
+            // Send notification to seller (you can implement this)
+            // $sellerProfile->user->notify(new SellerRejectedNotification($sellerProfile, $validated['reason']));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller verification rejected',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to reject verification: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to reject verification: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get seller documents (Admin)
+     */
+    public function getSellerDocuments(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+
+            if ($admin->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can access seller documents'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::findOrFail($id);
+
+            $documents = [];
+
+            // Get regular document fields
+            $documentFields = [
+                'business_registration_document',
+                'tax_registration_document',
+                'identity_document_front',
+                'identity_document_back'
+            ];
+
+            foreach ($documentFields as $field) {
+                if (!empty($sellerProfile->$field)) {
+                    $documents[$field] = [
+                        'name' => basename($sellerProfile->$field),
+                        'url' => $sellerProfile->getDocumentUrl($field),
+                        'type' => $field
+                    ];
+                }
+            }
+
+            // Get additional documents
+            $additionalDocuments = $sellerProfile->getAdditionalDocuments();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'seller' => [
+                        'id' => $sellerProfile->id,
+                        'store_name' => $sellerProfile->store_name,
+                        'business_type' => $sellerProfile->business_type,
+                        'user_id' => $sellerProfile->user_id,
+                        'status' => $sellerProfile->status,
+                        'verification_status' => $sellerProfile->verification_status
+                    ],
+                    'documents' => $documents,
+                    'additional_documents' => $additionalDocuments,
+                    'missing_documents' => $sellerProfile->getMissingDocuments()
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get seller documents: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get seller documents'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update verification status (Admin)
+     */
+    public function updateVerificationStatus(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+
+            if ($admin->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can update verification status'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::findOrFail($id);
+
+            $validator = Validator::make($request->all(), [
+                'verification_status' => 'required|in:pending,under_review,verified,rejected',
+                'document_status' => 'required|in:not_submitted,pending,under_review,approved,rejected',
+                'notes' => 'nullable|string|max:1000',
+                'reason' => 'nullable|string|max:1000',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            $oldStatus = $sellerProfile->verification_status;
+            $oldDocStatus = $sellerProfile->document_status;
+
+            $sellerProfile->update([
+                'verification_status' => $validated['verification_status'],
+                'document_status' => $validated['document_status'],
+                'verification_notes' => $validated['notes'] ?? null,
+                'document_rejection_reason' => $validated['document_status'] === 'rejected' ? ($validated['reason'] ?? null) : null,
+            ]);
+
+            // Log status change
+            $this->logVerificationAction(
+                $sellerProfile->id,
+                $admin->id,
+                'status_updated',
+                'Verification status updated',
+                $validated['notes'] ?? null,
+                $oldStatus,
+                $validated['verification_status']
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verification status updated successfully',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update verification status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update verification status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
 
     /**
      * Get comprehensive sales summary with delivery stats (FIXED VERSION)
@@ -1529,8 +2851,14 @@ class SellerController extends Controller
             $recentOrders = Order::where('seller_id', $user->id)
                 ->with(['buyer:id,name,email', 'items.product:id,name'])
                 ->select([
-                    'id', 'order_number', 'status', 'total_amount', 'created_at',
-                    'buyer_id', 'payment_status', 'payment_method'
+                    'id',
+                    'order_number',
+                    'status',
+                    'total_amount',
+                    'created_at',
+                    'buyer_id',
+                    'payment_status',
+                    'payment_method'
                 ])
                 ->orderBy('created_at', 'desc')
                 ->limit($limit)
@@ -1582,7 +2910,7 @@ class SellerController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
@@ -1617,7 +2945,7 @@ class SellerController extends Controller
             $formattedProducts = $topProducts->map(function ($product) {
                 $images = json_decode($product->images, true) ?? [];
                 $primaryImage = collect($images)->firstWhere('is_primary', true) ?? $images[0] ?? null;
-                
+
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
@@ -1652,7 +2980,7 @@ class SellerController extends Controller
     // {
     //     try {
     //         $user = $request->user();
-            
+
     //         if (!isset($user->type) || $user->type !== 'seller') {
     //             return response()->json([
     //                 'success' => false,
@@ -1719,7 +3047,7 @@ class SellerController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
@@ -1795,64 +3123,67 @@ class SellerController extends Controller
      */
     private function calculatePerformance($totalSold)
     {
-        if ($totalSold >= 100) return 'excellent';
-        if ($totalSold >= 50) return 'good';
-        if ($totalSold >= 20) return 'average';
+        if ($totalSold >= 100)
+            return 'excellent';
+        if ($totalSold >= 50)
+            return 'good';
+        if ($totalSold >= 20)
+            return 'average';
         return 'low';
     }
 
-/**
- * Helper method to get orders by status
- */
-protected function getOrdersByStatus($orders)
-{
-    return $orders->groupBy('status')
-        ->map(function ($statusOrders, $status) use ($orders) {
-            return [
-                'count' => $statusOrders->count(),
-                'revenue' => $statusOrders->sum('total_amount'),
-                'percentage' => $orders->count() > 0 ? 
-                    round(($statusOrders->count() / $orders->count()) * 100, 2) : 0
+    /**
+     * Helper method to get orders by status
+     */
+    protected function getOrdersByStatus($orders)
+    {
+        return $orders->groupBy('status')
+            ->map(function ($statusOrders, $status) use ($orders) {
+                return [
+                    'count' => $statusOrders->count(),
+                    'revenue' => $statusOrders->sum('total_amount'),
+                    'percentage' => $orders->count() > 0 ?
+                        round(($statusOrders->count() / $orders->count()) * 100, 2) : 0
+                ];
+            });
+    }
+
+    /**
+     * Get sales by day with role-based filtering
+     */
+    protected function getSalesByDay($start, $end, $user)
+    {
+        $salesQuery = Order::whereBetween('created_at', [$start, $end])
+            ->where('status', 'delivered');
+
+        // Role-based filtering
+        if (isset($user->type) && $user->type === 'seller') {
+            $salesQuery->where('seller_id', $user->id);
+        } elseif (isset($user->type) && $user->type === 'buyer') {
+            $salesQuery->where('buyer_id', $user->id);
+        }
+
+        $sales = $salesQuery->selectRaw('DATE(created_at) as date, count(*) as count, sum(total_amount) as revenue')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
+
+        // Fill missing days with zero values
+        $results = [];
+        $current = $start->copy();
+        while ($current <= $end) {
+            $date = $current->format('Y-m-d');
+            $sale = $sales->firstWhere('date', $date);
+
+            $results[] = [
+                'date' => $date,
+                'count' => $sale ? $sale->count : 0,
+                'revenue' => $sale ? floatval($sale->revenue) : 0
             ];
-        });
-}
 
-/**
- * Get sales by day with role-based filtering
- */
-protected function getSalesByDay($start, $end, $user)
-{
-    $salesQuery = Order::whereBetween('created_at', [$start, $end])
-        ->where('status', 'delivered');
+            $current->addDay();
+        }
 
-    // Role-based filtering
-    if (isset($user->type) && $user->type === 'seller') {
-        $salesQuery->where('seller_id', $user->id);
-    } elseif (isset($user->type) && $user->type === 'buyer') {
-        $salesQuery->where('buyer_id', $user->id);
+        return $results;
     }
-
-    $sales = $salesQuery->selectRaw('DATE(created_at) as date, count(*) as count, sum(total_amount) as revenue')
-        ->groupBy('date')
-        ->orderBy('date')
-        ->get();
-
-    // Fill missing days with zero values
-    $results = [];
-    $current = $start->copy();
-    while ($current <= $end) {
-        $date = $current->format('Y-m-d');
-        $sale = $sales->firstWhere('date', $date);
-        
-        $results[] = [
-            'date' => $date,
-            'count' => $sale ? $sale->count : 0,
-            'revenue' => $sale ? floatval($sale->revenue) : 0
-        ];
-        
-        $current->addDay();
-    }
-
-    return $results;
-}
 }
