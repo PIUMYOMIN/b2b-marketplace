@@ -85,7 +85,7 @@ Route::group([
 
         Route::prefix('seller')->middleware('role:seller')->group(function () {
 
-            Route::prefix('seller/onboarding')->middleware(['auth:sanctum', 'role:seller'])->group(function () {
+            Route::prefix('/onboarding')->middleware(['auth:sanctum', 'role:seller'])->group(function () {
                 // Onboarding Status
                 Route::get('/status', [SellerController::class, 'getOnboardingStatus']);
                 Route::get('/check-status', [SellerController::class, 'checkProfileStatus']);

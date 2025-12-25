@@ -1089,10 +1089,7 @@ class SellerController extends Controller
             $isSeller = $user->type === 'seller' || $user->hasRole('seller');
 
             if (!$isSeller) {
-                return response()->json([
-                    'success' => true,
-                    'data' => ['is_seller' => false]
-                ]);
+                return response()->json(['success' => true, 'data' => ['is_seller' => false]]);
             }
 
             $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
@@ -1105,38 +1102,78 @@ class SellerController extends Controller
                         'has_profile' => false,
                         'onboarding_complete' => false,
                         'needs_onboarding' => true,
-                        'current_step' => 'store-basic'
+                        'current_step' => 'store-basic',
+                        'progress' => 0
                     ]
                 ]);
             }
 
-            // Simplified step detection
+            // Better step detection
+            $stepsCompleted = [];
+
+            // Check store-basic
+            if (
+                !empty($sellerProfile->store_name) &&
+                !empty($sellerProfile->business_type_id) &&
+                !empty($sellerProfile->contact_email) &&
+                !empty($sellerProfile->contact_phone)
+            ) {
+                $stepsCompleted[] = 'store-basic';
+            }
+
+            // Check business-details
+            $businessType = $sellerProfile->businessType;
+            $businessDetailsComplete = true;
+            if ($businessType) {
+                if ($businessType->requires_registration && empty($sellerProfile->business_registration_number)) {
+                    $businessDetailsComplete = false;
+                }
+                if ($businessType->requires_tax_document && empty($sellerProfile->tax_id)) {
+                    $businessDetailsComplete = false;
+                }
+            }
+            if ($businessDetailsComplete) {
+                $stepsCompleted[] = 'business-details';
+            }
+
+            // Check address
+            if (
+                !empty($sellerProfile->address) &&
+                !empty($sellerProfile->city) &&
+                !empty($sellerProfile->state) &&
+                !empty($sellerProfile->country)
+            ) {
+                $stepsCompleted[] = 'address';
+            }
+
+            // Check documents
+            if ($sellerProfile->documents_submitted) {
+                $stepsCompleted[] = 'documents';
+            }
+
+            // Determine current step
+            $stepOrder = ['store-basic', 'business-details', 'address', 'documents', 'review-submit'];
             $currentStep = 'store-basic';
 
-            if ($sellerProfile->store_name && $sellerProfile->business_type_id) {
-                $currentStep = 'business-details';
+            foreach ($stepOrder as $step) {
+                if (!in_array($step, $stepsCompleted)) {
+                    $currentStep = $step;
+                    break;
+                }
             }
 
-            if ($sellerProfile->contact_email && $sellerProfile->contact_phone) {
-                $currentStep = 'address';
-            }
-
-            if ($sellerProfile->address && $sellerProfile->city && $sellerProfile->state) {
-                $currentStep = 'documents';
-            }
-
-            if ($sellerProfile->hasRequiredDocuments()) {
-                $currentStep = 'review-submit';
-            }
+            $progress = (count($stepsCompleted) / count($stepOrder)) * 100;
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'is_seller' => true,
                     'has_profile' => true,
-                    'onboarding_complete' => $sellerProfile->isOnboardingComplete(),
-                    'needs_onboarding' => !$sellerProfile->isOnboardingComplete(),
+                    'onboarding_complete' => $sellerProfile->onboarding_completed_at !== null,
+                    'needs_onboarding' => $sellerProfile->onboarding_completed_at === null,
                     'current_step' => $currentStep,
+                    'completed_steps' => $stepsCompleted,
+                    'progress' => $progress,
                     'profile_status' => $sellerProfile->status
                 ]
             ]);
@@ -1396,91 +1433,6 @@ class SellerController extends Controller
         }
     }
 
-
-    // Update getDocumentRequirements method
-    public function getDocumentRequirements(Request $request)
-    {
-        try {
-            $user = $request->user();
-
-            if ($user->type !== 'seller') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'User is not a seller'
-                ], 403);
-            }
-
-            $sellerProfile = SellerProfile::where('user_id', $user->id)
-                ->with('businessType')
-                ->first();
-
-            if (!$sellerProfile) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
-            }
-
-            if (!$sellerProfile->businessType) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Business type not found'
-                ], 404);
-            }
-
-            $businessType = $sellerProfile->businessType;
-
-            // Get document requirements from business type
-            $requirements = $businessType->getDocumentRequirements();
-
-            // Check which documents are already uploaded
-            $uploadedDocuments = [];
-            foreach ($requirements as $req) {
-                $field = $req['type'];
-                $uploadedDocuments[$field] = [
-                    'uploaded' => !empty($sellerProfile->$field),
-                    'url' => $sellerProfile->getDocumentUrl($field)
-                ];
-            }
-
-            // Get additional documents
-            $additionalDocuments = $sellerProfile->getAdditionalDocuments();
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'business_type' => [
-                        'id' => $businessType->id,
-                        'slug' => $businessType->slug,
-                        'name' => $businessType->name,
-                    ],
-                    'is_individual' => $sellerProfile->isIndividual(),
-                    'requirements' => $requirements,
-                    'uploaded_documents' => $uploadedDocuments,
-                    'additional_documents' => $additionalDocuments,
-                    'missing_documents' => $sellerProfile->getMissingDocuments(),
-                    'documents_submitted' => $sellerProfile->documents_submitted,
-                    'document_status' => $sellerProfile->document_status,
-                    'business_type_info' => [
-                        'requires_registration' => $businessType->requires_registration,
-                        'requires_tax_document' => $businessType->requires_tax_document,
-                        'requires_business_certificate' => $businessType->requires_business_certificate,
-                        'description' => $businessType->description,
-                        'icon' => $businessType->icon,
-                        'color' => $businessType->color
-                    ]
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to get document requirements: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to get document requirements'
-            ], 500);
-        }
-    }
-
     /**
      * Update business details
      */
@@ -1499,24 +1451,31 @@ class SellerController extends Controller
                 ], 404);
             }
 
-            // Get business type requirements
-            $businessType = $sellerProfile->businessType;
-            $requiresRegistration = $businessType ? $businessType->requires_registration : false;
-            $requiresTaxDocument = $businessType ? $businessType->requires_tax_document : false;
-            $isIndividual = $businessType ? $businessType->isIndividualType() : true;
-
-            $validator = Validator::make($request->all(), [
-                'business_registration_number' => $requiresRegistration && !$isIndividual ? 'required|string|max:255' : 'nullable|string|max:255',
-                'tax_id' => $requiresTaxDocument && !$isIndividual ? 'required|string|max:255' : 'nullable|string|max:255',
-                'contact_email' => 'required|email|max:255',
-                'contact_phone' => 'required|string|max:20',
+            // Build validation rules dynamically
+            $rules = [
                 'website' => 'nullable|url|max:255',
                 'account_number' => 'nullable|string|max:255',
                 'social_facebook' => 'nullable|url|max:255',
                 'social_instagram' => 'nullable|url|max:255',
                 'social_twitter' => 'nullable|url|max:255',
                 'social_linkedin' => 'nullable|url|max:255',
-            ]);
+            ];
+
+            // Add conditional rules
+            $businessType = $sellerProfile->businessType;
+            if ($businessType && !$businessType->isIndividualType()) {
+                if ($businessType->requires_registration) {
+                    $rules['business_registration_number'] = 'required|string|max:255';
+                }
+                if ($businessType->requires_tax_document) {
+                    $rules['tax_id'] = 'required|string|max:255';
+                }
+            } else {
+                $rules['business_registration_number'] = 'nullable|string|max:255';
+                $rules['tax_id'] = 'nullable|string|max:255';
+            }
+
+            $validator = Validator::make($request->all(), $rules);
 
             if ($validator->fails()) {
                 return response()->json([
@@ -1526,12 +1485,12 @@ class SellerController extends Controller
             }
 
             $validated = $validator->validated();
-
             $sellerProfile->update($validated);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Business details updated successfully',
+                'next_step' => 'address',  // Explicit next step
                 'data' => $sellerProfile->fresh()
             ]);
 
@@ -1539,7 +1498,7 @@ class SellerController extends Controller
             Log::error('Failed to update business details: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update business details'
+                'message' => 'Failed to update business details: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -1639,6 +1598,9 @@ class SellerController extends Controller
         }
     }
 
+    /**
+     * Upload document with business type validation
+     */
     public function uploadDocument(Request $request)
     {
         try {
@@ -1651,7 +1613,9 @@ class SellerController extends Controller
                 ], 403);
             }
 
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
 
             if (!$sellerProfile) {
                 return response()->json([
@@ -1660,9 +1624,22 @@ class SellerController extends Controller
                 ], 404);
             }
 
+            // Get business type requirements
+            $businessType = $sellerProfile->businessType;
+
+            if (!$businessType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business type not found. Please complete store basic information first.'
+                ], 422);
+            }
+
+            // Get allowed document types for this business type
+            $allowedTypes = $this->getAllowedDocumentTypes($businessType);
+
             $validator = Validator::make($request->all(), [
-                'document_type' => 'required|in:business_registration_document, tax_registration_document,identity_document_front,identity_document_back,    additional_document',
-                'document' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120'
+                'document_type' => ['required', 'string', 'in:' . implode(',', $allowedTypes)],
+                'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120'
             ]);
 
             if ($validator->fails()) {
@@ -1675,49 +1652,364 @@ class SellerController extends Controller
             $documentType = $request->document_type;
             $file = $request->file('document');
 
+            // Validate file against specific requirements
+            $validationError = $this->validateDocumentFile($file, $documentType, $businessType);
+            if ($validationError) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validationError
+                ], 422);
+            }
+
             // Generate unique filename
-            $filename = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
-            $path = "sellers/{$sellerProfile->id}/documents";
+            $timestamp = time();
+            $random = Str::random(8);
+            $extension = $file->getClientOriginalExtension();
+            $filename = "{$documentType}_{$timestamp}_{$random}.{$extension}";
+
+            // Create organized path structure
+            $path = "sellers/{$sellerProfile->id}/documents/{$documentType}";
 
             // Store file
             $filePath = $file->storeAs($path, $filename, 'public');
 
             // Update seller profile with document path
-            if ($documentType === 'additional_document') {
+            if ($documentType === 'additional_documents') {
                 // Handle additional documents array
                 $additionalDocs = $sellerProfile->additional_documents ?? [];
                 $additionalDocs[] = [
                     'name' => $file->getClientOriginalName(),
                     'path' => $filePath,
                     'type' => $file->getMimeType(),
-                    'uploaded_at' => now()->toISOString()
+                    'size' => $file->getSize(),
+                    'uploaded_at' => now()->toISOString(),
+                    'verified' => false
                 ];
                 $sellerProfile->additional_documents = $additionalDocs;
             } else {
+                // Delete old file if exists
+                if (!empty($sellerProfile->$documentType)) {
+                    Storage::disk('public')->delete($sellerProfile->$documentType);
+                }
                 $sellerProfile->$documentType = $filePath;
             }
 
             $sellerProfile->save();
 
+            // Log the upload
+            Log::info('Document uploaded', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'document_type' => $documentType,
+                'business_type' => $businessType->slug,
+                'file_path' => $filePath
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Document uploaded successfully',
                 'data' => [
+                    'type' => $documentType,
                     'url' => Storage::url($filePath),
-                    'type' => $documentType
+                    'path' => $filePath,
+                    'uploaded_at' => now()->toISOString()
                 ]
             ]);
 
         } catch (\Exception $e) {
             Log::error('Document upload failed: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to upload document'
+                'message' => 'Failed to upload document: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function getOnboardingData(Request $request)
+    /**
+     * Get allowed document types based on business type
+     */
+    private function getAllowedDocumentTypes($businessType)
+    {
+        $allowedTypes = [];
+
+        // Identity documents are always required for all business types
+        $allowedTypes[] = 'identity_document_front';
+        $allowedTypes[] = 'identity_document_back';
+
+        // Business registration document for registered businesses
+        if ($businessType->requires_registration) {
+            $allowedTypes[] = 'business_registration_document';
+        }
+
+        // Tax document for businesses that need it
+        if ($businessType->requires_tax_document) {
+            $allowedTypes[] = 'tax_registration_document';
+        }
+
+        // Business certificate for specific business types
+        if ($businessType->requires_business_certificate) {
+            $allowedTypes[] = 'business_certificate';
+        }
+
+        // Additional documents are always allowed
+        $allowedTypes[] = 'additional_documents';
+
+        return array_unique($allowedTypes);
+    }
+
+    /**
+     * Validate document file based on type and business requirements
+     */
+    private function validateDocumentFile($file, $documentType, $businessType)
+    {
+        // File type validation
+        $allowedMimes = [
+            'pdf' => 'application/pdf',
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png'
+        ];
+
+        $mimeType = $file->getMimeType();
+        $extension = strtolower($file->getClientOriginalExtension());
+
+        if (!in_array($mimeType, $allowedMimes) || !array_key_exists($extension, $allowedMimes)) {
+            return 'Invalid file type. Only PDF, JPG, JPEG, PNG files are allowed.';
+        }
+
+        // File size validation
+        $maxSize = 5 * 1024 * 1024; // 5MB in bytes
+
+        // Stricter size limits for identity documents
+        $identityDocTypes = ['identity_document_front', 'identity_document_back'];
+        if (in_array($documentType, $identityDocTypes)) {
+            $maxSize = 2 * 1024 * 1024; // 2MB for identity documents
+        }
+
+        if ($file->getSize() > $maxSize) {
+            $maxSizeMB = $maxSize / (1024 * 1024);
+            return "File size exceeds maximum limit of {$maxSizeMB}MB.";
+        }
+
+        // Business-specific validation
+        if ($documentType === 'business_registration_document' && !$businessType->requires_registration) {
+            return 'Business registration document is not required for your business type.';
+        }
+
+        if ($documentType === 'tax_registration_document' && !$businessType->requires_tax_document) {
+            return 'Tax registration document is not required for your business type.';
+        }
+
+        if ($documentType === 'business_certificate' && !$businessType->requires_business_certificate) {
+            return 'Business certificate is not required for your business type.';
+        }
+
+        return null; // No validation errors
+    }
+
+    /**
+     * Get document requirements based on business type
+     */
+    public function getDocumentRequirements(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            if (!$sellerProfile->businessType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please select a business type first'
+                ], 422);
+            }
+
+            $businessType = $sellerProfile->businessType;
+
+            // Generate requirements based on business type
+            $requirements = $this->generateDocumentRequirements($businessType);
+
+            // Check which documents are already uploaded
+            $uploadedDocuments = [];
+            $missingDocuments = [];
+
+            foreach ($requirements as $req) {
+                $field = $req['type'];
+                $isUploaded = !empty($sellerProfile->$field);
+
+                $uploadedDocuments[$field] = [
+                    'uploaded' => $isUploaded,
+                    'url' => $isUploaded ? $sellerProfile->getDocumentUrl($field) : null,
+                    'name' => $isUploaded ? basename($sellerProfile->$field) : null
+                ];
+
+                if ($req['required'] && !$isUploaded) {
+                    $missingDocuments[] = $req['label'];
+                }
+            }
+
+            // Get additional documents
+            $additionalDocuments = $sellerProfile->getAdditionalDocuments() ?? [];
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'business_type' => [
+                        'id' => $businessType->id,
+                        'slug' => $businessType->slug,
+                        'name' => $businessType->name,
+                        'description' => $businessType->description,
+                    ],
+                    'is_individual' => $businessType->isIndividualType(),
+                    'requirements' => $requirements,
+                    'uploaded_documents' => $uploadedDocuments,
+                    'additional_documents' => $additionalDocuments,
+                    'missing_documents' => $missingDocuments,
+                    'documents_submitted' => $sellerProfile->documents_submitted,
+                    'document_status' => $sellerProfile->document_status,
+                    'document_rejection_reason' => $sellerProfile->document_rejection_reason,
+                    'requirements_summary' => $this->getRequirementsSummary($businessType)
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get document requirements: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get document requirements: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate document requirements based on business type
+     */
+    private function generateDocumentRequirements($businessType)
+    {
+        $requirements = [];
+
+        // Identity Documents (always required)
+        $requirements[] = [
+            'type' => 'identity_document_front',
+            'label' => 'Front of Identity Document',
+            'description' => 'Clear photo of the front side of your ID card, passport, or driving license',
+            'required' => true,
+            'accepted_formats' => 'jpg, jpeg, png',
+            'max_size' => '2MB',
+            'help_text' => 'Make sure all information is clearly visible'
+        ];
+
+        $requirements[] = [
+            'type' => 'identity_document_back',
+            'label' => 'Back of Identity Document',
+            'description' => 'Clear photo of the back side of your ID card or passport',
+            'required' => true,
+            'accepted_formats' => 'jpg, jpeg, png',
+            'max_size' => '2MB',
+            'help_text' => 'Make sure all information is clearly visible'
+        ];
+
+        // Business Registration Document
+        if ($businessType->requires_registration) {
+            $requirements[] = [
+                'type' => 'business_registration_document',
+                'label' => 'Business Registration Certificate',
+                'description' => 'Official business registration certificate from government authority',
+                'required' => true,
+                'accepted_formats' => 'pdf, jpg, jpeg, png',
+                'max_size' => '5MB',
+                'help_text' => 'Upload the complete registration document'
+            ];
+        }
+
+        // Tax Registration Document
+        if ($businessType->requires_tax_document) {
+            $requirements[] = [
+                'type' => 'tax_registration_document',
+                'label' => 'Tax Registration Certificate',
+                'description' => 'Tax identification registration document',
+                'required' => true,
+                'accepted_formats' => 'pdf, jpg, jpeg, png',
+                'max_size' => '5MB',
+                'help_text' => 'Official tax registration document with TIN'
+            ];
+        }
+
+        // Business Certificate
+        if ($businessType->requires_business_certificate) {
+            $requirements[] = [
+                'type' => 'business_certificate',
+                'label' => 'Business License/Certificate',
+                'description' => 'Business operating license or certificate',
+                'required' => true,
+                'accepted_formats' => 'pdf, jpg, jpeg, png',
+                'max_size' => '5MB',
+                'help_text' => 'Valid business license or certification document'
+            ];
+        }
+
+        // Additional Documents (optional for all)
+        $requirements[] = [
+            'type' => 'additional_documents',
+            'label' => 'Additional Supporting Documents',
+            'description' => 'Any other documents that support your business verification',
+            'required' => false,
+            'accepted_formats' => 'pdf, jpg, jpeg, png',
+            'max_size' => '5MB',
+            'help_text' => 'Bank statements, utility bills, additional certifications, etc.'
+        ];
+
+        return $requirements;
+    }
+
+    /**
+     * Get human-readable requirements summary
+     */
+    private function getRequirementsSummary($businessType)
+    {
+        $summary = [
+            'identity_documents' => 'Identity proof (front & back)',
+        ];
+
+        if ($businessType->requires_registration) {
+            $summary['business_registration'] = 'Business registration certificate';
+        }
+
+        if ($businessType->requires_tax_document) {
+            $summary['tax_document'] = 'Tax registration document';
+        }
+
+        if ($businessType->requires_business_certificate) {
+            $summary['business_certificate'] = 'Business license/certificate';
+        }
+
+        $summary['additional_documents'] = 'Additional supporting documents (optional)';
+
+        return $summary;
+    }
+
+    /**
+     * Mark documents as complete
+     */
+    public function markDocumentsComplete(Request $request)
     {
         try {
             $user = $request->user();
@@ -1732,74 +2024,249 @@ class SellerController extends Controller
                 ], 404);
             }
 
+            // Get business type requirements
+            $businessType = $sellerProfile->businessType;
+            if (!$businessType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business type not found. Please complete store basic information.'
+                ], 422);
+            }
+
+            // Check required documents based on business type
+            $missingDocuments = $this->getMissingRequiredDocuments($sellerProfile, $businessType);
+
+            if (!empty($missingDocuments)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please upload all required documents',
+                    'missing_documents' => $missingDocuments,
+                    'requirements' => $this->generateDocumentRequirements($businessType)
+                ], 422);
+            }
+
+            // Verify document files exist
+            $invalidDocuments = $this->validateDocumentFilesExist($sellerProfile, $businessType);
+            if (!empty($invalidDocuments)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Some uploaded documents are invalid or missing',
+                    'invalid_documents' => $invalidDocuments
+                ], 422);
+            }
+
+            // Mark documents as submitted
+            $sellerProfile->update([
+                'documents_submitted' => true,
+                'documents_submitted_at' => now(),
+                'document_status' => 'pending', // Use string directly
+                'verification_status' => 'under_review', // Use string directly
+                'status' => $sellerProfile->status === 'setup_pending' ? 'pending' : $sellerProfile->status
+            ]);
+
+            // Log document submission
+            Log::info('Documents marked as complete', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'business_type' => $businessType->slug,
+                'submitted_at' => now()->toISOString()
+            ]);
+
             return response()->json([
                 'success' => true,
+                'message' => 'Documents submitted successfully for verification',
                 'data' => [
-                    'store_basic' => [
-                        'store_name' => $sellerProfile->store_name,
-                        'business_type_slug' => $sellerProfile->business_type,
-                        'business_type_id' => $sellerProfile->business_type_id,
-                        'contact_email' => $sellerProfile->contact_email,
-                        'contact_phone' => $sellerProfile->contact_phone,
-                        'description' => $sellerProfile->description,
-                        'store_logo' => $sellerProfile->store_logo,
-                        'store_banner' => $sellerProfile->store_banner,
-                    ],
-                    'business_details' => [
-                        'business_registration_number' => $sellerProfile->business_registration_number,
-                        'tax_id' => $sellerProfile->tax_id,
-                        'website' => $sellerProfile->website,
-                        'account_number' => $sellerProfile->account_number,
-                        // social fields...
-                    ],
-                    'address' => [
-                        'address' => $sellerProfile->address,
-                        'city' => $sellerProfile->city,
-                        'state' => $sellerProfile->state,
-                        'country' => $sellerProfile->country,
-                        'postal_code' => $sellerProfile->postal_code,
-                    ],
-                    'documents' => $sellerProfile->getUploadedDocuments()
+                    'seller_profile' => $sellerProfile,
+                    'next_steps' => [
+                        'verification_time' => '1-3 business days',
+                        'notification' => 'You will receive an email when verification is complete'
+                    ]
                 ]
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to get onboarding data: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Failed to get data'], 500);
-        }
-    }
-
-    public function submitOnboarding(Request $request)
-    {
-        try {
-            $user = $request->user();
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-
-            if (!$sellerProfile) {
-                return response()->json(['success' => false, 'message' => 'Profile not found'], 404);
-            }
-
-            // Mark as complete
-            $sellerProfile->update([
-                'onboarding_completed_at' => now(),
-                'status' => SellerProfile::STATUS_PENDING,
-                'verification_status' => SellerProfile::VERIFICATION_PENDING
-            ]);
-
+            Log::error('Failed to mark documents complete: ' . $e->getMessage());
             return response()->json([
-                'success' => true,
-                'message' => 'Onboarding submitted successfully',
-                'data' => $sellerProfile
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to submit onboarding: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Submission failed'], 500);
+                'success' => false,
+                'message' => 'Failed to mark documents as complete: ' . $e->getMessage()
+            ], 500);
         }
     }
 
     /**
-     * Get uploaded documents
+     * Get missing required documents based on business type
+     */
+    private function getMissingRequiredDocuments($sellerProfile, $businessType)
+    {
+        $missing = [];
+
+        // Always check identity documents
+        if (empty($sellerProfile->identity_document_front)) {
+            $missing[] = 'Front of Identity Document';
+        }
+
+        if (empty($sellerProfile->identity_document_back)) {
+            $missing[] = 'Back of Identity Document';
+        }
+
+        // Check business registration
+        if ($businessType->requires_registration && empty($sellerProfile->business_registration_document)) {
+            $missing[] = 'Business Registration Certificate';
+        }
+
+        // Check tax document
+        if ($businessType->requires_tax_document && empty($sellerProfile->tax_registration_document)) {
+            $missing[] = 'Tax Registration Certificate';
+        }
+
+        // Check business certificate
+        if ($businessType->requires_business_certificate && empty($sellerProfile->business_certificate)) {
+            $missing[] = 'Business License/Certificate';
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Validate that uploaded document files actually exist
+     */
+    private function validateDocumentFilesExist($sellerProfile, $businessType)
+    {
+        $invalid = [];
+
+        $documentsToCheck = [
+            'identity_document_front',
+            'identity_document_back'
+        ];
+
+        if ($businessType->requires_registration) {
+            $documentsToCheck[] = 'business_registration_document';
+        }
+
+        if ($businessType->requires_tax_document) {
+            $documentsToCheck[] = 'tax_registration_document';
+        }
+
+        if ($businessType->requires_business_certificate) {
+            $documentsToCheck[] = 'business_certificate';
+        }
+
+        foreach ($documentsToCheck as $field) {
+            if (!empty($sellerProfile->$field) && !Storage::disk('public')->exists($sellerProfile->$field)) {
+                $invalid[] = [
+                    'type' => $field,
+                    'path' => $sellerProfile->$field,
+                    'error' => 'File not found'
+                ];
+            }
+        }
+
+        return $invalid;
+    }
+
+    /**
+     * Delete a specific document
+     */
+    public function deleteDocument(Request $request, $documentType)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Check if documents are already submitted
+            if ($sellerProfile->documents_submitted) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot delete documents after submission. Contact support for changes.'
+                ], 403);
+            }
+
+            // Handle regular document fields
+            $documentFields = [
+                'business_registration_document',
+                'tax_registration_document',
+                'identity_document_front',
+                'identity_document_back',
+                'business_certificate'
+            ];
+
+            if (in_array($documentType, $documentFields)) {
+                // Delete regular document
+                if (!empty($sellerProfile->$documentType)) {
+                    Storage::disk('public')->delete($sellerProfile->$documentType);
+                    $sellerProfile->update([$documentType => null]);
+                }
+            } elseif ($documentType === 'additional_documents') {
+                // Handle additional documents - delete all or specific?
+                if ($request->has('index')) {
+                    // Delete specific additional document
+                    $additionalDocs = $sellerProfile->additional_documents ?? [];
+                    $index = $request->input('index');
+
+                    if (isset($additionalDocs[$index])) {
+                        if (isset($additionalDocs[$index]['path'])) {
+                            Storage::disk('public')->delete($additionalDocs[$index]['path']);
+                        }
+                        unset($additionalDocs[$index]);
+                        $sellerProfile->additional_documents = array_values($additionalDocs);
+                        $sellerProfile->save();
+                    }
+                } else {
+                    // Delete all additional documents
+                    $additionalDocs = $sellerProfile->additional_documents ?? [];
+                    foreach ($additionalDocs as $doc) {
+                        if (isset($doc['path'])) {
+                            Storage::disk('public')->delete($doc['path']);
+                        }
+                    }
+                    $sellerProfile->additional_documents = [];
+                    $sellerProfile->save();
+                }
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid document type'
+                ], 422);
+            }
+
+            // Log deletion
+            Log::info('Document deleted', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'document_type' => $documentType
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Document deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to delete document: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete document: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get uploaded documents with validation
      */
     public function getUploadedDocuments(Request $request)
     {
@@ -1813,7 +2280,9 @@ class SellerController extends Controller
                 ], 403);
             }
 
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
 
             if (!$sellerProfile) {
                 return response()->json([
@@ -1822,37 +2291,69 @@ class SellerController extends Controller
                 ], 404);
             }
 
+            $businessType = $sellerProfile->businessType;
+            $requirements = $businessType ? $this->generateDocumentRequirements($businessType) : [];
+
             $documents = [];
+            $documentStatus = [];
 
-            // Get regular document fields
-            $documentFields = [
-                'business_registration_document',
-                'tax_registration_document',
-                'identity_document_front',
-                'identity_document_back'
-            ];
+            foreach ($requirements as $req) {
+                $field = $req['type'];
 
-            foreach ($documentFields as $field) {
+                if ($field === 'additional_documents') {
+                    continue; // Handle separately
+                }
+
                 if (!empty($sellerProfile->$field)) {
+                    $fileExists = Storage::disk('public')->exists($sellerProfile->$field);
+
                     $documents[$field] = [
                         'name' => basename($sellerProfile->$field),
-                        'url' => $sellerProfile->getDocumentUrl($field),
-                        'uploaded_at' => $sellerProfile->updated_at
+                        'url' => $fileExists ? $sellerProfile->getDocumentUrl($field) : null,
+                        'uploaded_at' => $sellerProfile->updated_at->toISOString(),
+                        'file_exists' => $fileExists,
+                        'required' => $req['required'],
+                        'status' => $fileExists ? 'uploaded' : 'missing'
                     ];
+
+                    $documentStatus[$field] = $fileExists ? 'uploaded' : 'invalid';
+                } else {
+                    $documentStatus[$field] = 'missing';
                 }
             }
 
             // Get additional documents
-            $additionalDocuments = $sellerProfile->getAdditionalDocuments();
+            $additionalDocuments = $sellerProfile->getAdditionalDocuments() ?? [];
+
+            // Calculate completion status
+            $totalRequired = count(array_filter($requirements, fn($req) => $req['required'] && $req['type'] !== 'additional_documents'));
+            $uploadedRequired = count(array_filter(
+                $documentStatus,
+                fn($status, $type) =>
+                $status === 'uploaded' &&
+                in_array($type, array_column(array_filter($requirements, fn($req) => $req['required']), 'type'))
+                ,
+                ARRAY_FILTER_USE_BOTH
+            ));
+
+            $completionPercentage = $totalRequired > 0 ? ($uploadedRequired / $totalRequired) * 100 : 0;
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'documents' => $documents,
                     'additional_documents' => $additionalDocuments,
+                    'document_status' => $documentStatus,
+                    'requirements' => $requirements,
+                    'completion' => [
+                        'percentage' => $completionPercentage,
+                        'uploaded_required' => $uploadedRequired,
+                        'total_required' => $totalRequired,
+                        'is_complete' => $uploadedRequired >= $totalRequired
+                    ],
                     'documents_submitted' => $sellerProfile->documents_submitted,
                     'document_status' => $sellerProfile->document_status,
-                    'document_rejection_reason' => $sellerProfile->document_rejection_reason
+                    'verification_status' => $sellerProfile->verification_status
                 ]
             ]);
 
@@ -1866,181 +2367,7 @@ class SellerController extends Controller
     }
 
     /**
-     * Mark documents as complete
-     */
-    public function markDocumentsComplete(Request $request)
-    {
-        try {
-            $user = $request->user();
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-
-            if (!$sellerProfile) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
-            }
-
-            // Check if required documents are uploaded
-            if (!$sellerProfile->hasRequiredDocuments()) {
-                $missing = $sellerProfile->getMissingDocuments();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Please upload all required documents',
-                    'missing_documents' => $missing
-                ], 422);
-            }
-
-            // Mark documents as submitted
-            $sellerProfile->update([
-                'documents_submitted' => true,
-                'documents_submitted_at' => now(),
-                'document_status' => SellerProfile::DOCUMENT_PENDING,
-                'verification_status' => SellerProfile::VERIFICATION_UNDER_REVIEW,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Documents marked as complete',
-                'data' => $sellerProfile
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to mark documents complete: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to mark documents as complete'
-            ], 500);
-        }
-    }
-
-    /**
-     * Submit final onboarding
-     */
-    // public function submitOnboarding(Request $request)
-    // {
-    //     try {
-    //         $user = $request->user();
-    //         $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-
-    //         if (!$sellerProfile) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Seller profile not found'
-    //             ], 404);
-    //         }
-
-    //         // Validate profile is complete
-    //         if (!$sellerProfile->hasCompleteProfile()) {
-    //             $missing = $sellerProfile->getMissingFields();
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Profile is incomplete',
-    //                 'missing_fields' => $missing
-    //             ], 422);
-    //         }
-
-    //         // Mark onboarding as complete
-    //         $sellerProfile->update([
-    //             'onboarding_completed_at' => now(),
-    //             'status' => SellerProfile::STATUS_PENDING,
-    //             'verification_status' => SellerProfile::VERIFICATION_PENDING,
-    //         ]);
-
-    //         // Log onboarding completion
-    //         Log::info('Seller onboarding completed', [
-    //             'user_id' => $user->id,
-    //             'seller_profile_id' => $sellerProfile->id,
-    //             'store_name' => $sellerProfile->store_name
-    //         ]);
-
-    //         return response()->json([
-    //             'success' => true,
-    //             'message' => 'Onboarding submitted successfully. Your store is now under review.',
-    //             'data' => $sellerProfile,
-    //             'next_steps' => [
-    //                 'review_time' => '1-3 business days',
-    //                 'notification' => 'You will receive an email when your store is approved',
-    //                 'dashboard_access' => 'You can access your seller dashboard'
-    //             ]
-    //         ]);
-
-    //     } catch (\Exception $e) {
-    //         Log::error('Failed to submit onboarding: ' . $e->getMessage());
-    //         return response()->json([
-    //             'success' => false,
-    //             'message' => 'Failed to submit onboarding'
-    //         ], 500);
-    //     }
-    // }
-
-    /**
-     * Delete a document
-     */
-    public function deleteDocument(Request $request, $documentId)
-    {
-        try {
-            $user = $request->user();
-
-            if ($user->type !== 'seller') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'User is not a seller'
-                ], 403);
-            }
-
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
-
-            if (!$sellerProfile) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
-            }
-
-            // Check if document exists
-            $documentFields = [
-                'business_registration_document',
-                'tax_registration_document',
-                'identity_document_front',
-                'identity_document_back'
-            ];
-
-            if (in_array($documentId, $documentFields)) {
-                // Delete regular document
-                if (!empty($sellerProfile->$documentId)) {
-                    Storage::disk('public')->delete($sellerProfile->$documentId);
-                    $sellerProfile->update([$documentId => null]);
-                }
-            } else {
-                // Delete from additional documents
-                $additionalDocs = $sellerProfile->additional_documents ?? [];
-                if (isset($additionalDocs[$documentId])) {
-                    if (isset($additionalDocs[$documentId]['path'])) {
-                        Storage::disk('public')->delete($additionalDocs[$documentId]['path']);
-                    }
-                    unset($additionalDocs[$documentId]);
-                    $sellerProfile->additional_documents = array_values($additionalDocs);
-                    $sellerProfile->save();
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Document deleted successfully'
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to delete document: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to delete document'
-            ], 500);
-        }
-    }
-
-    /**
-     * Complete onboarding with documents
+     * Complete onboarding with documents validation
      */
     public function completeOnboardingWithDocuments(Request $request)
     {
@@ -2054,7 +2381,9 @@ class SellerController extends Controller
                 ], 403);
             }
 
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
 
             if (!$sellerProfile) {
                 return response()->json([
@@ -2063,9 +2392,18 @@ class SellerController extends Controller
                 ], 404);
             }
 
+            // Get business type
+            $businessType = $sellerProfile->businessType;
+            if (!$businessType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please select a business type first'
+                ], 422);
+            }
+
             // Check if all required documents are uploaded
-            if (!$sellerProfile->hasRequiredDocuments()) {
-                $missingDocs = $sellerProfile->getMissingDocuments();
+            $missingDocs = $this->getMissingRequiredDocuments($sellerProfile, $businessType);
+            if (!empty($missingDocs)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Please upload all required documents',
@@ -2084,16 +2422,24 @@ class SellerController extends Controller
             }
 
             // Mark documents as submitted
-            $sellerProfile->markDocumentsSubmitted();
+            $sellerProfile->update([
+                'documents_submitted' => true,
+                'documents_submitted_at' => now(),
+                'document_status' => 'pending',
+                'verification_status' => 'under_review',
+                'status' => 'pending'
+            ]);
 
             // Mark onboarding as complete
-            $sellerProfile->markOnboardingComplete();
+            $sellerProfile->update([
+                'onboarding_completed_at' => now()
+            ]);
 
             // Log the submission
             Log::info('Seller onboarding completed with documents', [
                 'user_id' => $user->id,
                 'seller_profile_id' => $sellerProfile->id,
-                'business_type' => $sellerProfile->business_type,
+                'business_type' => $businessType->slug,
                 'verification_status' => $sellerProfile->verification_status
             ]);
 
@@ -2103,7 +2449,11 @@ class SellerController extends Controller
                 'data' => [
                     'seller_profile' => $sellerProfile->fresh(),
                     'estimated_review_time' => '1-3 business days',
-                    'next_steps' => 'Our team will review your documents and notify you via email.',
+                    'next_steps' => [
+                        'verification' => 'Our team will review your documents',
+                        'notification' => 'You will receive an email notification',
+                        'dashboard' => 'You can access your seller dashboard'
+                    ],
                     'verification_status' => $sellerProfile->verification_status,
                     'document_status' => $sellerProfile->document_status
                 ]
@@ -2116,6 +2466,568 @@ class SellerController extends Controller
                 'message' => 'Failed to complete onboarding: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Validate documents before submission (helper method)
+     */
+    public function validateDocuments(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $businessType = $sellerProfile->businessType;
+            if (!$businessType) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Business type not found'
+                ], 422);
+            }
+
+            // Check missing documents
+            $missingDocs = $this->getMissingRequiredDocuments($sellerProfile, $businessType);
+
+            // Validate file existence
+            $invalidDocs = $this->validateDocumentFilesExist($sellerProfile, $businessType);
+
+            $isValid = empty($missingDocs) && empty($invalidDocs);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'is_valid' => $isValid,
+                    'missing_documents' => $missingDocs,
+                    'invalid_documents' => $invalidDocs,
+                    'requirements' => $this->generateDocumentRequirements($businessType),
+                    'summary' => $this->getRequirementsSummary($businessType)
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Document validation failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to validate documents'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get current onboarding data for the authenticated seller
+     */
+    public function getOnboardingData(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            // Check if user is seller
+            if ($user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User is not a seller'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with(['businessType'])
+                ->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Get business type info
+            $businessTypeInfo = null;
+            if ($sellerProfile->businessType) {
+                $businessTypeInfo = [
+                    'id' => $sellerProfile->businessType->id,
+                    'slug' => $sellerProfile->businessType->slug,
+                    'name' => $sellerProfile->businessType->name,
+                    'description' => $sellerProfile->businessType->description,
+                    'is_individual' => $sellerProfile->businessType->isIndividualType(),
+                    'requires_registration' => $sellerProfile->businessType->requires_registration,
+                    'requires_tax_document' => $sellerProfile->businessType->requires_tax_document,
+                    'document_requirements' => $sellerProfile->businessType->getDocumentRequirements()
+                ];
+            }
+
+            // Get uploaded documents
+            $uploadedDocuments = [];
+            $documentFields = [
+                'business_registration_document',
+                'tax_registration_document',
+                'identity_document_front',
+                'identity_document_back'
+            ];
+
+            foreach ($documentFields as $field) {
+                if (!empty($sellerProfile->$field)) {
+                    $uploadedDocuments[$field] = [
+                        'uploaded' => true,
+                        'url' => $sellerProfile->getDocumentUrl($field),
+                        'name' => basename($sellerProfile->$field)
+                    ];
+                } else {
+                    $uploadedDocuments[$field] = [
+                        'uploaded' => false,
+                        'url' => null,
+                        'name' => null
+                    ];
+                }
+            }
+
+            // Get additional documents
+            $additionalDocuments = $sellerProfile->getAdditionalDocuments() ?? [];
+
+            // Calculate onboarding progress
+            $progress = $this->calculateOnboardingProgress($sellerProfile);
+
+            // Get current step
+            $currentStep = $this->getCurrentStep($sellerProfile);
+
+            // Prepare response data
+            $data = [
+                'store_basic' => [
+                    'store_name' => $sellerProfile->store_name,
+                    'store_slug' => $sellerProfile->store_slug,
+                    'business_type_slug' => $sellerProfile->business_type,
+                    'business_type_id' => $sellerProfile->business_type_id,
+                    'contact_email' => $sellerProfile->contact_email,
+                    'contact_phone' => $sellerProfile->contact_phone,
+                    'description' => $sellerProfile->description,
+                    'store_logo' => $sellerProfile->store_logo ?
+                        url('storage/' . ltrim($sellerProfile->store_logo, '/')) : null,
+                    'store_banner' => $sellerProfile->store_banner ?
+                        url('storage/' . ltrim($sellerProfile->store_banner, '/')) : null,
+                ],
+                'business_details' => [
+                    'business_registration_number' => $sellerProfile->business_registration_number,
+                    'tax_id' => $sellerProfile->tax_id,
+                    'website' => $sellerProfile->website,
+                    'account_number' => $sellerProfile->account_number,
+                    'social_facebook' => $sellerProfile->social_facebook,
+                    'social_instagram' => $sellerProfile->social_instagram,
+                    'social_twitter' => $sellerProfile->social_twitter,
+                    'social_linkedin' => $sellerProfile->social_linkedin,
+                ],
+                'address' => [
+                    'address' => $sellerProfile->address,
+                    'city' => $sellerProfile->city,
+                    'state' => $sellerProfile->state,
+                    'country' => $sellerProfile->country,
+                    'postal_code' => $sellerProfile->postal_code,
+                    'location' => $sellerProfile->location,
+                ],
+                'documents' => [
+                    'uploaded_documents' => $uploadedDocuments,
+                    'additional_documents' => $additionalDocuments,
+                    'documents_submitted' => $sellerProfile->documents_submitted,
+                    'document_status' => $sellerProfile->document_status,
+                    'documents_submitted_at' => $sellerProfile->documents_submitted_at,
+                ],
+                'onboarding_status' => [
+                    'current_step' => $currentStep,
+                    'progress_percentage' => $progress,
+                    'profile_status' => $sellerProfile->status,
+                    'verification_status' => $sellerProfile->verification_status,
+                    'onboarding_completed_at' => $sellerProfile->onboarding_completed_at,
+                    'verified_at' => $sellerProfile->verified_at,
+                ],
+                'business_type_info' => $businessTypeInfo,
+                'store_info' => [
+                    'store_id' => $sellerProfile->store_id,
+                    'created_at' => $sellerProfile->created_at,
+                    'updated_at' => $sellerProfile->updated_at,
+                ]
+            ];
+
+            Log::info('Onboarding data retrieved', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'current_step' => $currentStep,
+                'progress' => $progress
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Onboarding data retrieved successfully',
+                'data' => $data
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get onboarding data: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get onboarding data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Calculate onboarding progress percentage
+     */
+    private function calculateOnboardingProgress($sellerProfile)
+    {
+        $steps = [
+            'store_basic' => [
+                'fields' => ['store_name', 'business_type_id', 'contact_email', 'contact_phone'],
+                'weight' => 20
+            ],
+            'business_details' => [
+                'fields' => [],
+                'weight' => 20,
+                'conditional' => function ($profile) {
+                    if ($profile->businessType && $profile->businessType->isIndividualType()) {
+                        return ['contact_email', 'contact_phone'];
+                    }
+                    return ['business_registration_number', 'tax_id', 'contact_email', 'contact_phone'];
+                }
+            ],
+            'address' => [
+                'fields' => ['address', 'city', 'state', 'country'],
+                'weight' => 20
+            ],
+            'documents' => [
+                'fields' => [],
+                'weight' => 20,
+                'conditional' => function ($profile) {
+                    $requiredDocs = [];
+                    if ($profile->businessType) {
+                        $requirements = $profile->businessType->getDocumentRequirements();
+                        $requiredDocs = collect($requirements)
+                            ->where('required', true)
+                            ->pluck('type')
+                            ->toArray();
+                    }
+                    return $requiredDocs;
+                }
+            ],
+            'review_submit' => [
+                'fields' => ['onboarding_completed_at'],
+                'weight' => 20
+            ]
+        ];
+
+        $totalWeight = 100;
+        $completedWeight = 0;
+
+        foreach ($steps as $step => $config) {
+            $fields = $config['fields'];
+
+            // Handle conditional fields
+            if (isset($config['conditional']) && is_callable($config['conditional'])) {
+                $conditionalFields = $config['conditional']($sellerProfile);
+                $fields = array_merge($fields, $conditionalFields);
+            }
+
+            if (empty($fields)) {
+                $completedWeight += $config['weight'];
+                continue;
+            }
+
+            $stepCompleted = true;
+            foreach ($fields as $field) {
+                if ($field === 'onboarding_completed_at') {
+                    if (!$sellerProfile->$field) {
+                        $stepCompleted = false;
+                        break;
+                    }
+                } elseif ($field === 'documents_submitted') {
+                    if (!$sellerProfile->documents_submitted) {
+                        $stepCompleted = false;
+                        break;
+                    }
+                } elseif (str_contains($field, '_document')) {
+                    // Check if document is uploaded
+                    if (empty($sellerProfile->$field)) {
+                        $stepCompleted = false;
+                        break;
+                    }
+                } elseif (empty($sellerProfile->$field)) {
+                    $stepCompleted = false;
+                    break;
+                }
+            }
+
+            if ($stepCompleted) {
+                $completedWeight += $config['weight'];
+            }
+        }
+
+        return min(100, $completedWeight);
+    }
+
+    /**
+     * Get current onboarding step
+     */
+    private function getCurrentStep($sellerProfile)
+    {
+        $steps = [
+            'store-basic',
+            'business-details',
+            'address',
+            'documents',
+            'review'
+        ];
+
+        // Check if onboarding is already complete
+        if ($sellerProfile->onboarding_completed_at) {
+            return 'complete';
+        }
+
+        // Check documents step
+        if ($sellerProfile->documents_submitted) {
+            return 'review';
+        }
+
+        // Check if all required documents are uploaded (but not submitted)
+        $hasAllDocuments = true;
+        if ($sellerProfile->businessType) {
+            $requirements = $sellerProfile->businessType->getDocumentRequirements();
+            $requiredDocs = collect($requirements)
+                ->where('required', true)
+                ->pluck('type')
+                ->toArray();
+
+            foreach ($requiredDocs as $docType) {
+                if (empty($sellerProfile->$docType)) {
+                    $hasAllDocuments = false;
+                    break;
+                }
+            }
+        }
+
+        if (
+            $hasAllDocuments &&
+            !empty($sellerProfile->address) &&
+            !empty($sellerProfile->city) &&
+            !empty($sellerProfile->state) &&
+            !empty($sellerProfile->country)
+        ) {
+            return 'documents';
+        }
+
+        // Check address step
+        if (
+            !empty($sellerProfile->address) &&
+            !empty($sellerProfile->city) &&
+            !empty($sellerProfile->state) &&
+            !empty($sellerProfile->country)
+        ) {
+            return 'address';
+        }
+
+        // Check business details step
+        $businessDetailsComplete = true;
+        if ($sellerProfile->businessType) {
+            if (
+                $sellerProfile->businessType->requires_registration &&
+                empty($sellerProfile->business_registration_number)
+            ) {
+                $businessDetailsComplete = false;
+            }
+            if (
+                $sellerProfile->businessType->requires_tax_document &&
+                empty($sellerProfile->tax_id)
+            ) {
+                $businessDetailsComplete = false;
+            }
+        }
+
+        if (
+            $businessDetailsComplete &&
+            !empty($sellerProfile->store_name) &&
+            !empty($sellerProfile->business_type_id) &&
+            !empty($sellerProfile->contact_email) &&
+            !empty($sellerProfile->contact_phone)
+        ) {
+            return 'business-details';
+        }
+
+        // Default to store-basic
+        return 'store-basic';
+    }
+
+    public function submitOnboarding(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)
+                ->with('businessType')
+                ->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Validate all steps are complete
+            $errors = [];
+
+            // 1. Store basic validation
+            if (empty($sellerProfile->store_name) || empty($sellerProfile->business_type_id)) {
+                $errors[] = 'Store basic information incomplete';
+            }
+
+            // 2. Business details validation
+            $businessType = $sellerProfile->businessType;
+            if ($businessType && !$businessType->isIndividualType()) {
+                if ($businessType->requires_registration && empty($sellerProfile->business_registration_number)) {
+                    $errors[] = 'Business registration number required';
+                }
+                if ($businessType->requires_tax_document && empty($sellerProfile->tax_id)) {
+                    $errors[] = 'Tax ID required';
+                }
+            }
+
+            // 3. Address validation
+            if (
+                empty($sellerProfile->address) || empty($sellerProfile->city) ||
+                empty($sellerProfile->state) || empty($sellerProfile->country)
+            ) {
+                $errors[] = 'Address information incomplete';
+            }
+
+            // 4. Documents validation
+            if (!$sellerProfile->documents_submitted) {
+                $errors[] = 'Documents not submitted';
+            }
+
+            if (!empty($errors)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Onboarding incomplete',
+                    'errors' => $errors,
+                    'missing_fields' => $errors
+                ], 422);
+            }
+
+            // Update profile status
+            $sellerProfile->update([
+                'onboarding_completed_at' => now(),
+                'status' => SellerProfile::STATUS_PENDING,
+                'verification_status' => 'pending',  // Use string literal
+                'document_status' => 'pending'       // Use string literal
+            ]);
+
+            // Log the submission
+            Log::info('Seller onboarding submitted', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'store_name' => $sellerProfile->store_name
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Onboarding submitted successfully. Your store is now under review.',
+                'data' => $sellerProfile,
+                'next_steps' => [
+                    'review_time' => '1-3 business days',
+                    'notification' => 'You will receive an email when your store is approved',
+                    'dashboard_access' => 'You can access your seller dashboard'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to submit onboarding: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to submit onboarding: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function saveStep(Request $request, $step)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->firstOrFail();
+
+            $validators = [
+                'store-basic' => [
+                    'store_name' => 'required|string|max:255',
+                    'business_type_slug' => 'required|exists:business_types,slug',
+                    'contact_email' => 'required|email',
+                    'contact_phone' => 'required|string'
+                ],
+                'business-details' => [
+                    'business_registration_number' => 'nullable|string|max:255',
+                    'tax_id' => 'nullable|string|max:255',
+                    'website' => 'nullable|url'
+                ],
+                'address' => [
+                    'address' => 'required|string|max:500',
+                    'city' => 'required|string|max:100',
+                    'state' => 'required|string|max:100',
+                    'country' => 'required|string|max:100'
+                ]
+            ];
+
+            if (!isset($validators[$step])) {
+                return response()->json(['success' => false, 'message' => 'Invalid step'], 400);
+            }
+
+            $validator = Validator::make($request->all(), $validators[$step]);
+
+            if ($validator->fails()) {
+                return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+            }
+
+            // Save step data
+            $sellerProfile->update($validator->validated());
+
+            // Update progress tracking
+            $this->updateOnboardingProgress($sellerProfile, $step);
+
+            return response()->json([
+                'success' => true,
+                'message' => ucfirst(str_replace('-', ' ', $step)) . ' saved successfully',
+                'next_step' => $this->getNextStep($step),
+                'progress' => $this->calculateProgress($sellerProfile)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Save step failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to save step'], 500);
+        }
+    }
+
+    private function updateOnboardingProgress($sellerProfile, $step)
+    {
+        $steps = ['store-basic', 'business-details', 'address', 'documents', 'review'];
+        $currentStepIndex = array_search($step, $steps);
+
+        $progress = [
+            'current_step' => $step,
+            'completed_steps' => $steps,
+            'progress_percentage' => (($currentStepIndex + 1) / count($steps)) * 100
+        ];
+
+        $sellerProfile->update(['onboarding_progress' => json_encode($progress)]);
     }
 
     /**
@@ -2546,7 +3458,9 @@ class SellerController extends Controller
             $oldDocStatus = $sellerProfile->document_status;
 
             $sellerProfile->update([
-                'verification_status' => $validated['verification_status'],
+                'onboarding_completed_at' => now(),
+                'status' => SellerProfile::STATUS_PENDING,
+                'verification_status' => SellerProfile::VERIFICATION_PENDING,
                 'document_status' => $validated['document_status'],
                 'verification_notes' => $validated['notes'] ?? null,
                 'document_rejection_reason' => $validated['document_status'] === 'rejected' ? ($validated['reason'] ?? null) : null,
@@ -3115,6 +4029,42 @@ class SellerController extends Controller
                 'success' => false,
                 'message' => 'Failed to fetch performance metrics: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Log verification action for audit trail
+     */
+    private function logVerificationAction(
+        $sellerProfileId,
+        $adminId,
+        $action,
+        $notes = null,
+        $reason = null,
+        $previousStatus = null,
+        $newStatus = null
+    ) {
+        try {
+            DB::table('verification_logs')->insert([
+                'seller_profile_id' => $sellerProfileId,
+                'performed_by' => $adminId,
+                'action' => $action,
+                'notes' => $notes,
+                'reason' => $reason,
+                'previous_status' => $previousStatus,
+                'new_status' => $newStatus,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            Log::info('Verification action logged', [
+                'seller_profile_id' => $sellerProfileId,
+                'admin_id' => $adminId,
+                'action' => $action,
+                'notes' => $notes
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to log verification action: ' . $e->getMessage());
         }
     }
 

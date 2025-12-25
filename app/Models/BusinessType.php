@@ -34,89 +34,124 @@ class BusinessType extends Model
         'additional_requirements' => 'array'
     ];
 
-    // Relationships
-    public function sellerProfiles()
-    {
-        return $this->hasMany(SellerProfile::class);
-    }
-
-    // Scopes
+    /**
+     * Scope active business types
+     */
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
     }
 
+    /**
+     * Scope ordered by sort order
+     */
     public function scopeOrdered($query)
     {
         return $query->orderBy('sort_order')->orderBy('name');
     }
 
-    // Helper methods
+    /**
+     * Check if this is an individual business type
+     */
+    public function isIndividualType()
+    {
+        return !$this->requires_registration &&
+            !$this->requires_tax_document &&
+            !$this->requires_business_certificate;
+    }
+
+    /**
+     * Get document requirements for this business type
+     */
     public function getDocumentRequirements()
     {
         $requirements = [];
 
-        // Always require identity document
-        if ($this->requires_identity_document) {
-            $requirements[] = [
-                'type' => 'identity_document_front',
-                'label' => 'Identity Document (Front)',
-                'required' => true,
-                'description' => 'Front side of your ID document (NRC, Passport, etc.)',
-                'accepted_formats' => 'jpg,jpeg,png',
-                'max_size' => '2MB'
-            ];
+        // Identity documents are always required
+        $requirements[] = [
+            'type' => 'identity_document_front',
+            'label' => 'Front of Identity Document',
+            'description' => 'Clear photo of the front side of ID card/passport',
+            'required' => true
+        ];
 
-            $requirements[] = [
-                'type' => 'identity_document_back',
-                'label' => 'Identity Document (Back)',
-                'required' => true,
-                'description' => 'Back side of your ID document',
-                'accepted_formats' => 'jpg,jpeg,png',
-                'max_size' => '2MB'
-            ];
-        }
+        $requirements[] = [
+            'type' => 'identity_document_back',
+            'label' => 'Back of Identity Document',
+            'description' => 'Clear photo of the back side of ID card/passport',
+            'required' => true
+        ];
 
+        // Business registration
         if ($this->requires_registration) {
             $requirements[] = [
                 'type' => 'business_registration_document',
-                'label' => 'Business Registration Document',
-                'required' => true,
-                'description' => 'Official business registration certificate',
-                'accepted_formats' => 'pdf,jpg,jpeg,png',
-                'max_size' => '5MB'
+                'label' => 'Business Registration Certificate',
+                'description' => 'Official business registration document',
+                'required' => true
             ];
         }
 
+        // Tax document
         if ($this->requires_tax_document) {
             $requirements[] = [
                 'type' => 'tax_registration_document',
-                'label' => 'Tax Registration Document',
-                'required' => true,
-                'description' => 'Tax identification document',
-                'accepted_formats' => 'pdf,jpg,jpeg,png',
-                'max_size' => '5MB'
+                'label' => 'Tax Registration Certificate',
+                'description' => 'Tax identification registration document',
+                'required' => true
             ];
         }
 
+        // Business certificate
         if ($this->requires_business_certificate) {
             $requirements[] = [
-                'type' => 'certificate',
-                'label' => 'Business Certificate',
-                'required' => true,
-                'description' => 'Business operation certificate',
-                'accepted_formats' => 'pdf,jpg,jpeg,png',
-                'max_size' => '5MB'
+                'type' => 'business_certificate',
+                'label' => 'Business License/Certificate',
+                'description' => 'Business operating license or certificate',
+                'required' => true
             ];
         }
+
+        // Additional documents (always optional)
+        $requirements[] = [
+            'type' => 'additional_documents',
+            'label' => 'Additional Supporting Documents',
+            'description' => 'Any other supporting documents',
+            'required' => false
+        ];
 
         return $requirements;
     }
 
-    public function isIndividualType()
+    /**
+     * Get human-readable requirements summary
+     */
+    public function getRequirementsSummary()
     {
-        return !$this->requires_registration &&
-               !$this->requires_tax_document &&
-               !$this->requires_business_certificate;
+        $summary = 'Required: Identity Documents (Front & Back)';
+
+        if ($this->requires_registration) {
+            $summary .= ', Business Registration Certificate';
+        }
+
+        if ($this->requires_tax_document) {
+            $summary .= ', Tax Registration Document';
+        }
+
+        if ($this->requires_business_certificate) {
+            $summary .= ', Business License/Certificate';
+        }
+
+        $summary .= '. Optional: Additional Supporting Documents';
+
+        return $summary;
+    }
+
+    /**
+     * Relationship with seller profiles
+     */
+    public function sellerProfiles()
+    {
+        return $this->hasMany(SellerProfile::class);
     }
 }

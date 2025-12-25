@@ -95,6 +95,8 @@ class AuthController extends Controller
                     'state' => $validated['state'] ?? '',
                     'country' => 'Myanmar',
                     'status' => SellerProfile::STATUS_SETUP_PENDING,
+                    'onboarding_status' => 'pending',
+                    'current_step' => 'store-basic',
                     'verification_status' => 'pending',
                 ]);
 

@@ -101,6 +101,8 @@ class SellerProfile extends Model
         'badge_expires_at',
 
         // Onboarding
+        'onboarding_status',
+        'current_step',
         'onboarding_completed_at',
 
         // Document review
@@ -164,6 +166,38 @@ class SellerProfile extends Model
         $random = strtoupper(substr(uniqid(), -6));
 
         return "{$prefix}{$timestamp}{$random}";
+    }
+
+    public function getOnboardingProgressAttribute($value)
+    {
+        $progress = json_decode($value, true) ?? [
+            'current_step' => 'store-basic',
+            'completed_steps' => [],
+            'progress_percentage' => 0
+        ];
+
+        // Auto-calculate progress if missing
+        if ($progress['progress_percentage'] === 0) {
+            $steps = ['store-basic', 'business-details', 'address', 'documents', 'review'];
+            $completed = array_filter($steps, function ($step) use ($progress) {
+                return in_array($step, $progress['completed_steps'] ?? []);
+            });
+
+            $progress['progress_percentage'] = (count($completed) / count($steps)) * 100;
+        }
+
+        return $progress;
+    }
+
+    public function markStepComplete($step)
+    {
+        $progress = $this->onboarding_progress;
+        $progress['current_step'] = $step;
+        $progress['completed_steps'][] = $step;
+        $progress['completed_steps'] = array_unique($progress['completed_steps']);
+
+        $this->onboarding_progress = json_encode($progress);
+        $this->save();
     }
 
     /**

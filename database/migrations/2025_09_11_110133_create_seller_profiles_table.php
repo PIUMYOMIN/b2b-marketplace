@@ -17,7 +17,7 @@ return new class extends Migration
 
             // Store Information
             $table->string('store_name');
-            $table->string('store_slug');
+            $table->string('store_slug')->unique();
             $table->string('store_id')->unique();
             $table->foreignId('business_type_id')->nullable()->constrained('business_types')->onDelete('set null');
 
@@ -58,6 +58,7 @@ return new class extends Migration
 
             // Document Fields
             $table->string('business_registration_document')->nullable();
+            $table->string('business_certificate')->nullable();
             $table->string('tax_registration_document')->nullable();
             $table->string('identity_document_front')->nullable();
             $table->string('identity_document_back')->nullable();
@@ -117,6 +118,17 @@ return new class extends Migration
                 'approved',
                 'rejected'
             ])->default('not_submitted');
+
+            // Onboarding Status
+            $table->enum('onboarding_status', [
+                'pending',
+                'in_progress',
+                'completed',
+                'rejected'
+            ])->default('pending');
+
+            // Progress Tracking
+            $table->string('current_step')->nullable();
 
             $table->text('document_rejection_reason')->nullable();
 
