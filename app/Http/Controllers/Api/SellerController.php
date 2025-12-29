@@ -448,6 +448,195 @@ class SellerController extends Controller
         }
     }
 
+    /**
+     * Upload store logo (public endpoint)
+     */
+    public function uploadStoreLogo(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $path = $this->saveStoreLogo($request->file('image'), $sellerProfile->id);
+
+            if (!$path) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to upload logo'
+                ], 500);
+            }
+
+            // Update seller profile with logo path
+            $sellerProfile->update(['store_logo' => $path]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store logo uploaded successfully',
+                'data' => [
+                    'url' => url('storage/' . $path),
+                    'path' => $path
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store logo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload store logo'
+            ], 500);
+        }
+    }
+
+    /**
+     * Save store logo file
+     */
+    private function saveStoreLogo($file, $storeId)
+    {
+        $sellerProfile = SellerProfile::find($storeId);
+        try {
+            // Create organized path structure
+            // $basePath = "stores/{$storeId}/logo";
+            $basePath = "sellers/{$sellerProfile->id}/logo";
+
+            // Ensure directory exists
+            Storage::disk('public')->makeDirectory($basePath);
+
+            // Generate unique filename
+            $timestamp = time();
+            $random = Str::random(8);
+            $extension = $file->getClientOriginalExtension();
+            $filename = "logo_{$timestamp}_{$random}.{$extension}";
+
+            // Store the file - use $basePath, not $path
+            $filePath = $file->storeAs($basePath, $filename, 'public'); // Change to $filePath
+
+            Log::info('Store logo uploaded successfully', [
+                'store_id' => $storeId,
+                'path' => $filePath, // Use $filePath
+                'filename' => $filename
+            ]);
+
+            return $filePath; // Return $filePath
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store logo: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Upload store banner (public endpoint)
+     */
+    public function uploadStoreBanner(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $path = $this->saveStoreBanner($request->file('image'), $sellerProfile->id);
+
+            if (!$path) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to upload banner'
+                ], 500);
+            }
+
+            // Update seller profile with banner path
+            $sellerProfile->update(['store_banner' => $path]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store banner uploaded successfully',
+                'data' => [
+                    'url' => url('storage/' . $path),
+                    'path' => $path
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store banner: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload store banner'
+            ], 500);
+        }
+    }
+
+    /**
+     * Save store banner file
+     */
+    private function saveStoreBanner($file, $storeId)
+    {
+        $sellerProfile = SellerProfile::find($storeId);
+        try {
+            // Create organized path structure
+            // $basePath = "stores/{$storeId}/logo";
+            $basePath = "sellers/{$sellerProfile->id}/banner"; // Change variable name
+
+            // Ensure directory exists
+            Storage::disk('public')->makeDirectory($basePath);
+
+            // Generate unique filename
+            $timestamp = time();
+            $random = Str::random(8);
+            $extension = $file->getClientOriginalExtension();
+            $filename = "banner_{$timestamp}_{$random}.{$extension}";
+
+            // Store the file - use $basePath, not $path
+            $filePath = $file->storeAs($basePath, $filename, 'public'); // Change to $filePath
+
+            Log::info('Store banner uploaded successfully', [
+                'store_id' => $storeId,
+                'path' => $filePath, // Use $filePath
+                'filename' => $filename
+            ]);
+
+            return $filePath; // Return $filePath
+        } catch (\Exception $e) {
+            Log::error('Failed to upload store banner: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get my store details (authenticated seller)
+     */
     public function myStore(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
@@ -831,71 +1020,6 @@ class SellerController extends Controller
         }
     }
 
-    /**
-     * Upload store logo to organized directory structure
-     */
-    private function uploadStoreLogo($file, $storeId)
-    {
-        try {
-            // Create organized path structure
-            $basePath = "stores/{$storeId}/logo";
-
-            // Generate unique filename with timestamp and random string
-            $timestamp = time();
-            $random = Str::random(8); // Fixed: Now Str is imported
-            $extension = $file->getClientOriginalExtension();
-            $filename = "logo_{$timestamp}_{$random}.{$extension}";
-
-            // Store the file
-            $path = $file->storeAs($basePath, $filename, 'public');
-
-            Log::info('Store logo uploaded successfully', [
-                'store_id' => $storeId,
-                'path' => $path,
-                'filename' => $filename,
-                'size' => $file->getSize(),
-                'mime_type' => $file->getMimeType()
-            ]);
-
-            return $path;
-        } catch (\Exception $e) {
-            Log::error('Failed to upload store logo: ' . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Upload store banner to organized directory structure
-     */
-    private function uploadStoreBanner($file, $storeId)
-    {
-        try {
-            // Create organized path structure
-            $basePath = "stores/{$storeId}/banner";
-
-            // Generate unique filename with timestamp and random string
-            $timestamp = time();
-            $random = Str::random(8);
-            $extension = $file->getClientOriginalExtension();
-            $filename = "banner_{$timestamp}_{$random}.{$extension}";
-
-            // Store the file
-            $path = $file->storeAs($basePath, $filename, 'public');
-
-            Log::info('Store banner uploaded successfully', [
-                'store_id' => $storeId,
-                'path' => $path,
-                'filename' => $filename,
-                'size' => $file->getSize(),
-                'mime_type' => $file->getMimeType()
-            ]);
-
-            return $path;
-        } catch (\Exception $e) {
-            Log::error('Failed to upload store banner: ' . $e->getMessage());
-            return null;
-        }
-    }
 
     /**
      * Delete seller profile (admin only)
@@ -1334,8 +1458,8 @@ class SellerController extends Controller
                 'description' => 'nullable|string|max:2000',
                 'contact_email' => 'required|email|max:255',
                 'contact_phone' => 'required|string|max:20',
-                'store_logo' => 'nullable|string|max:500',
-                'store_banner' => 'nullable|string|max:500',
+                'store_logo' => 'nullable|string|max:500',  // This is now a URL/path string from separate upload
+                'store_banner' => 'nullable|string|max:500', // This is now a URL/path string from separate upload
             ]);
 
             if ($validator->fails()) {
@@ -1357,18 +1481,63 @@ class SellerController extends Controller
                 ], 422);
             }
 
-            // Handle file uploads if files are sent
-            if ($request->hasFile('store_logo_file')) {
-                $logoPath = $this->uploadStoreLogo($request->file('store_logo_file'), $sellerProfile->id);
-                if ($logoPath) {
-                    $validated['store_logo'] = $logoPath;
+            // Handle store logo - convert URL to storage path if needed
+            $logoPath = $sellerProfile->store_logo; // Keep existing by default
+            if (isset($validated['store_logo']) && is_string($validated['store_logo'])) {
+                $logoValue = $validated['store_logo'];
+
+                // If it's a full URL from our storage (e.g., http://localhost/storage/path/to/logo.jpg)
+                if (str_starts_with($logoValue, url('storage/'))) {
+                    // Extract the storage path (remove the base URL)
+                    $logoPath = str_replace(url('storage/'), '', $logoValue);
+
+                    // Validate that the file exists in storage
+                    if (!Storage::disk('public')->exists($logoPath)) {
+                        Log::warning('Logo file does not exist in storage: ' . $logoPath);
+                        $logoPath = $sellerProfile->store_logo; // Revert to existing
+                    }
+                }
+                // If it's already a storage path (not a full URL)
+                else if (!str_starts_with($logoValue, 'http')) {
+                    // Check if it's a valid storage path
+                    if (Storage::disk('public')->exists($logoValue)) {
+                        $logoPath = $logoValue;
+                    } else {
+                        Log::warning('Invalid logo storage path: ' . $logoValue);
+                        $logoPath = $sellerProfile->store_logo; // Revert to existing
+                    }
+                }
+                // If it's some other URL format, reject it
+                else {
+                    Log::warning('Invalid logo URL format - must be from our storage: ' . $logoValue);
+                    $logoPath = $sellerProfile->store_logo; // Keep existing
                 }
             }
 
-            if ($request->hasFile('store_banner_file')) {
-                $bannerPath = $this->uploadStoreBanner($request->file('store_banner_file'), $sellerProfile->id);
-                if ($bannerPath) {
-                    $validated['store_banner'] = $bannerPath;
+            // Handle store banner - same logic
+            $bannerPath = $sellerProfile->store_banner; // Keep existing by default
+            if (isset($validated['store_banner']) && is_string($validated['store_banner'])) {
+                $bannerValue = $validated['store_banner'];
+
+                if (str_starts_with($bannerValue, url('storage/'))) {
+                    $extractedPath = str_replace(url('storage/'), '', $bannerValue);
+
+                    if (Storage::disk('public')->exists($extractedPath)) {
+                        $bannerPath = $extractedPath;
+                    } else {
+                        Log::warning('Banner file does not exist in storage: ' . $extractedPath);
+                        $bannerPath = $sellerProfile->store_banner;
+                    }
+                } else if (!str_starts_with($bannerValue, 'http')) {
+                    if (Storage::disk('public')->exists($bannerValue)) {
+                        $bannerPath = $bannerValue;
+                    } else {
+                        Log::warning('Invalid banner storage path: ' . $bannerValue);
+                        $bannerPath = $sellerProfile->store_banner;
+                    }
+                } else {
+                    Log::warning('Invalid banner URL format - must be from our storage: ' . $bannerValue);
+                    $bannerPath = $sellerProfile->store_banner;
                 }
             }
 
@@ -1378,8 +1547,8 @@ class SellerController extends Controller
                 $storeSlug = SellerProfile::generateStoreSlug($validated['store_name']);
             }
 
-            // Update seller profile - Use business_type_id
-            $sellerProfile->update([
+            // Prepare update data
+            $updateData = [
                 'store_name' => $validated['store_name'],
                 'store_slug' => $storeSlug,
                 'business_type_id' => $businessType->id,
@@ -1387,12 +1556,17 @@ class SellerController extends Controller
                 'description' => $validated['description'] ?? null,
                 'contact_email' => $validated['contact_email'],
                 'contact_phone' => $validated['contact_phone'],
-                'store_logo' => $validated['store_logo'] ?? $sellerProfile->store_logo,
-                'store_banner' => $validated['store_banner'] ?? $sellerProfile->store_banner,
-                'status' => $sellerProfile->status === SellerProfile::STATUS_SETUP_PENDING
-                    ? SellerProfile::STATUS_PENDING
-                    : $sellerProfile->status,
-            ]);
+                'store_logo' => $logoPath,
+                'store_banner' => $bannerPath,
+            ];
+
+            // Update status if it's still in setup_pending
+            if ($sellerProfile->status === SellerProfile::STATUS_SETUP_PENDING) {
+                $updateData['status'] = SellerProfile::STATUS_PENDING;
+            }
+
+            // Update seller profile
+            $sellerProfile->update($updateData);
 
             // Load the business type relationship
             $sellerProfile->load('businessType');
@@ -1401,7 +1575,11 @@ class SellerController extends Controller
                 'user_id' => $user->id,
                 'seller_profile_id' => $sellerProfile->id,
                 'business_type_id' => $businessType->id,
-                'store_name' => $validated['store_name']
+                'store_name' => $validated['store_name'],
+                'logo_updated' => $logoPath !== $sellerProfile->getOriginal('store_logo'),
+                'banner_updated' => $bannerPath !== $sellerProfile->getOriginal('store_banner'),
+                'logo_path' => $logoPath,
+                'banner_path' => $bannerPath
             ]);
 
             return response()->json([
@@ -1418,6 +1596,10 @@ class SellerController extends Controller
                         'requires_registration' => $businessType->requires_registration,
                         'requires_tax_document' => $businessType->requires_tax_document,
                         'document_requirements' => $businessType->getDocumentRequirements()
+                    ],
+                    'media_urls' => [
+                        'store_logo' => $sellerProfile->store_logo ? url('storage/' . $sellerProfile->store_logo) : null,
+                        'store_banner' => $sellerProfile->store_banner ? url('storage/' . $sellerProfile->store_banner) : null
                     ]
                 ]
             ]);

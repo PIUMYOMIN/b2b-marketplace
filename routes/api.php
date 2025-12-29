@@ -91,6 +91,9 @@ Route::group([
                 Route::get('/check-status', [SellerController::class, 'checkProfileStatus']);
 
                 // Onboarding Steps
+                // Store logo and banner upload endpoints
+                Route::post('/storeLogo', [SellerController::class, 'uploadStoreLogo']);
+                Route::post('/storeBanner', [SellerController::class, 'uploadStoreBanner']);
                 // Basic store info save endpoint
                 Route::post('/store-basic', [SellerController::class, 'updateStoreBasic']);
                 //Business save endpoint

@@ -269,10 +269,10 @@ class ProductController extends Controller
 
             $productData = $request->only([
                 'name', 'description', 'price', 'quantity',
-                'category_id', 'specifications', 'moq', 'min_order_unit', 
-                'lead_time', 'is_active', 'brand', 'model', 'color', 
+                'category_id', 'specifications', 'moq', 'min_order_unit',
+                'lead_time', 'is_active', 'brand', 'model', 'color',
                 'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
-                'warranty_period', 'return_policy', 'shipping_cost', 
+                'warranty_period', 'return_policy', 'shipping_cost',
                 'shipping_time', 'packaging_details', 'additional_info'
             ]);
 
@@ -352,7 +352,7 @@ class ProductController extends Controller
 
             // Store image in user-specific temp directory
             $path = $request->file('image')->store(
-                'products/' . $user->id, 
+                'products/' . $user->id,
                 'public'
             );
 
@@ -456,10 +456,10 @@ class ProductController extends Controller
         try {
             $updateData = $request->only([
                 'name', 'description', 'price', 'quantity',
-                'category_id', 'specifications', 'moq', 'min_order_unit', 
-                'lead_time', 'is_active', 'brand', 'model', 'color', 
+                'category_id', 'specifications', 'moq', 'min_order_unit',
+                'lead_time', 'is_active', 'brand', 'model', 'color',
                 'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
-                'warranty_period', 'return_policy', 'shipping_cost', 
+                'warranty_period', 'return_policy', 'shipping_cost',
                 'shipping_time', 'packaging_details', 'additional_info'
             ]);
 
@@ -554,7 +554,7 @@ public function myProducts(Request $request)
     {
         try {
             $user = Auth::user();
-            
+
             if (!$user) {
                 return response()->json([
                     'success' => false,
@@ -570,7 +570,7 @@ public function myProducts(Request $request)
             }
 
             $perPage = $request->input('per_page', 15);
-            
+
             $products = Product::where('seller_id', $user->id)
                 ->with(['category'])
                 ->withCount(['reviews as reviews_count'])
@@ -897,7 +897,7 @@ public function myProducts(Request $request)
         } catch (\Exception $e) {
             // If it's not valid JSON, treat it as a single image URL
             return [[
-                'url' => Storage::disk('public')->exists($images) ? 
+                'url' => Storage::disk('public')->exists($images) ?
                         Storage::disk('public')->url($images) : $images,
                 'angle' => 'default',
                 'is_primary' => true
@@ -909,7 +909,7 @@ public function myProducts(Request $request)
     foreach ($images as $index => $image) {
         if (is_string($image)) {
             $formattedImages[] = [
-                'url' => Storage::disk('public')->exists($image) ? 
+                'url' => Storage::disk('public')->exists($image) ?
                         Storage::disk('public')->url($image) : $image,
                 'angle' => 'default',
                 'is_primary' => $index === 0
@@ -917,7 +917,7 @@ public function myProducts(Request $request)
         } else {
             $url = $image['url'] ?? $image['path'] ?? '';
             $formattedImages[] = [
-                'url' => Storage::disk('public')->exists($url) ? 
+                'url' => Storage::disk('public')->exists($url) ?
                         Storage::disk('public')->url($url) : $url,
                 'angle' => $image['angle'] ?? 'default',
                 'is_primary' => $image['is_primary'] ?? ($index === 0)
@@ -940,7 +940,7 @@ public function uploadImageToProduct(Request $request, Product $product)
             'message' => 'Unauthorized to update this product'
         ], 403);
     }
-    
+
     $request->validate([
         'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
         'angle' => 'sometimes|string|in:front,back,side,top,default'
@@ -948,19 +948,19 @@ public function uploadImageToProduct(Request $request, Product $product)
 
     try {
         $angle = $request->angle ?? 'default';
-        
+
         // Store image in product-specific directory
         $path = $request->file('image')->store(
-            'products/' . $product->id, 
+            'products/' . $product->id,
             'public'
         );
-        
+
         // Get current images
         $images = $product->images ?? [];
         if (!is_array($images)) {
             $images = json_decode($images, true) ?? [];
         }
-        
+
         // Add new image (not primary by default)
         $newImage = [
             'url' => $path,
@@ -968,18 +968,18 @@ public function uploadImageToProduct(Request $request, Product $product)
             'is_primary' => empty($images), // Set as primary if no images exist
             'uploaded_at' => now()->toISOString()
         ];
-        
+
         $images[] = $newImage;
-        
+
         // Update product with new images array
         $product->update(['images' => $images]);
-        
+
         return response()->json([
             'success' => true,
             'data' => $newImage,
             'message' => 'Image uploaded successfully'
         ]);
-        
+
     } catch (\Exception $e) {
         return response()->json([
             'success' => false,
@@ -1000,13 +1000,13 @@ public function deleteImage(Product $product, $imageIndex)
             'message' => 'Unauthorized to update this product'
         ], 403);
     }
-    
+
     try {
         $images = $product->images ?? [];
         if (!is_array($images)) {
             $images = json_decode($images, true) ?? [];
         }
-        
+
         // Check if index exists
         if (!isset($images[$imageIndex])) {
             return response()->json([
@@ -1014,30 +1014,30 @@ public function deleteImage(Product $product, $imageIndex)
                 'message' => 'Image not found'
             ], 404);
         }
-        
+
         $imageToDelete = $images[$imageIndex];
-        
+
         // Delete the physical file
         if (Storage::disk('public')->exists($imageToDelete['url'])) {
             Storage::disk('public')->delete($imageToDelete['url']);
         }
-        
+
         // Remove from array
         array_splice($images, $imageIndex, 1);
-        
+
         // If we deleted the primary image and there are other images, set a new primary
         if ($imageToDelete['is_primary'] && count($images) > 0) {
             $images[0]['is_primary'] = true;
         }
-        
+
         // Update product
         $product->update(['images' => $images]);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Image deleted successfully'
         ]);
-        
+
     } catch (\Exception $e) {
         return response()->json([
             'success' => false,
@@ -1058,13 +1058,13 @@ public function setPrimaryImage(Product $product, $imageIndex)
             'message' => 'Unauthorized to update this product'
         ], 403);
     }
-    
+
     try {
         $images = $product->images ?? [];
         if (!is_array($images)) {
             $images = json_decode($images, true) ?? [];
         }
-        
+
         // Check if index exists
         if (!isset($images[$imageIndex])) {
             return response()->json([
@@ -1072,20 +1072,20 @@ public function setPrimaryImage(Product $product, $imageIndex)
                 'message' => 'Image not found'
             ], 404);
         }
-        
+
         // Update all images - set the specified one as primary, others as not primary
         foreach ($images as $index => &$image) {
             $image['is_primary'] = ($index == $imageIndex);
         }
-        
+
         // Update product
         $product->update(['images' => $images]);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Primary image updated successfully'
         ]);
-        
+
     } catch (\Exception $e) {
         return response()->json([
             'success' => false,
