@@ -2,7 +2,6 @@
 
 namespace App\Models;
 use Kalnoy\Nestedset\NodeTrait;
-
 use Illuminate\Database\Eloquent\Model;
 
 class Category extends Model
@@ -10,11 +9,15 @@ class Category extends Model
     use NodeTrait;
 
     protected $fillable = [
-        'name', 
+        'name',
+        'name_mm',
+        'description',
+        'description_mm',
+        'slug',
         'image',
-        'description', 
-        'slug', 
-        'commission_rate'
+        'commission_rate',
+        'parent_id',
+        'is_active',
     ];
 
     public function parent() {

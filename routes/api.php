@@ -85,7 +85,7 @@ Route::group([
 
         Route::prefix('seller')->middleware('role:seller')->group(function () {
 
-            Route::prefix('/onboarding')->middleware(['auth:sanctum', 'role:seller'])->group(function () {
+            Route::prefix('onboarding')->group(function () {
                 // Onboarding Status
                 Route::get('/status', [SellerController::class, 'getOnboardingStatus']);
                 Route::get('/check-status', [SellerController::class, 'checkProfileStatus']);
@@ -115,7 +115,6 @@ Route::group([
                 Route::post('/upload-document', [SellerController::class, 'uploadDocument']);
             });
 
-
             // Document Upload & Management
             Route::get('/document-requirements', [SellerController::class, 'getDocumentRequirements']);
             Route::get('/documents', [SellerController::class, 'getUploadedDocuments']);
@@ -127,13 +126,26 @@ Route::group([
             // Verification Status
             Route::get('/verification-status', [SellerController::class, 'getVerificationStatus']);
             Route::get('/verification-history', [SellerController::class, 'getVerificationHistory']);
+
+            // Seller Dashboard
+            Route::get('/my-store', [SellerController::class, 'myStore']);
+            Route::get('/dashboard', [SellerController::class, 'dashboard']);
+            Route::get('/sales-summary', [SellerController::class, 'salesSummary']);
+            Route::get('/top-products', [SellerController::class, 'topProducts']);
+            Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
+            Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
+            Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
+            Route::get('/products/my-products', [ProductController::class, 'myProducts']);
+
+            // Seller Product Reviews
+            Route::get('/products/reviews', [ReviewController::class, 'sellerReviews']);
         });
 
         // Dashboard
         Route::prefix('dashboard')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
             Route::get('/sellers', [DashboardController::class, 'getSellers']);
-            Route::post('/{seller}/approve', [DashboardController::class, 'adminApprove'])->middleware('role:admin');
+            Route::post('seller/{seller}/approve', [DashboardController::class, 'adminApprove'])->middleware('role:admin');
             Route::post('/{seller}/reject', [DashboardController::class, 'adminReject'])->middleware('role:admin');
             Route::get('/stats', [DashboardController::class, 'stats']);
             Route::get('/sales-report', [DashboardController::class, 'salesReport']);
@@ -147,46 +159,49 @@ Route::group([
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
             Route::get('/user-growth', [DashboardController::class, 'userGrowthLast30Days']);
-
-            // Admin seller management
-            Route::prefix('seller')->group(function () {
-                Route::get('/my-store', [SellerController::class, 'myStore'])->middleware('role:seller');
-                Route::get('/dashboard', [SellerController::class, 'dashboard']);
-                Route::get('/sales-summary', [SellerController::class, 'salesSummary']);
-                Route::get('/top-products', [SellerController::class, 'topProducts']);
-                Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
-                Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
-                Route::get('/delivery-stats', [SellerController::class, 'deliveryStats'])->middleware('role:seller');
-                Route::get('/products/my-products', [ProductController::class, 'myProducts'])->middleware('role:seller');
-            });
-
-
-            Route::prefix('deliveries')->group(function () {
-                Route::get('/', [DeliveryController::class, 'index']);
-                Route::get('/{delivery}/tracking', [DeliveryController::class, 'getTrackingUpdates']);
-                Route::post('/{delivery}/status', [DeliveryController::class, 'updateStatus']);
-                Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
-                Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
-            });
-
-            // Order delivery method selection
-            Route::post('/orders/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
-
-            // Admin/Seller review management
-            Route::get('/reviews', [ReviewController::class, 'index'])->middleware('role:admin|seller');
-
-            // Seller-specific dashboard
             Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary'])->middleware('role:seller');
             Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts'])->middleware('role:seller');
             Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders'])->middleware('role:seller');
-        });
+
+            Route::get('/seller/{id}/status', [SellerController::class, 'getSellerStatus'])->middleware('role:admin');
+            Route::put('/seller/{id}/status', [SellerController::class, 'sellerApprove'])->middleware('role:admin');
+            Route::get('/seller-verification', [SellerController::class, 'getAllSellerVerifications']);
+            Route::get('/seller-verification/{verification}', [SellerController::class, 'getSellerVerificationDetails']);
+            Route::post('/seller-verification/{verification}/approve', [SellerController::class, 'approveSellerVerification']);
+            Route::get('/seller/pending-verification', [SellerController::class, 'getPendingVerification']);
+            Route::post('/{verification}/reject', [SellerController::class, 'rejectSellerVerification']);
+            Route::get('/seller/verification-review', [SellerController::class, 'getSellersForVerificationReview']);
+            Route::post('/seller/{id}/verify', [SellerController::class, 'verifySeller']);
+            Route::post('/seller/{id}/reject', [SellerController::class, 'rejectVerification']);
+            Route::put('/seller/{id}/verification-status', [SellerController::class, 'updateVerificationStatus']);
+            Route::get('/seller/{id}/documents', [SellerController::class, 'getSellerDocuments']);
+            Route::put('/seller/{id}/status', [SellerController::class, 'update']);
+            Route::put('/seller/{id}/status', [SellerController::class, 'updateStatus']);
+            Route::put('/seller/{id}', [SellerController::class, 'update']);
 
 
-        Route::prefix('admin/business-types')->middleware('role:admin')->group(function () {
-            Route::post('/', [BusinessTypeController::class, 'store']);
-            Route::put('/{id}', [BusinessTypeController::class, 'update']);
-            Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
+            Route::prefix('/business-types')->middleware('role:admin')->group(function () {
+                Route::post('/', [BusinessTypeController::class, 'store']);
+                Route::put('/{id}', [BusinessTypeController::class, 'update']);
+                Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
+            });
+
         });
+
+        // Delivery Management
+        Route::prefix('deliveries')->group(function () {
+            Route::get('/', [DeliveryController::class, 'index']);
+            Route::get('/{delivery}/tracking', [DeliveryController::class, 'getTrackingUpdates']);
+            Route::post('/{delivery}/status', [DeliveryController::class, 'updateStatus']);
+            Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
+            Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
+        });
+
+        // Order delivery method selection
+        Route::post('/orders/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
+
+        // Admin/Seller review management
+        Route::get('/reviews', [ReviewController::class, 'index'])->middleware('role:admin|seller');
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
@@ -266,11 +281,6 @@ Route::group([
                 Route::put('/{review}/status', [ReviewController::class, 'updateStatus']);
                 Route::delete('/{review}', [ReviewController::class, 'destroy']);
             });
-        });
-
-        // Seller Product Reviews
-        Route::prefix('seller')->middleware('role:seller')->group(function () {
-            Route::get('/products/reviews', [ReviewController::class, 'sellerReviews']);
         });
 
         // Categories

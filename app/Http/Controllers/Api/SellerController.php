@@ -1071,9 +1071,9 @@ class SellerController extends Controller
             ->get()
             ->map(function ($type) {
                 return [
-                    'value' => $type->slug,
-                    'label' => $type->name,
-                    'description' => $type->description,
+                    'value' => $type->slug_en,
+                    'label' => $type->name_en,
+                    'description_en' => $type->description_en,
                     'requires_registration' => $type->requires_registration,
                     'document_requirements' => $type->getDocumentRequirements(),
                     'icon' => $type->icon,
@@ -1454,12 +1454,12 @@ class SellerController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
-                'business_type_slug' => 'required|exists:business_types,slug',
+                'business_type_slug' => 'required|exists:business_types,slug_en',
                 'description' => 'nullable|string|max:2000',
                 'contact_email' => 'required|email|max:255',
                 'contact_phone' => 'required|string|max:20',
-                'store_logo' => 'nullable|string|max:500',  // This is now a URL/path string from separate upload
-                'store_banner' => 'nullable|string|max:500', // This is now a URL/path string from separate upload
+                'store_logo' => 'nullable|string|max:500',
+                'store_banner' => 'nullable|string|max:500',
             ]);
 
             if ($validator->fails()) {
@@ -1471,8 +1471,7 @@ class SellerController extends Controller
 
             $validated = $validator->validated();
 
-            // Get business type by slug
-            $businessType = BusinessType::where('slug', $validated['business_type_slug'])->first();
+            $businessType = BusinessType::where('slug_en', $validated['business_type_slug'])->first();
 
             if (!$businessType) {
                 return response()->json([
@@ -1486,15 +1485,12 @@ class SellerController extends Controller
             if (isset($validated['store_logo']) && is_string($validated['store_logo'])) {
                 $logoValue = $validated['store_logo'];
 
-                // If it's a full URL from our storage (e.g., http://localhost/storage/path/to/logo.jpg)
                 if (str_starts_with($logoValue, url('storage/'))) {
-                    // Extract the storage path (remove the base URL)
                     $logoPath = str_replace(url('storage/'), '', $logoValue);
 
-                    // Validate that the file exists in storage
                     if (!Storage::disk('public')->exists($logoPath)) {
                         Log::warning('Logo file does not exist in storage: ' . $logoPath);
-                        $logoPath = $sellerProfile->store_logo; // Revert to existing
+                        $logoPath = $sellerProfile->store_logo;
                     }
                 }
                 // If it's already a storage path (not a full URL)
@@ -1504,7 +1500,7 @@ class SellerController extends Controller
                         $logoPath = $logoValue;
                     } else {
                         Log::warning('Invalid logo storage path: ' . $logoValue);
-                        $logoPath = $sellerProfile->store_logo; // Revert to existing
+                        $logoPath = $sellerProfile->store_logo;
                     }
                 }
                 // If it's some other URL format, reject it
@@ -1541,13 +1537,11 @@ class SellerController extends Controller
                 }
             }
 
-            // Generate store slug if store name changed
             $storeSlug = $sellerProfile->store_slug;
             if ($validated['store_name'] !== $sellerProfile->store_name) {
                 $storeSlug = SellerProfile::generateStoreSlug($validated['store_name']);
             }
 
-            // Prepare update data
             $updateData = [
                 'store_name' => $validated['store_name'],
                 'store_slug' => $storeSlug,
@@ -1589,9 +1583,9 @@ class SellerController extends Controller
                     'seller_profile' => $sellerProfile,
                     'business_type' => [
                         'id' => $businessType->id,
-                        'slug' => $businessType->slug,
+                        'slug_en' => $businessType->slug_en,
                         'name' => $businessType->name,
-                        'description' => $businessType->description,
+                        'description_en' => $businessType->description_en,
                         'is_individual' => $businessType->isIndividualType(),
                         'requires_registration' => $businessType->requires_registration,
                         'requires_tax_document' => $businessType->requires_tax_document,
@@ -1883,7 +1877,7 @@ class SellerController extends Controller
                 'user_id' => $user->id,
                 'seller_profile_id' => $sellerProfile->id,
                 'document_type' => $documentType,
-                'business_type' => $businessType->slug,
+                'business_type' => $businessType->slug_en,
                 'file_path' => $filePath
             ]);
 
@@ -2056,9 +2050,9 @@ class SellerController extends Controller
                 'data' => [
                     'business_type' => [
                         'id' => $businessType->id,
-                        'slug' => $businessType->slug,
-                        'name' => $businessType->name,
-                        'description' => $businessType->description,
+                        'name_en' => $businessType->name_en,
+                        'slug_en' => $businessType->slug_en,
+                        'description_en' => $businessType->description_en,
                     ],
                     'is_individual' => $businessType->isIndividualType(),
                     'requirements' => $requirements,
@@ -2250,7 +2244,7 @@ class SellerController extends Controller
             Log::info('Documents marked as complete', [
                 'user_id' => $user->id,
                 'seller_profile_id' => $sellerProfile->id,
-                'business_type' => $businessType->slug,
+                'business_type' => $businessType->slug_en,
                 'submitted_at' => now()->toISOString()
             ]);
 
@@ -2621,7 +2615,7 @@ class SellerController extends Controller
             Log::info('Seller onboarding completed with documents', [
                 'user_id' => $user->id,
                 'seller_profile_id' => $sellerProfile->id,
-                'business_type' => $businessType->slug,
+                'business_type' => $businessType->slug_en,
                 'verification_status' => $sellerProfile->verification_status
             ]);
 
@@ -2744,9 +2738,9 @@ class SellerController extends Controller
             if ($sellerProfile->businessType) {
                 $businessTypeInfo = [
                     'id' => $sellerProfile->businessType->id,
-                    'slug' => $sellerProfile->businessType->slug,
-                    'name' => $sellerProfile->businessType->name,
-                    'description' => $sellerProfile->businessType->description,
+                    'name_en' => $sellerProfile->businessType->name_en,
+                    'slug_en' => $sellerProfile->businessType->slug_en,
+                    'description' => $sellerProfile->businessType->description_en,
                     'is_individual' => $sellerProfile->businessType->isIndividualType(),
                     'requires_registration' => $sellerProfile->businessType->requires_registration,
                     'requires_tax_document' => $sellerProfile->businessType->requires_tax_document,
@@ -3152,7 +3146,7 @@ class SellerController extends Controller
             $validators = [
                 'store-basic' => [
                     'store_name' => 'required|string|max:255',
-                    'business_type_slug' => 'required|exists:business_types,slug',
+                    'business_type_slug' => 'required|exists:business_types,slug_en',
                     'contact_email' => 'required|email',
                     'contact_phone' => 'required|string'
                 ],
@@ -3210,6 +3204,111 @@ class SellerController extends Controller
         ];
 
         $sellerProfile->update(['onboarding_progress' => json_encode($progress)]);
+    }
+
+    /**
+     * Get verification review for admin
+     */
+    public function getVerificationReview(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can access this endpoint'
+                ], 403);
+            }
+
+            $perPage = $request->input('per_page', 15);
+            $search = $request->input('search');
+            $status = $request->input('status');
+
+            // Get sellers who have uploaded documents
+            $query = SellerProfile::where(function ($q) {
+                // Include sellers with any document uploaded
+                $q->whereNotNull('identity_document_front')
+                    ->orWhereNotNull('business_registration_document')
+                    ->orWhereNotNull('tax_registration_document')
+                    ->orWhereNotNull('identity_document_back')
+                    ->orWhereNotNull('business_certificate')
+                    ->orWhereNotNull('additional_documents');
+            });
+
+            // Apply filters
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('store_name', 'like', "%{$search}%")
+                        ->orWhere('store_id', 'like', "%{$search}%")
+                        ->orWhere('contact_email', 'like', "%{$search}%")
+                        ->orWhere('contact_phone', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($userQuery) use ($search) {
+                            $userQuery->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        });
+                });
+            }
+
+            if ($status) {
+                $query->where('document_status', $status);
+            }
+
+            $sellers = $query->with(['user:id,name,email'])
+                ->orderBy('documents_submitted_at', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
+
+            // Add document URLs
+            $sellers->getCollection()->transform(function ($seller) {
+                $sellerData = $seller->toArray();
+
+                // Get all document URLs
+                $documents = [];
+                $documentFields = [
+                    'identity_document_front',
+                    'identity_document_back',
+                    'business_registration_document',
+                    'tax_registration_document',
+                    'business_certificate',
+                    'store_logo',
+                    'store_banner'
+                ];
+
+                foreach ($documentFields as $field) {
+                    if (!empty($seller->$field)) {
+                        $documents[$field] = [
+                            'url' => $seller->getDocumentUrl($field),
+                            'label' => ucwords(str_replace('_', ' ', $field))
+                        ];
+                    }
+                }
+
+                $sellerData['documents'] = $documents;
+                $sellerData['has_documents'] = !empty($documents);
+                $sellerData['additional_documents'] = $seller->getAdditionalDocuments();
+
+                return $sellerData;
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $sellers,
+                'meta' => [
+                    'current_page' => $sellers->currentPage(),
+                    'per_page' => $sellers->perPage(),
+                    'total' => $sellers->total(),
+                    'last_page' => $sellers->lastPage(),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get verification review: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get verification review'
+            ], 500);
+        }
     }
 
     /**
@@ -3388,6 +3487,123 @@ class SellerController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get pending verification'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get seller status (Admin)
+     */
+    public function getSellersWithDocuments(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can access this endpoint'
+                ], 403);
+            }
+
+            $perPage = $request->input('per_page', 15);
+
+            // Get sellers who have uploaded documents but may not be in verification queue
+            $sellers = SellerProfile::where(function ($query) {
+                $query->whereNotNull('identity_document_front')
+                    ->orWhereNotNull('business_registration_document')
+                    ->orWhereNotNull('tax_registration_document');
+            })
+                ->where(function ($query) {
+                    // Include pending verification OR sellers with documents that need review
+                    $query->whereIn('verification_status', ['pending', 'under_review'])
+                        ->orWhere('document_status', '!=', 'approved');
+                })
+                ->with(['user:id,name,email,phone'])
+                ->orderBy('documents_submitted_at', 'desc')
+                ->paginate($perPage);
+
+            // Format response
+            $sellers->getCollection()->transform(function ($seller) {
+                $sellerData = $seller->toArray();
+
+                // Get document URLs
+                $documents = [];
+                $documentFields = [
+                    'identity_document_front',
+                    'identity_document_back',
+                    'business_registration_document',
+                    'tax_registration_document'
+                ];
+
+                foreach ($documentFields as $field) {
+                    if (!empty($seller->$field)) {
+                        $documents[$field] = $seller->getDocumentUrl($field);
+                    }
+                }
+
+                $sellerData['documents'] = $documents;
+                $sellerData['additional_documents'] = $seller->getAdditionalDocuments();
+                $sellerData['has_documents'] = !empty($documents);
+
+                return $sellerData;
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $sellers,
+                'meta' => [
+                    'current_page' => $sellers->currentPage(),
+                    'per_page' => $sellers->perPage(),
+                    'total' => $sellers->total(),
+                    'last_page' => $sellers->lastPage(),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get sellers with documents: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get sellers with documents'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get seller status (Admin)
+     */
+    public function getSellerStatus(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+
+            if ($admin->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can access seller status'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'verification_status' => $sellerProfile->verification_status,
+                    'document_status' => $sellerProfile->document_status,
+                    'status' => $sellerProfile->status,
+                    'verified_at' => $sellerProfile->verified_at,
+                    'verified_by' => $sellerProfile->verified_by,
+                    'verification_notes' => $sellerProfile->verification_notes,
+                    'document_rejection_reason' => $sellerProfile->document_rejection_reason,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get seller status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get seller status: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -3604,6 +3820,113 @@ class SellerController extends Controller
     }
 
     /**
+     * Get sellers with uploaded documents for verification review
+     */
+    public function getSellersForVerificationReview(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can access this endpoint'
+                ], 403);
+            }
+
+            $perPage = $request->input('per_page', 15);
+            $search = $request->input('search');
+
+            // Get sellers who need verification review
+            $query = SellerProfile::where(function ($q) {
+                // Sellers with uploaded identity documents
+                $q->whereNotNull('identity_document_front')
+                    ->orWhereNotNull('business_registration_document');
+            })
+                ->where(function ($q) {
+                    // And haven't been fully verified/rejected yet
+                    $q->where('document_status', '!=', 'approved')
+                        ->orWhereNull('document_status')
+                        ->orWhere('verification_status', '!=', 'verified');
+                })
+                ->where('documents_submitted', true) // Only submitted documents
+                ->with(['user:id,name,email,phone'])
+                ->orderBy('documents_submitted_at', 'desc');
+
+            // Apply search filter
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('store_name', 'like', '%' . $search . '%')
+                        ->orWhere('store_id', 'like', '%' . $search . '%')
+                        ->orWhere('contact_email', 'like', '%' . $search . '%')
+                        ->orWhere('contact_phone', 'like', '%' . $search . '%')
+                        ->orWhereHas('user', function ($userQuery) use ($search) {
+                            $userQuery->where('name', 'like', '%' . $search . '%')
+                                ->orWhere('email', 'like', '%' . $search . '%');
+                        });
+                });
+            }
+
+            $sellers = $query->paginate($perPage);
+
+            // Transform data
+            $sellers->getCollection()->transform(function ($seller) {
+                $sellerData = $seller->toArray();
+
+                // Get document URLs
+                $documents = [];
+                $documentFields = [
+                    'identity_document_front' => 'Identity Front',
+                    'identity_document_back' => 'Identity Back',
+                    'business_registration_document' => 'Business Registration',
+                    'tax_registration_document' => 'Tax Document',
+                    'business_certificate' => 'Business Certificate'
+                ];
+
+                foreach ($documentFields as $field => $label) {
+                    if (!empty($seller->$field)) {
+                        $documents[$field] = [
+                            'url' => $seller->getDocumentUrl($field),
+                            'label' => $label,
+                            'exists' => true
+                        ];
+                    }
+                }
+
+                $sellerData['documents'] = $documents;
+                $sellerData['additional_documents'] = $seller->getAdditionalDocuments();
+
+                // Calculate document completion
+                $docCount = count(array_filter(array_column($documents, 'exists')));
+                $sellerData['document_completion'] = $docCount;
+                $sellerData['has_identity_docs'] = !empty($seller->identity_document_front);
+                $sellerData['has_business_docs'] = !empty($seller->business_registration_document);
+
+                return $sellerData;
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $sellers,
+                'stats' => [
+                    'total' => $sellers->total(),
+                    'with_identity_docs' => SellerProfile::whereNotNull('identity_document_front')->count(),
+                    'with_business_docs' => SellerProfile::whereNotNull('business_registration_document')->count(),
+                    'pending_verification' => SellerProfile::where('verification_status', 'pending')->count(),
+                    'pending_documents' => SellerProfile::whereIn('document_status', ['pending', 'under_review'])->count()
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to get sellers for verification review: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get sellers for verification review'
+            ], 500);
+        }
+    }
+
+    /**
      * Update verification status (Admin)
      */
     public function updateVerificationStatus(Request $request, $id)
@@ -3674,10 +3997,85 @@ class SellerController extends Controller
         }
     }
 
+    /**
+     * Update seller status (Admin)
+     */
+    public function updateStatus(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+
+            if ($admin->type !== 'admin') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only admin can update seller status'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::findOrFail($id);
+
+            $validator = Validator::make($request->all(), [
+                'status' => 'required|in:setup_pending,pending,approved,active,rejected,suspended,closed',
+                'reason' => 'nullable|string|max:1000',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Store old status for logging
+            $oldStatus = $sellerProfile->status;
+
+            // Update status
+            $sellerProfile->update([
+                'status' => $validated['status'],
+                'admin_notes' => $validated['reason'] ?? null,
+            ]);
+
+            // Log the status change
+            if ($validated['reason']) {
+                DB::table('seller_status_logs')->insert([
+                    'seller_profile_id' => $sellerProfile->id,
+                    'admin_id' => $admin->id,
+                    'old_status' => $oldStatus,
+                    'new_status' => $validated['status'],
+                    'reason' => $validated['reason'],
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+
+            Log::info('Seller status updated', [
+                'seller_id' => $id,
+                'admin_id' => $admin->id,
+                'old_status' => $oldStatus,
+                'new_status' => $validated['status'],
+                'reason' => $validated['reason'] ?? null
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller status updated successfully',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update seller status: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update seller status: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     /**
-     * Get comprehensive sales summary with delivery stats (FIXED VERSION)
-     */
+ * Get comprehensive sales summary with delivery stats (FIXED VERSION)
+ */
     public function salesSummary(Request $request)
     {
         try {
@@ -3694,6 +4092,12 @@ class SellerController extends Controller
             $startDate = $request->input('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
             $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
 
+            \Log::info('Sales summary request', [
+                'user_id' => $user->id,
+                'start_date' => $startDate,
+                'end_date' => $endDate
+            ]);
+
             // Total products with stock info
             $totalProducts = Product::where('seller_id', $user->id)->count();
             $activeProducts = Product::where('seller_id', $user->id)
@@ -3703,28 +4107,28 @@ class SellerController extends Controller
                 ->where('quantity', '<=', 5)
                 ->count();
 
-            // Sales data - FIXED: Use proper aggregation
+            // Sales data
             $salesData = DB::table('orders')
                 ->where('seller_id', $user->id)
-                ->whereBetween('created_at', [$startDate, $endDate])
+                ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     DB::raw('COUNT(*) as total_orders'),
-                    DB::raw('SUM(total_amount) as total_revenue'),
-                    DB::raw('AVG(total_amount) as average_order_value')
+                    DB::raw('COALESCE(SUM(total_amount), 0) as total_revenue'),
+                    DB::raw('COALESCE(AVG(total_amount), 0) as average_order_value')
                 )
                 ->first();
 
-            // Total items sold - FIXED: Use proper joins and aggregation
+            // Total items sold
             $totalItemsSold = DB::table('order_items')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->where('orders.seller_id', $user->id)
-                ->whereBetween('orders.created_at', [$startDate, $endDate])
-                ->sum('order_items.quantity');
+                ->whereBetween('orders.created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+                ->sum('order_items.quantity') ?? 0;
 
-            // Order status counts - FIXED: Simple count by status
+            // Order status counts
             $orderStatusCounts = DB::table('orders')
                 ->where('seller_id', $user->id)
-                ->whereBetween('created_at', [$startDate, $endDate])
+                ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     'status',
                     DB::raw('COUNT(*) as count')
@@ -3733,10 +4137,13 @@ class SellerController extends Controller
                 ->get()
                 ->pluck('count', 'status');
 
-            // Delivery status counts - FIXED: Simple count by status
+            \Log::info('Order status counts', $orderStatusCounts->toArray());
+
+            // Delivery status counts
+            try {
             $deliveryStatusCounts = DB::table('deliveries')
                 ->where('supplier_id', $user->id)
-                ->whereBetween('created_at', [$startDate, $endDate])
+                    ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     'status',
                     DB::raw('COUNT(*) as count')
@@ -3744,64 +4151,120 @@ class SellerController extends Controller
                 ->groupBy('status')
                 ->get()
                 ->pluck('count', 'status');
+            } catch (\Exception $e) {
+                \Log::warning('Deliveries table query failed', ['error' => $e->getMessage()]);
+                $deliveryStatusCounts = collect([]);
+            }
 
-            // Recent sales trend (last 7 days) - FIXED: Proper grouping
+            // Recent sales trend (last 7 days)
             $recentSalesTrend = DB::table('orders')
                 ->where('seller_id', $user->id)
                 ->where('created_at', '>=', Carbon::now()->subDays(7))
                 ->select(
                     DB::raw('DATE(created_at) as date'),
-                    DB::raw('SUM(total_amount) as revenue'),
+                    DB::raw('COALESCE(SUM(total_amount), 0) as revenue'),
                     DB::raw('COUNT(*) as orders_count')
                 )
                 ->groupBy('date')
                 ->orderBy('date')
                 ->get();
 
-            // Customer statistics - FIXED: Use subqueries to avoid GROUP BY issues
+            \Log::info('Recent sales trend count', ['count' => $recentSalesTrend->count()]);
+
+            // Customer statistics - FIXED: Use correct approach for repeat customers
             $totalCustomers = DB::table('orders')
                 ->where('seller_id', $user->id)
-                ->whereBetween('created_at', [$startDate, $endDate])
+                ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->distinct()
                 ->count('buyer_id');
 
-            // FIXED: Count repeat customers using a subquery approach
-            $repeatCustomers = DB::table('orders')
+            // Repeat customers - FIXED: Use subquery to avoid GROUP BY issues
+            try {
+                // Get all buyers with their order counts
+                $buyerOrders = DB::table('orders')
                 ->where('seller_id', $user->id)
-                ->whereBetween('created_at', [$startDate, $endDate])
-                ->groupBy('buyer_id')
-                ->havingRaw('COUNT(*) > 1')
-                ->count(DB::raw('DISTINCT buyer_id'));
+                    ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+                    ->select('buyer_id')
+                    ->get();
 
-            // Top selling products - FIXED: Proper grouping with only necessary columns
-            $topProducts = DB::table('order_items')
-                ->join('products', 'order_items.product_id', '=', 'products.id')
-                ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                // Count buyers with more than 1 order
+                $buyerOrderCounts = [];
+                foreach ($buyerOrders as $order) {
+                    $buyerId = $order->buyer_id;
+                    if (!isset($buyerOrderCounts[$buyerId])) {
+                        $buyerOrderCounts[$buyerId] = 0;
+                    }
+                    $buyerOrderCounts[$buyerId]++;
+                }
+
+                $repeatCustomers = count(array_filter($buyerOrderCounts, function ($count) {
+                    return $count > 1;
+                }));
+
+            } catch (\Exception $e) {
+                \Log::error('Repeat customers calculation error', ['error' => $e->getMessage()]);
+                $repeatCustomers = 0;
+            }
+
+            \Log::info('Customer stats', [
+                'total_customers' => $totalCustomers,
+                'repeat_customers' => $repeatCustomers
+            ]);
+
+            // Top selling products - FIXED: Use name_en instead of name
+            try {
+                // First check what columns exist in order_items
+                $orderItemColumns = \Schema::getColumnListing('order_items');
+                \Log::info('order_items columns', $orderItemColumns);
+
+                // Check if subtotal column exists in order_items
+                $hasSubtotal = in_array('subtotal', $orderItemColumns);
+
+                $topProducts = DB::table('order_items')
+                    ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                    ->join('products', 'order_items.product_id', '=', 'products.id')
                 ->where('orders.seller_id', $user->id)
-                ->whereBetween('orders.created_at', [$startDate, $endDate])
+                    ->whereBetween('orders.created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     'products.id',
-                    'products.name',
+                        'products.name_en as name', // FIXED: Use name_en
                     'products.images',
-                    DB::raw('SUM(order_items.quantity) as total_sold'),
-                    DB::raw('SUM(order_items.subtotal) as total_revenue')
+                        DB::raw('COALESCE(SUM(order_items.quantity), 0) as total_sold'),
+                        // Check if subtotal column exists, otherwise calculate it
+                        $hasSubtotal
+                        ? DB::raw('COALESCE(SUM(order_items.subtotal), 0) as total_revenue')
+                        : DB::raw('COALESCE(SUM(order_items.price * order_items.quantity), 0) as total_revenue')
                 )
-                ->groupBy('products.id', 'products.name', 'products.images')
+                    ->groupBy('products.id', 'products.name_en', 'products.images')
                 ->orderBy('total_sold', 'desc')
                 ->limit(5)
                 ->get();
+
+            } catch (\Exception $e) {
+                \Log::error('Top products query error', ['error' => $e->getMessage()]);
+                $topProducts = collect([]);
+            }
 
             // Format top products with images
             $formattedTopProducts = $topProducts->map(function ($product) {
                 $images = json_decode($product->images, true) ?? [];
                 $primaryImage = collect($images)->firstWhere('is_primary', true) ?? $images[0] ?? null;
 
+                $imageUrl = null;
+                if ($primaryImage && isset($primaryImage['url'])) {
+                    $imageUrl = $primaryImage['url'];
+                    // Convert to full URL if it's a storage path
+                    if (!str_starts_with($imageUrl, 'http')) {
+                        $imageUrl = url('storage/' . ltrim($imageUrl, '/'));
+                    }
+                }
+
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
-                    'image' => $primaryImage['url'] ?? null,
-                    'total_sold' => $product->total_sold,
-                    'total_revenue' => $product->total_revenue,
+                    'image' => $imageUrl,
+                    'total_sold' => (int) $product->total_sold,
+                    'total_revenue' => (float) $product->total_revenue,
                 ];
             });
 
@@ -3819,10 +4282,10 @@ class SellerController extends Controller
                 ],
                 'sales' => [
                     'total_orders' => $salesData->total_orders ?? 0,
-                    'total_items_sold' => $totalItemsSold ?? 0,
+                    'total_items_sold' => $totalItemsSold,
                     'total_revenue' => $salesData->total_revenue ?? 0,
                     'average_order_value' => $salesData->average_order_value ?? 0,
-                    'revenue_formatted' => number_format($salesData->total_revenue ?? 0, 2) . ' MMK'
+                    'revenue_formatted' => 'MMK ' . number_format($salesData->total_revenue ?? 0, 2)
                 ],
                 'customers' => [
                     'total' => $totalCustomers,
@@ -3838,17 +4301,25 @@ class SellerController extends Controller
                 'top_products' => $formattedTopProducts
             ];
 
+            \Log::info('Sales summary generated successfully', [
+                'user_id' => $user->id,
+                'summary' => $summary
+            ]);
+
             return response()->json([
                 'success' => true,
                 'data' => $summary
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error in seller salesSummary: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
+            \Log::error('Error in seller salesSummary: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch sales summary: ' . $e->getMessage()
+                'message' => 'Failed to fetch sales summary',
+                'error' => env('APP_DEBUG') ? $e->getMessage() : null,
+                'trace' => env('APP_DEBUG') ? $e->getTraceAsString() : null
             ], 500);
         }
     }
@@ -3927,7 +4398,7 @@ class SellerController extends Controller
     }
 
     /**
-     * Get recent orders (FIXED VERSION)
+     * Get recent orders
      */
     public function recentOrders(Request $request)
     {
@@ -4018,46 +4489,37 @@ class SellerController extends Controller
             $days = $request->input('days', 30);
 
             $topProducts = DB::table('order_items')
-                ->join('products', 'order_items.product_id', '=', 'products.id')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                ->join('products', 'order_items.product_id', '=', 'products.id')
                 ->where('orders.seller_id', $user->id)
                 ->where('orders.created_at', '>=', Carbon::now()->subDays($days))
                 ->select(
                     'products.id',
-                    'products.name',
-                    'products.price',
+                    'products.name_en as name', // FIXED: Changed from 'products.name' to 'products.name_en'
                     'products.images',
-                    'products.sku',
-                    DB::raw('SUM(order_items.quantity) as total_sold'),
-                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue'),
-                    DB::raw('AVG(order_items.rating) as average_rating')
+                    DB::raw('COALESCE(SUM(order_items.quantity), 0) as total_sold'),
+                    DB::raw('COALESCE(SUM(order_items.price * order_items.quantity), 0) as total_revenue')
                 )
-                ->groupBy('products.id', 'products.name', 'products.price', 'products.images', 'products.sku')
+                ->groupBy('products.id', 'products.name_en', 'products.images') // FIXED: Group by name_en
                 ->orderBy('total_sold', 'desc')
                 ->limit($limit)
-                ->get();
+                ->get()
+                ->map(function ($product) {
+                    $images = json_decode($product->images, true) ?? [];
+                    $primaryImage = collect($images)->firstWhere('is_primary', true) ?? $images[0] ?? null;
 
-            // Format products with images and additional data
-            $formattedProducts = $topProducts->map(function ($product) {
-                $images = json_decode($product->images, true) ?? [];
-                $primaryImage = collect($images)->firstWhere('is_primary', true) ?? $images[0] ?? null;
-
-                return [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'price' => $product->price,
-                    'sku' => $product->sku,
-                    'image' => $primaryImage['url'] ?? null,
-                    'total_sold' => $product->total_sold,
-                    'total_revenue' => $product->total_revenue,
-                    'average_rating' => $product->average_rating ? round($product->average_rating, 2) : null,
-                    'performance' => $this->calculatePerformance($product->total_sold)
-                ];
-            });
+                    return [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'image' => $primaryImage ? (str_starts_with($primaryImage['url'] ?? '', 'http') ? $primaryImage['url'] : url('storage/' . ltrim($primaryImage['url'], '/'))) : null,
+                        'total_sold' => (int) $product->total_sold,
+                        'total_revenue' => (float) $product->total_revenue,
+                    ];
+                });
 
             return response()->json([
                 'success' => true,
-                'data' => $formattedProducts
+                'data' => $topProducts
             ]);
 
         } catch (\Exception $e) {
@@ -4068,72 +4530,6 @@ class SellerController extends Controller
             ], 500);
         }
     }
-
-    /**
-     * Get recent orders (role-based)
-     */
-    // public function recentOrders(Request $request)
-    // {
-    //     try {
-    //         $user = $request->user();
-
-    //         if (!isset($user->type) || $user->type !== 'seller') {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Only sellers can access this endpoint'
-    //             ], 403);
-    //         }
-
-    //         $limit = $request->input('limit', 10);
-
-    //         // Get recent orders with order items and buyer info
-    //         $recentOrders = Order::where('seller_id', $user->id)
-    //             ->with(['buyer:id,name,email', 'items.product:id,name'])
-    //             ->select([
-    //                 'id', 'order_number', 'status', 'total_amount', 'created_at',
-    //                 'buyer_id', 'payment_status', 'payment_method'
-    //             ])
-    //             ->orderBy('created_at', 'desc')
-    //             ->limit($limit)
-    //             ->get()
-    //             ->map(function ($order) {
-    //                 return [
-    //                     'id' => $order->id,
-    //                     'order_number' => $order->order_number,
-    //                     'status' => $order->status,
-    //                     'total_amount' => $order->total_amount,
-    //                     'total_amount_formatted' => 'MMK ' . number_format($order->total_amount, 2),
-    //                     'payment_status' => $order->payment_status,
-    //                     'payment_method' => $order->payment_method,
-    //                     'created_at' => $order->created_at->format('M j, Y g:i A'),
-    //                     'buyer' => $order->buyer ? [
-    //                         'name' => $order->buyer->name,
-    //                         'email' => $order->buyer->email
-    //                     ] : null,
-    //                     'items_count' => $order->items->count(),
-    //                     'products' => $order->items->take(2)->map(function ($item) {
-    //                         return [
-    //                             'name' => $item->product->name ?? $item->product_name,
-    //                             'quantity' => $item->quantity,
-    //                             'price' => $item->price
-    //                         ];
-    //                     })
-    //                 ];
-    //             });
-
-    //         return response()->json([
-    //             'success' => true,
-    //             'data' => $recentOrders
-    //         ]);
-
-    //     } catch (\Exception $e) {
-    //         Log::error('Error in seller recentOrders: ' . $e->getMessage());
-    //         return response()->json([
-    //             'success' => false,
-    //             'message' => 'Failed to fetch recent orders: ' . $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
 
 
     /**

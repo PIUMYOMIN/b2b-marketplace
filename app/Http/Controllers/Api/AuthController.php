@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
@@ -73,7 +72,7 @@ class AuthController extends Controller
                 $storeSlug = SellerProfile::generateStoreSlug($storeName);
 
                 // Get default individual business type
-                $defaultBusinessType = BusinessType::where('slug', 'individual')
+                $defaultBusinessType = BusinessType::where('slug_en', 'individual')
                     ->where('is_active', true)
                     ->first();
 
@@ -132,33 +131,25 @@ class AuthController extends Controller
      */
     private function normalizeMyanmarPhone($phone)
     {
-        // Remove any non-digit characters except +
         $cleanPhone = preg_replace('/[^0-9+]/', '', $phone);
 
-        // Handle different Myanmar phone formats
         if (str_starts_with($cleanPhone, '09')) {
-            // Format: 09xxxxxxxxx -> +959xxxxxxxxx
             return '+95' . substr($cleanPhone, 1);
         } elseif (str_starts_with($cleanPhone, '9') && !str_starts_with($cleanPhone, '95')) {
-            // Format: 9xxxxxxxx -> +959xxxxxxxx
             return '+95' . $cleanPhone;
         } elseif (str_starts_with($cleanPhone, '959')) {
-            // Format: 959xxxxxxxx -> +959xxxxxxxx
             return '+' . $cleanPhone;
-        } elseif (str_starts_with($cleanPhone, '95') && !str_starts_with($cleanPhone, '959')) {
-            // Format: 95xxxxxxxx -> +959xxxxxxxx
-            return '+9' . $cleanPhone;
+        } elseif (str_starts_with($cleanPhone, '95')) {
+            return '+95' . substr($cleanPhone, 2);
         } elseif (str_starts_with($cleanPhone, '+959')) {
-            // Already in correct format
             return $cleanPhone;
         } elseif (str_starts_with($cleanPhone, '+95')) {
-            // Format: +95xxxxxxxx -> +959xxxxxxxx
-            return '+9' . substr($cleanPhone, 1);
+            return '+95' . substr($cleanPhone, 3);
         }
 
-        // If no pattern matches, return as is (will be validated)
         return $cleanPhone;
     }
+
 
     /**
      * Validate Myanmar phone number after normalization
@@ -299,9 +290,6 @@ class AuthController extends Controller
         // Get current step for incomplete onboarding
         $currentStep = $sellerProfile->getOnboardingStep();
 
-        // Debug info
-        Log::info("Onboarding debug - User: {$user->id}, Store Name: '{$sellerProfile->store_name}', Business Type: '{$sellerProfile->business_type}', Step: {$currentStep}");
-
         return response()->json([
             'success' => true,
             'data' => [
@@ -311,12 +299,7 @@ class AuthController extends Controller
                 'needs_onboarding' => !$onboardingComplete,
                 'current_step' => $currentStep,
                 'profile_status' => $sellerProfile->status,
-                'profile' => $sellerProfile,
-                'debug' => [ // Add debug info
-                    'store_name_empty' => empty(trim($sellerProfile->store_name)),
-                    'business_type_empty' => empty(trim($sellerProfile->business_type)),
-                    'address_empty' => empty(trim($sellerProfile->address)),
-                ],
+                    'profile' => $sellerProfile,
                 'message' => $onboardingComplete ?
                     'Onboarding complete' :
                     'Onboarding in progress - current step: ' . $currentStep
@@ -337,80 +320,22 @@ class AuthController extends Controller
      */
     public function getBusinessTypes()
     {
-        $businessTypes = [
-            [
-                'value' => 'individual',
-                'label' => 'Individual/Sole Proprietorship',
-                'description' => 'A business owned and operated by one person',
-                'requires_registration' => false,
-            ],
-            [
-                'value' => 'partnership',
-                'label' => 'Partnership',
-                'description' => 'Business owned by two or more individuals',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'private_limited',
-                'label' => 'Private Limited Company',
-                'description' => 'A registered company with limited liability',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'public_limited',
-                'label' => 'Public Limited Company',
-                'description' => 'A company whose shares are traded publicly',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'cooperative',
-                'label' => 'Cooperative',
-                'description' => 'Member-owned business organization',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'retail',
-                'label' => 'Retail Business',
-                'description' => 'Business that sells directly to consumers',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'wholesale',
-                'label' => 'Wholesale Business',
-                'description' => 'Business that sells in bulk to retailers',
-                'requires_registration' => true,
-            ],
-            [
-                'value' => 'service',
-                'label' => 'Service Business',
-                'description' => 'Business that provides services rather than products',
-                'requires_registration' => false,
-            ]
-        ];
+        $types = BusinessType::active()
+            ->ordered()
+            ->get()
+            ->map(function ($type) {
+                return [
+                    'value' => $type->slug,
+                    'label' => $type->name,
+                    'description' => $type->description,
+                    'requires_registration' => $type->requires_registration,
+                ];
+            });
 
         return response()->json([
             'success' => true,
-            'data' => $businessTypes
+            'data' => $types
         ]);
     }
 
-    // In AuthController.php - Add debug endpoint
-public function debugRoles(Request $request)
-{
-    $user = $request->user();
-
-    return response()->json([
-        'success' => true,
-        'data' => [
-            'user_id' => $user->id,
-            'user_type' => $user->type,
-            'roles' => $user->getRoleNames()->toArray(),
-            'has_seller_role' => $user->hasRole('seller'),
-            'all_roles' => Role::all()->pluck('name'),
-            'user_roles_table' => DB::table('model_has_roles')
-                ->where('model_id', $user->id)
-                ->get()
-        ]
-    ]);
-}
 }

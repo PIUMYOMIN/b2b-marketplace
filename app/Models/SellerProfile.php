@@ -493,9 +493,19 @@ class SellerProfile extends Model
      */
     public function scopePendingVerification($query)
     {
-        return $query->whereIn('verification_status', [self::VERIFICATION_PENDING, self::VERIFICATION_UNDER_REVIEW])
-            ->where('status', self::STATUS_PENDING)
-            ->where('documents_submitted', true);
+        return $query->where(function ($q) {
+            // Sellers who have submitted documents but need verification
+            $q->where('documents_submitted', true)
+                ->whereIn('verification_status', [
+                    self::VERIFICATION_PENDING,
+                    self::VERIFICATION_UNDER_REVIEW
+                ])
+                // Include sellers with uploaded documents regardless of status
+                ->where(function ($subQ) {
+                    $subQ->whereNotNull('identity_document_front')
+                        ->orWhereNotNull('business_registration_document');
+                });
+        });
     }
 
     /**

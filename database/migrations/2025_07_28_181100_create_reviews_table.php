@@ -4,32 +4,39 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
-    /**
-     * Run the migrations.
-     */
+return new class extends Migration {
     public function up(): void
     {
         Schema::create('reviews', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id');
-            $table->unsignedBigInteger('product_id');
-            $table->integer('rating');
-            $table->text('comment');
-            $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
-            $table->timestamps();
 
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
-            $table->foreign('product_id')->references('id')->on('products')->onDelete('cascade');
-            
-            $table->unique(['user_id', 'product_id']); // Prevent duplicate reviews
+            $table->foreignId('user_id')
+                ->constrained()
+                ->cascadeOnDelete();
+
+            $table->foreignId('product_id')
+                ->constrained()
+                ->cascadeOnDelete();
+
+            $table->unsignedTinyInteger('rating'); // 1–5
+            $table->text('comment')->nullable();
+
+            $table->enum('status', ['pending', 'approved', 'rejected'])
+                ->default('pending');
+
+            $table->timestamps();
+            $table->softDeletes();
+
+            // Prevent duplicate reviews per product per user
+            $table->unique(['user_id', 'product_id']);
+
+            // Indexes
+            $table->index(['product_id', 'status']);
+            $table->index('rating');
+            $table->index('created_at');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('reviews');
