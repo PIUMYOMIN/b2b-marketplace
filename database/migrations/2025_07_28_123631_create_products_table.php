@@ -25,17 +25,16 @@ return new class extends Migration
             $table->unsignedBigInteger('seller_id');
             $table->decimal('average_rating', 3, 2)->default(0.00);
             $table->integer('review_count')->default(0);
-            $table->json('specifications')->nullable(); // JSON for product specs
-            $table->json('images')->nullable(); // JSON for product images
-            $table->decimal('weight_kg', 10, 2)->nullable();
-            $table->json('dimensions')->nullable(); // LxWxH format
-            $table->string('sku')->unique()->nullable(); // Stock Keeping Unit
+            $table->json('specifications')->nullable();
+            $table->json('images')->nullable();
+            $table->json('dimensions')->nullable();
+            $table->string('sku')->unique()->nullable();
             $table->string('barcode')->unique()->nullable();
             $table->string('brand')->nullable();
             $table->string('model')->nullable();
             $table->string('color')->nullable();
             $table->string('material')->nullable();
-            $table->string('origin')->nullable(); // Country of origin
+            $table->string('origin')->nullable();
             $table->decimal('discount_price', 12, 2)->nullable();
             $table->date('discount_start')->nullable();
             $table->date('discount_end')->nullable();
@@ -43,19 +42,26 @@ return new class extends Migration
             $table->integer('sales')->default(0);
             $table->boolean('is_featured')->default(false);
             $table->boolean('is_new')->default(true);
+            $table->enum('condition', [
+                'new',
+                'used_like_new',
+                'used_good',
+                'used_fair'
+            ])->default('new');
             $table->boolean('is_on_sale')->default(false);
-            $table->string('warranty')->nullable(); // e.g., "1 year"
-            $table->string('warranty_type')->nullable(); // e.g., "manufacturer", "seller"
-            $table->string('warranty_period')->nullable(); // e.g., "12 months"
-            $table->text('warranty_conditions')->nullable(); // e.g., "terms and conditions"
-            $table->string('return_policy')->nullable(); // e.g., "30 days return"
-            $table->text('return_conditions')->nullable(); // e.g., "unused, original packaging"
-            $table->text('shipping_details')->nullable(); // e.g., "Free shipping over $50"
+            $table->decimal('weight_kg', 10, 2)->nullable();
+            $table->string('warranty')->nullable();
+            $table->string('warranty_type')->nullable();
+            $table->string('warranty_period')->nullable();
+            $table->text('warranty_conditions')->nullable();
+            $table->string('return_policy')->nullable();
+            $table->text('return_conditions')->nullable();
+            $table->text('shipping_details')->nullable();
             $table->decimal('shipping_cost', 12, 2)->nullable();
-            $table->string('shipping_time')->nullable(); // e.g., "3-5 business days"
-            $table->string('shipping_origin')->nullable(); // e.g., "Yangon, Myanmar"
-            $table->string('customs_info')->nullable(); // e.g., "Buyer responsible for duties"
-            $table->string('hs_code')->nullable(); // Harmonized System Code
+            $table->string('shipping_time')->nullable();
+            $table->string('shipping_origin')->nullable();
+            $table->string('customs_info')->nullable();
+            $table->string('hs_code')->nullable();
             $table->string('min_order_unit')->default('piece');
             $table->integer('moq')->default(1);
             $table->string('lead_time')->nullable();

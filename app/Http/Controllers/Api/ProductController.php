@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\Category; // Added missing import
 use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -11,7 +12,7 @@ use App\Http\Resources\ProductResource;
 use App\Http\Resources\ReviewResource;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-
+use Illuminate\Support\Str; // Added for slug generation
 
 class ProductController extends Controller
 {
@@ -42,12 +43,16 @@ class ProductController extends Controller
         $perPage = $request->input('per_page', 15);
 
         $query = Product::with(['category', 'seller'])
-            ->withCount(['reviews as reviews_count' => function($query) {
-                $query->where('status', 'approved');
-            }])
-            ->withAvg(['reviews as average_rating' => function($query) {
-                $query->where('status', 'approved');
-            }], 'rating');
+            ->withCount([
+                'reviews as reviews_count' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ])
+            ->withAvg([
+                'reviews as average_rating' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ], 'rating');
 
         // Apply filters
         if ($request->has('category_id')) {
@@ -71,9 +76,11 @@ class ProductController extends Controller
         }
 
         if ($request->has('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                  ->orWhere('description', 'like', '%'.$request->search.'%');
+            $query->where(function ($q) use ($request) {
+                $q->where('name_en', 'like', '%' . $request->search . '%')
+                    ->orWhere('name_mm', 'like', '%' . $request->search . '%')
+                    ->orWhere('description_en', 'like', '%' . $request->search . '%')
+                    ->orWhere('description_mm', 'like', '%' . $request->search . '%');
             });
         }
 
@@ -95,18 +102,19 @@ class ProductController extends Controller
             case 'popular':
                 $query->orderBy('reviews_count', 'desc');
                 break;
-            default: // newest
+            default:
                 $query->latest();
         }
 
         $products = $query->paginate($perPage);
 
-        // Format the products manually without using ProductResource
         $formattedProducts = $products->getCollection()->map(function ($product) {
             return [
                 'id' => $product->id,
-                'name' => $product->name,
-                'description' => $product->description,
+                'name_en' => $product->name_en,
+                'name_mm' => $product->name_mm,
+                'description_en' => $product->description_en,
+                'description_mm' => $product->description_mm,
                 'price' => (float) $product->price,
                 'quantity' => $product->quantity,
                 'category_id' => $product->category_id,
@@ -134,6 +142,7 @@ class ProductController extends Controller
             ]
         ]);
     }
+
     /**
      * Display a listing of public products
      */
@@ -141,12 +150,16 @@ class ProductController extends Controller
     {
         $query = Product::query()
             ->with(['category', 'seller'])
-            ->withCount(['reviews as reviews_count' => function($query) {
-                $query->where('status', 'approved');
-            }])
-            ->withAvg(['reviews as average_rating' => function($query) {
-                $query->where('status', 'approved');
-            }], 'rating')
+            ->withCount([
+                'reviews as reviews_count' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ])
+            ->withAvg([
+                'reviews as average_rating' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ], 'rating')
             ->where('is_featured', true);
 
         $products = $query->paginate($request->input('per_page', 15));
@@ -168,12 +181,16 @@ class ProductController extends Controller
     public function showPublic($id)
     {
         $product = Product::with(['category', 'seller'])
-            ->withCount(['reviews as reviews_count' => function($query) {
-                $query->where('status', 'approved');
-            }])
-            ->withAvg(['reviews as average_rating' => function($query) {
-                $query->where('status', 'approved');
-            }], 'rating')
+            ->withCount([
+                'reviews as reviews_count' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ])
+            ->withAvg([
+                'reviews as average_rating' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ], 'rating')
             ->findOrFail($id);
 
         // Format images
@@ -216,8 +233,10 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'description' => 'required|string',
+            'name' => 'required|string|max:255', // English name
+            'name_mm' => 'nullable|string|max:255', // Myanmar name
+            'description' => 'required|string', // English description
+            'description_mm' => 'nullable|string', // Myanmar description
             'price' => 'required|numeric|min:0',
             'quantity' => 'required|integer|min:0',
             'category_id' => 'required|exists:categories,id',
@@ -227,7 +246,7 @@ class ProductController extends Controller
             'images.*.angle' => 'sometimes|string',
             'images.*.is_primary' => 'sometimes|boolean',
             'moq' => 'required|integer|min:1',
-            'min_order_unit' => 'required|string|in:piece,kg,gram,meter,set,pack,box,   pallet',
+            'min_order_unit' => 'required|string|in:piece,kg,gram,meter,set,pack,box,pallet',
             'lead_time' => 'nullable|string|max:255',
             'is_active' => 'sometimes|boolean',
             'brand' => 'nullable|string|max:255',
@@ -237,7 +256,7 @@ class ProductController extends Controller
             'origin' => 'nullable|string|max:255',
             'weight_kg' => 'nullable|numeric|min:0',
             'warranty' => 'nullable|string|max:255',
-            'warranty_type' => 'nullable|string|in:manufacturer,seller,international,   no_warranty',
+            'warranty_type' => 'nullable|string|in:manufacturer,seller,international,no_warranty',
             'warranty_period' => 'nullable|string|max:255',
             'return_policy' => 'nullable|string|max:255',
             'shipping_cost' => 'nullable|numeric|min:0',
@@ -256,7 +275,7 @@ class ProductController extends Controller
         try {
             // Check for duplicate submission within last 30 seconds
             $recentProduct = Product::where('seller_id', Auth::id())
-                ->where('name', $request->name)
+                ->where('name_en', $request->name)
                 ->where('created_at', '>=', now()->subSeconds(30))
                 ->first();
 
@@ -268,29 +287,65 @@ class ProductController extends Controller
             }
 
             $productData = $request->only([
-                'name', 'description', 'price', 'quantity',
-                'category_id', 'specifications', 'moq', 'min_order_unit',
-                'lead_time', 'is_active', 'brand', 'model', 'color',
-                'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
-                'warranty_period', 'return_policy', 'shipping_cost',
-                'shipping_time', 'packaging_details', 'additional_info'
+                'price',
+                'quantity',
+                'category_id',
+                'specifications',
+                'moq',
+                'min_order_unit',
+                'lead_time',
+                'is_active',
+                'brand',
+                'model',
+                'color',
+                'material',
+                'origin',
+                'weight_kg',
+                'warranty',
+                'warranty_type',
+                'warranty_period',
+                'return_policy',
+                'shipping_cost',
+                'shipping_time',
+                'packaging_details',
+                'additional_info'
             ]);
+
+            // Add language-specific fields
+            $productData['name_en'] = $request->name;
+            $productData['name_mm'] = $request->name_mm;
+            $productData['description_en'] = $request->description;
+            $productData['description_mm'] = $request->description_mm;
+
+            // Generate slugs
+            $productData['slug_en'] = Str::slug($request->name);
+            $productData['slug_mm'] = $request->name_mm ? Str::slug($request->name_mm) : null;
+
+            // Ensure unique slugs
+            $count = Product::where('slug_en', 'LIKE', $productData['slug_en'] . '%')->count();
+            if ($count > 0) {
+                $productData['slug_en'] = $productData['slug_en'] . '-' . ($count + 1);
+            }
+
+            if ($productData['slug_mm']) {
+                $countMm = Product::where('slug_mm', 'LIKE', $productData['slug_mm'] . '%')->count();
+                if ($countMm > 0) {
+                    $productData['slug_mm'] = $productData['slug_mm'] . '-' . ($countMm + 1);
+                }
+            }
 
             $productData['seller_id'] = Auth::id();
             $productData['is_active'] = $request->get('is_active', true);
 
-            // Handle images - move from temp to permanent location
             if ($request->has('images') && is_array($request->images)) {
                 $permanentImages = [];
 
                 foreach ($request->images as $image) {
                     $tempPath = $image['url'];
 
-                    // Extract filename from temp path
                     $filename = basename($tempPath);
-                    $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' .    $filename;
+                    $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' . $filename;
 
-                    // Move from temp to permanent location
                     if (Storage::disk('public')->exists($tempPath)) {
                         Storage::disk('public')->move($tempPath, $newPath);
 
@@ -300,7 +355,6 @@ class ProductController extends Controller
                             'is_primary' => $image['is_primary'] ?? false
                         ];
                     } else {
-                        // If file doesn't exist in temp, use the path as is
                         $permanentImages[] = [
                             'url' => $tempPath,
                             'angle' => $image['angle'] ?? 'default',
@@ -360,7 +414,7 @@ class ProductController extends Controller
             $fullUrl = Storage::disk('public')->url($path);
 
             $imageData = [
-                'url' => $path, // Store the path for later use when moving to permanent    location
+                'url' => $path, // Store the path for later use when moving to permanent location
                 'full_url' => $fullUrl, // Provide full URL for immediate frontend use
                 'angle' => $angle,
                 'is_primary' => false,
@@ -382,7 +436,6 @@ class ProductController extends Controller
         }
     }
 
-
     /**
      * Display the specified product
      */
@@ -390,12 +443,16 @@ class ProductController extends Controller
     {
         // Fixed: Remove infinite recursion
         $product = Product::with(['category', 'seller'])
-            ->withCount(['reviews as reviews_count' => function($query) {
-                $query->where('status', 'approved');
-            }])
-            ->withAvg(['reviews as average_rating' => function($query) {
-                $query->where('status', 'approved');
-            }], 'rating')
+            ->withCount([
+                'reviews as reviews_count' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ])
+            ->withAvg([
+                'reviews as average_rating' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ], 'rating')
             ->findOrFail($id);
 
         return response()->json([
@@ -419,7 +476,9 @@ class ProductController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
+            'name_mm' => 'nullable|string|max:255',
             'description' => 'sometimes|string',
+            'description_mm' => 'nullable|string',
             'price' => 'sometimes|numeric|min:0',
             'quantity' => 'sometimes|integer|min:0',
             'category_id' => 'sometimes|exists:categories,id',
@@ -455,13 +514,70 @@ class ProductController extends Controller
 
         try {
             $updateData = $request->only([
-                'name', 'description', 'price', 'quantity',
-                'category_id', 'specifications', 'moq', 'min_order_unit',
-                'lead_time', 'is_active', 'brand', 'model', 'color',
-                'material', 'origin', 'weight_kg', 'warranty', 'warranty_type',
-                'warranty_period', 'return_policy', 'shipping_cost',
-                'shipping_time', 'packaging_details', 'additional_info'
+                'price',
+                'quantity',
+                'category_id',
+                'specifications',
+                'moq',
+                'min_order_unit',
+                'lead_time',
+                'is_active',
+                'brand',
+                'model',
+                'color',
+                'material',
+                'origin',
+                'weight_kg',
+                'warranty',
+                'warranty_type',
+                'warranty_period',
+                'return_policy',
+                'shipping_cost',
+                'shipping_time',
+                'packaging_details',
+                'additional_info'
             ]);
+
+            // Handle language-specific fields
+            if ($request->has('name')) {
+                $updateData['name_en'] = $request->name;
+
+                // Generate new slug if name changed
+                if ($product->name_en !== $request->name) {
+                    $newSlug = Str::slug($request->name);
+                    $count = Product::where('slug_en', 'LIKE', $newSlug . '%')
+                        ->where('id', '!=', $product->id)
+                        ->count();
+                    if ($count > 0) {
+                        $newSlug = $newSlug . '-' . ($count + 1);
+                    }
+                    $updateData['slug_en'] = $newSlug;
+                }
+            }
+
+            if ($request->has('name_mm') && $request->name_mm !== null) {
+                $updateData['name_mm'] = $request->name_mm;
+
+                // Generate new slug if Myanmar name changed
+                if ($product->name_mm !== $request->name_mm) {
+                    $newSlugMm = Str::slug($request->name_mm);
+                    $count = Product::where('slug_mm', 'LIKE', $newSlugMm . '%')
+                        ->where('id', '!=', $product->id)
+                        ->count();
+                    if ($count > 0) {
+                        $newSlugMm = $newSlugMm . '-' . ($count + 1);
+                    }
+                    $updateData['slug_mm'] = $newSlugMm;
+                }
+            }
+
+            if ($request->has('description')) {
+                $updateData['description_en'] = $request->description;
+            }
+
+            if ($request->has('description_mm') && $request->description_mm !== null) {
+                $updateData['description_mm'] = $request->description_mm;
+            }
 
             // If images are provided in the update, handle them
             if ($request->has('images')) {
@@ -483,7 +599,6 @@ class ProductController extends Controller
             ], 500);
         }
     }
-
 
     /**
      * Remove the specified product
@@ -545,12 +660,10 @@ class ProductController extends Controller
         }
     }
 
-
     /**
      * Get products for the authenticated seller
      */
-    // In ProductController - make sure the myProducts method looks like this:
-public function myProducts(Request $request)
+    public function myProducts(Request $request)
     {
         try {
             $user = Auth::user();
@@ -582,8 +695,10 @@ public function myProducts(Request $request)
             $formattedProducts = $products->getCollection()->map(function ($product) {
                 return [
                     'id' => $product->id,
-                    'name' => $product->name,
-                    'description' => $product->description,
+                    'name_en' => $product->name_en,
+                    'name_mm' => $product->name_mm,
+                    'description_en' => $product->description_en,
+                    'description_mm' => $product->description_mm,
                     'price' => (float) $product->price,
                     'quantity' => $product->quantity,
                     'category_id' => $product->category_id,
@@ -623,7 +738,6 @@ public function myProducts(Request $request)
         }
     }
 
-
     /**
      * Search products
      */
@@ -644,20 +758,26 @@ public function myProducts(Request $request)
         $perPage = $request->input('per_page', 15);
 
         $query = Product::with(['category', 'seller'])
-            ->withCount(['reviews as reviews_count' => function($query) {
-                $query->where('status', 'approved');
-            }])
-            ->withAvg(['reviews as average_rating' => function($query) {
-                $query->where('status', 'approved');
-            }], 'rating')
+            ->withCount([
+                'reviews as reviews_count' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ])
+            ->withAvg([
+                'reviews as average_rating' => function ($query) {
+                    $query->where('status', 'approved');
+                }
+            ], 'rating')
             ->where('is_active', true);
 
         if ($request->has('query')) {
             $searchTerm = $request->input('query');
-            $query->where(function($q) use ($searchTerm) {
-                $q->where('name', 'like', '%'.$searchTerm.'%')
-                  ->orWhere('description', 'like', '%'.$searchTerm.'%')
-                  ->orWhere('brand', 'like', '%'.$searchTerm.'%');
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name_en', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('name_mm', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('description_en', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('description_mm', 'like', '%' . $searchTerm . '%')
+                    ->orWhere('brand', 'like', '%' . $searchTerm . '%');
             });
         }
 
@@ -666,8 +786,10 @@ public function myProducts(Request $request)
         $formattedProducts = $products->getCollection()->map(function ($product) {
             return [
                 'id' => $product->id,
-                'name' => $product->name,
-                'description' => $product->description,
+                'name_en' => $product->name_en,
+                'name_mm' => $product->name_mm,
+                'description_en' => $product->description_en,
+                'description_mm' => $product->description_mm,
                 'price' => (float) $product->price,
                 'quantity' => $product->quantity,
                 'category_id' => $product->category_id,
@@ -695,7 +817,6 @@ public function myProducts(Request $request)
             ]
         ]);
     }
-
 
     /**
      * Get products by category
@@ -768,7 +889,8 @@ public function myProducts(Request $request)
     /**
      * Get average rating for a product
      */
-    public function averageRating(Product $product){
+    public function averageRating(Product $product)
+    {
         $averageRating = $product->reviews()
             ->where('status', 'approved')
             ->avg('rating');
@@ -801,7 +923,8 @@ public function myProducts(Request $request)
     /**
      * Get latest reviews for a product
      */
-    public function latestReviews(Product $product){
+    public function latestReviews(Product $product)
+    {
         $latestReviews = $product->reviews()
             ->where('status', 'approved')
             ->with('buyer')
@@ -818,7 +941,8 @@ public function myProducts(Request $request)
     /**
      * Get top reviews for a product
      */
-    public function topReviews(Product $product){
+    public function topReviews(Product $product)
+    {
         $topReviews = $product->reviews()
             ->where('status', 'approved')
             ->with('buyer')
@@ -835,7 +959,8 @@ public function myProducts(Request $request)
     /**
      * Get recent reviews for a product
      */
-    public function recentReviews(Product $product){
+    public function recentReviews(Product $product)
+    {
         $recentReviews = $product->reviews()
             ->where('status', 'approved')
             ->with('buyer')
@@ -852,7 +977,8 @@ public function myProducts(Request $request)
     /**
      * Get most helpful reviews for a product
      */
-    public function mostHelpfulReviews(Product $product){
+    public function mostHelpfulReviews(Product $product)
+    {
         $mostHelpfulReviews = $product->reviews()
             ->where('status', 'approved')
             ->with('buyer')
@@ -886,212 +1012,213 @@ public function myProducts(Request $request)
     }
 
     protected function formatImages($images)
-{
-    if (empty($images)) {
-        return [];
-    }
-
-    if (is_string($images)) {
-        try {
-            $images = json_decode($images, true);
-        } catch (\Exception $e) {
-            // If it's not valid JSON, treat it as a single image URL
-            return [[
-                'url' => Storage::disk('public')->exists($images) ?
-                        Storage::disk('public')->url($images) : $images,
-                'angle' => 'default',
-                'is_primary' => true
-            ]];
+    {
+        if (empty($images)) {
+            return [];
         }
-    }
 
-    $formattedImages = [];
-    foreach ($images as $index => $image) {
-        if (is_string($image)) {
-            $formattedImages[] = [
-                'url' => Storage::disk('public')->exists($image) ?
+        if (is_string($images)) {
+            try {
+                $images = json_decode($images, true);
+            } catch (\Exception $e) {
+                // If it's not valid JSON, treat it as a single image URL
+                return [
+                    [
+                        'url' => Storage::disk('public')->exists($images) ?
+                            Storage::disk('public')->url($images) : $images,
+                        'angle' => 'default',
+                        'is_primary' => true
+                    ]
+                ];
+            }
+        }
+
+        $formattedImages = [];
+        foreach ($images as $index => $image) {
+            if (is_string($image)) {
+                $formattedImages[] = [
+                    'url' => Storage::disk('public')->exists($image) ?
                         Storage::disk('public')->url($image) : $image,
-                'angle' => 'default',
-                'is_primary' => $index === 0
-            ];
-        } else {
-            $url = $image['url'] ?? $image['path'] ?? '';
-            $formattedImages[] = [
-                'url' => Storage::disk('public')->exists($url) ?
+                    'angle' => 'default',
+                    'is_primary' => $index === 0
+                ];
+            } else {
+                $url = $image['url'] ?? $image['path'] ?? '';
+                $formattedImages[] = [
+                    'url' => Storage::disk('public')->exists($url) ?
                         Storage::disk('public')->url($url) : $url,
-                'angle' => $image['angle'] ?? 'default',
-                'is_primary' => $image['is_primary'] ?? ($index === 0)
+                    'angle' => $image['angle'] ?? 'default',
+                    'is_primary' => $image['is_primary'] ?? ($index === 0)
+                ];
+            }
+        }
+
+        return $formattedImages;
+    }
+
+    /**
+     * Upload image to an existing product
+     */
+    public function uploadImageToProduct(Request $request, Product $product)
+    {
+        // Authorization check
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to update this product'
+            ], 403);
+        }
+
+        $request->validate([
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'angle' => 'sometimes|string|in:front,back,side,top,default'
+        ]);
+
+        try {
+            $angle = $request->angle ?? 'default';
+
+            // Store image in product-specific directory
+            $path = $request->file('image')->store(
+                'products/' . $product->id,
+                'public'
+            );
+
+            // Get current images
+            $images = $product->images ?? [];
+            if (!is_array($images)) {
+                $images = json_decode($images, true) ?? [];
+            }
+
+            // Add new image (not primary by default)
+            $newImage = [
+                'url' => $path,
+                'angle' => $angle,
+                'is_primary' => empty($images), // Set as primary if no images exist
+                'uploaded_at' => now()->toISOString()
             ];
-        }
-    }
 
-    return $formattedImages;
-}
+            $images[] = $newImage;
 
-/**
- * Upload image to an existing product
- */
-public function uploadImageToProduct(Request $request, Product $product)
-{
-    // Authorization check
-    if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Unauthorized to update this product'
-        ], 403);
-    }
+            // Update product with new images array
+            $product->update(['images' => $images]);
 
-    $request->validate([
-        'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-        'angle' => 'sometimes|string|in:front,back,side,top,default'
-    ]);
+            return response()->json([
+                'success' => true,
+                'data' => $newImage,
+                'message' => 'Image uploaded successfully'
+            ]);
 
-    try {
-        $angle = $request->angle ?? 'default';
-
-        // Store image in product-specific directory
-        $path = $request->file('image')->store(
-            'products/' . $product->id,
-            'public'
-        );
-
-        // Get current images
-        $images = $product->images ?? [];
-        if (!is_array($images)) {
-            $images = json_decode($images, true) ?? [];
-        }
-
-        // Add new image (not primary by default)
-        $newImage = [
-            'url' => $path,
-            'angle' => $angle,
-            'is_primary' => empty($images), // Set as primary if no images exist
-            'uploaded_at' => now()->toISOString()
-        ];
-
-        $images[] = $newImage;
-
-        // Update product with new images array
-        $product->update(['images' => $images]);
-
-        return response()->json([
-            'success' => true,
-            'data' => $newImage,
-            'message' => 'Image uploaded successfully'
-        ]);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to upload image: ' . $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * Delete an image from a product
- */
-public function deleteImage(Product $product, $imageIndex)
-{
-    // Authorization check
-    if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Unauthorized to update this product'
-        ], 403);
-    }
-
-    try {
-        $images = $product->images ?? [];
-        if (!is_array($images)) {
-            $images = json_decode($images, true) ?? [];
-        }
-
-        // Check if index exists
-        if (!isset($images[$imageIndex])) {
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Image not found'
-            ], 404);
+                'message' => 'Failed to upload image: ' . $e->getMessage()
+            ], 500);
         }
-
-        $imageToDelete = $images[$imageIndex];
-
-        // Delete the physical file
-        if (Storage::disk('public')->exists($imageToDelete['url'])) {
-            Storage::disk('public')->delete($imageToDelete['url']);
-        }
-
-        // Remove from array
-        array_splice($images, $imageIndex, 1);
-
-        // If we deleted the primary image and there are other images, set a new primary
-        if ($imageToDelete['is_primary'] && count($images) > 0) {
-            $images[0]['is_primary'] = true;
-        }
-
-        // Update product
-        $product->update(['images' => $images]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Image deleted successfully'
-        ]);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to delete image: ' . $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * Set an image as primary
- */
-public function setPrimaryImage(Product $product, $imageIndex)
-{
-    // Authorization check
-    if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Unauthorized to update this product'
-        ], 403);
     }
 
-    try {
-        $images = $product->images ?? [];
-        if (!is_array($images)) {
-            $images = json_decode($images, true) ?? [];
-        }
-
-        // Check if index exists
-        if (!isset($images[$imageIndex])) {
+    /**
+     * Delete an image from a product
+     */
+    public function deleteImage(Product $product, $imageIndex)
+    {
+        // Authorization check
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Image not found'
-            ], 404);
+                'message' => 'Unauthorized to update this product'
+            ], 403);
         }
 
-        // Update all images - set the specified one as primary, others as not primary
-        foreach ($images as $index => &$image) {
-            $image['is_primary'] = ($index == $imageIndex);
+        try {
+            $images = $product->images ?? [];
+            if (!is_array($images)) {
+                $images = json_decode($images, true) ?? [];
+            }
+
+            // Check if index exists
+            if (!isset($images[$imageIndex])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Image not found'
+                ], 404);
+            }
+
+            $imageToDelete = $images[$imageIndex];
+
+            // Delete the physical file
+            if (Storage::disk('public')->exists($imageToDelete['url'])) {
+                Storage::disk('public')->delete($imageToDelete['url']);
+            }
+
+            // Remove from array
+            array_splice($images, $imageIndex, 1);
+
+            // If we deleted the primary image and there are other images, set a new primary
+            if ($imageToDelete['is_primary'] && count($images) > 0) {
+                $images[0]['is_primary'] = true;
+            }
+
+            // Update product
+            $product->update(['images' => $images]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Image deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete image: ' . $e->getMessage()
+            ], 500);
         }
-
-        // Update product
-        $product->update(['images' => $images]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Primary image updated successfully'
-        ]);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to set primary image: ' . $e->getMessage()
-        ], 500);
     }
-}
 
+    /**
+     * Set an image as primary
+     */
+    public function setPrimaryImage(Product $product, $imageIndex)
+    {
+        // Authorization check
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to update this product'
+            ], 403);
+        }
+
+        try {
+            $images = $product->images ?? [];
+            if (!is_array($images)) {
+                $images = json_decode($images, true) ?? [];
+            }
+
+            // Check if index exists
+            if (!isset($images[$imageIndex])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Image not found'
+                ], 404);
+            }
+
+            // Update all images - set the specified one as primary, others as not primary
+            foreach ($images as $index => &$image) {
+                $image['is_primary'] = ($index == $imageIndex);
+            }
+
+            // Update product
+            $product->update(['images' => $images]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Primary image updated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to set primary image: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
