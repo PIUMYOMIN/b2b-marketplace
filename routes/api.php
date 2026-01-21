@@ -142,11 +142,10 @@ Route::group([
         });
 
         // Dashboard
-        Route::prefix('dashboard')->group(function () {
+        Route::prefix('admin')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
+            Route::post('/{seller}/reject', [DashboardController::class, 'adminReject']);
             Route::get('/sellers', [DashboardController::class, 'getSellers']);
-            Route::post('seller/{seller}/approve', [DashboardController::class, 'adminApprove'])->middleware('role:admin');
-            Route::post('/{seller}/reject', [DashboardController::class, 'adminReject'])->middleware('role:admin');
             Route::get('/stats', [DashboardController::class, 'stats']);
             Route::get('/sales-report', [DashboardController::class, 'salesReport']);
             Route::get('/top-sellers', [DashboardController::class, 'topSellers']);
@@ -159,25 +158,29 @@ Route::group([
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
             Route::get('/user-growth', [DashboardController::class, 'userGrowthLast30Days']);
-            Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary'])->middleware('role:seller');
-            Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts'])->middleware('role:seller');
-            Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders'])->middleware('role:seller');
+            Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary']);
+            Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts']);
+            Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders']);
 
-            Route::get('/seller/{id}/status', [SellerController::class, 'getSellerStatus'])->middleware('role:admin');
-            Route::put('/seller/{id}/status', [SellerController::class, 'sellerApprove'])->middleware('role:admin');
-            Route::get('/seller-verification', [SellerController::class, 'getAllSellerVerifications']);
-            Route::get('/seller-verification/{verification}', [SellerController::class, 'getSellerVerificationDetails']);
-            Route::post('/seller-verification/{verification}/approve', [SellerController::class, 'approveSellerVerification']);
-            Route::get('/seller/pending-verification', [SellerController::class, 'getPendingVerification']);
-            Route::post('/{verification}/reject', [SellerController::class, 'rejectSellerVerification']);
-            Route::get('/seller/verification-review', [SellerController::class, 'getSellersForVerificationReview']);
-            Route::post('/seller/{id}/verify', [SellerController::class, 'verifySeller']);
-            Route::post('/seller/{id}/reject', [SellerController::class, 'rejectVerification']);
-            Route::put('/seller/{id}/verification-status', [SellerController::class, 'updateVerificationStatus']);
-            Route::get('/seller/{id}/documents', [SellerController::class, 'getSellerDocuments']);
-            Route::put('/seller/{id}/status', [SellerController::class, 'update']);
-            Route::put('/seller/{id}/status', [SellerController::class, 'updateStatus']);
-            Route::put('/seller/{id}', [SellerController::class, 'update']);
+            //Seller management
+            Route::prefix('seller')->group(function () {
+                Route::put('/{id}/status', [SellerController::class, 'update']);
+                Route::put('/{id}/status', [SellerController::class, 'updateStatus']);
+                Route::put('/{id}', [SellerController::class, 'update']);
+                Route::get('/{id}/status', [SellerController::class, 'getSellerStatus']);
+                Route::put('/{id}/status', [SellerController::class, 'sellerApprove']);
+                Route::get('/seller-verification', [SellerController::class, 'getAllSellerVerifications']);
+                Route::get('/seller-verification/{verification}', [SellerController::class, 'getSellerVerificationDetails']);
+                Route::post('/seller-verification/{verification}/approve', [SellerController::class, 'approveSellerVerification']);
+                Route::get('//pending-verification', [SellerController::class, 'getPendingVerification']);
+                Route::post('/{verification}/reject', [SellerController::class, 'rejectSellerVerification']);
+                Route::get('/verification-review', [SellerController::class, 'getSellersForVerificationReview']);
+                Route::post('/{id}/verify', [SellerController::class, 'verifySeller']);
+                Route::post('/{id}/reject', [SellerController::class, 'rejectVerification']);
+                Route::put('/{id}/verification-status', [SellerController::class, 'updateVerificationStatus']);
+                Route::get('/{id}/documents', [SellerController::class, 'getSellerDocuments']);
+                Route::post('/{seller}/approve', [DashboardController::class, 'adminApprove']);
+            });
 
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
