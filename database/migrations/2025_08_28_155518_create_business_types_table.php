@@ -19,6 +19,7 @@ return new class extends Migration
             $table->text('description_en')->nullable();
             $table->text('description_mm')->nullable();
 
+
             // Document requirements configuration
             $table->boolean('requires_registration')->default(false);
             $table->boolean('requires_tax_document')->default(false);
@@ -34,7 +35,12 @@ return new class extends Migration
 
             // Metadata
             $table->string('icon')->nullable();
-            $table->string('color')->nullable()->default('#3B82F6'); // Blue
+            $table->string('color')->nullable()->default('#3B82F6');
+            $table->decimal('commission_rate', 5, 2)->default(0.00);
+            $table->decimal('monthly_fee', 12, 2)->nullable()->default(0.00);
+            $table->decimal('transaction_fee', 5, 2)->nullable()->default(0.00);
+            $table->decimal('minimum_sale_amount', 12, 2)->nullable()->default(0.00);
+            $table->string('verification_level')->default('basic');
 
             $table->timestamps();
             $table->softDeletes();

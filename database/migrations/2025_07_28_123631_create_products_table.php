@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
@@ -35,9 +34,18 @@ return new class extends Migration
             $table->string('color')->nullable();
             $table->string('material')->nullable();
             $table->string('origin')->nullable();
-            $table->decimal('discount_price', 12, 2)->nullable();
+
+            $table->decimal('discount_price', 12, 2)->nullable()->default(null);
+            $table->enum('discount_type', ['percentage', 'fixed', 'none'])->default('none');
+            $table->decimal('discount_percentage', 5, 2)->nullable()->default(null);
+            $table->string('sale_badge')->nullable()->default('Sale');
+            $table->decimal('compare_at_price', 12, 2)->nullable()->default(null);
+            $table->integer('sale_quantity')->nullable()->default(null);
+            $table->integer('sale_sold')->default(0);
             $table->date('discount_start')->nullable();
             $table->date('discount_end')->nullable();
+            $table->boolean('is_on_sale')->default(false);
+
             $table->integer('views')->default(0);
             $table->integer('sales')->default(0);
             $table->boolean('is_featured')->default(false);
@@ -48,7 +56,6 @@ return new class extends Migration
                 'used_good',
                 'used_fair'
             ])->default('new');
-            $table->boolean('is_on_sale')->default(false);
             $table->decimal('weight_kg', 10, 2)->nullable();
             $table->string('warranty')->nullable();
             $table->string('warranty_type')->nullable();
@@ -83,9 +90,8 @@ return new class extends Migration
             $table->index(['sku', 'is_active']);
             $table->index('is_active');
             $table->index('created_at');
-
-            //Orders table indexes
-            $table->index(['seller_id','status']);
+            $table->index('is_on_sale');
+            $table->index('discount_end');
 
             $table->fullText(['name_en', 'description_en']);
             $table->fullText(['name_mm', 'description_mm']);

@@ -13,13 +13,14 @@ return new class extends Migration
     {
         Schema::create('categories', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('name_mm')->nullable();
+            $table->string('name_en');
+            $table->string('slug_en')->unique();
+            $table->string('name_mm')->nullable()->unique();
+            $table->string('slug_mm')->unique()->nullable();
             $table->string('image')->nullable();
-            $table->text('description')->nullable();
+            $table->text('description_en')->nullable();
             $table->text('description_mm')->nullable();
-            $table->string('slug')->unique();
-            $table->decimal('commission_rate', 5, 2)->default(0.1); // 10% default
+            $table->decimal('commission_rate', 5, 2)->default(0.1);
             $table->unsignedBigInteger('parent_id')->nullable();
             $table->unsignedInteger('_lft');
             $table->unsignedInteger('_rgt');
@@ -31,7 +32,7 @@ return new class extends Migration
             $table->softDeletes();
 
             // Indexes
-            $table->index('slug');
+            $table->index('slug_en');
             $table->index('is_active');
             $table->index('parent_id');
 

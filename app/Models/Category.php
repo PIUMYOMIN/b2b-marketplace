@@ -9,9 +9,9 @@ class Category extends Model
     use NodeTrait;
 
     protected $fillable = [
-        'name',
+        'name_en',
         'name_mm',
-        'description',
+        'description_en',
         'description_mm',
         'slug',
         'image',

@@ -9,308 +9,689 @@ use Illuminate\Database\Seeder;
 
 class ProductSeeder extends Seeder
 {
-    public function run(): void
+    /**
+     * Run the database seeds.
+     */
+    public function run()
     {
-        // Get seller ID
-        $sellerId = User::whereHas('roles', function ($query) {
-            $query->where('name', 'seller');
-        })->first()->id;
+        // Get or create categories with fallback
+        $kitchenCategory = $this->getOrCreateCategory('kitchen-appliances', 'Kitchen Appliances');
+        $furnitureCategory = $this->getOrCreateCategory('furniture', 'Furniture');
+        $clothingCategory = $this->getOrCreateCategory('womens-clothing', "Women's Clothing");
+        $electronicsCategory = $this->getOrCreateCategory('smartphones', 'Smartphones');
+        $riceCategory = $this->getOrCreateCategory('grains-rice', 'Grains & Rice');
+        $snacksCategory = $this->getOrCreateCategory('snacks', 'Snacks');
+        $skincareCategory = $this->getOrCreateCategory('skincare', 'Skincare');
+        $haircareCategory = $this->getOrCreateCategory('haircare', 'Haircare');
+        $fitnessCategory = $this->getOrCreateCategory('fitness-equipment', 'Fitness Equipment');
+        $constructionCategory = $this->getOrCreateCategory('construction', 'Construction Materials');
+        $textileCategory = $this->getOrCreateCategory('textiles', 'Textiles');
+        $agricultureCategory = $this->getOrCreateCategory('agriculture', 'Agricultural Products');
+        $automotiveCategory = $this->getOrCreateCategory('automotive', 'Automotive Parts');
+        $healthcareCategory = $this->getOrCreateCategory('healthcare', 'Healthcare Products');
+        $officeCategory = $this->getOrCreateCategory('office-supplies', 'Office Supplies');
+        $toyCategory = $this->getOrCreateCategory('toys', 'Toys & Games');
 
-        // Get categories by slug
-        $foodCategory       = Category::where('slug', 'kitchen-appliances')->first()->id; // for rice
-        $homeCategory       = Category::where('slug', 'furniture')->first()->id; // for bamboo basket
-        $fashionCategory    = Category::where('slug', 'womens-clothing')->first()->id; // for Shan bag
-        $electronicsCategory = Category::where('slug', 'smartphones')->first()->id; // example for phones
-        $riceCategory     = Category::where('slug', 'grains-rice')->first()->id;
-        $snacksCategory   = Category::where('slug', 'snacks')->first()->id;
-        $skincareCategory = Category::where('slug', 'skincare')->first()->id;
-        $haircareCategory = Category::where('slug', 'haircare')->first()->id;
-        $fitnessCategory  = Category::where('slug', 'fitness-equipment')->first()->id;
-        $campingCategory  = Category::where('slug', 'camping-hiking')->first()->id;
-        $booksCategory    = Category::where('slug', 'books')->first()->id;
+        // Get seller users
+        $sellers = User::where('type', 'seller')->get();
+
+        if ($sellers->isEmpty()) {
+            $this->command->error('No seller users found. Please run UserSeeder first.');
+            return;
+        }
 
         $products = [
+            // Traditional Myanmar Products
             [
-                'name' => 'Organic Rice',
-                'description' => 'High-quality organic rice grown in Myanmar with sustainable farming practices. Perfect for daily consumption and special occasions.',
-                'price' => 45000,
-                'quantity' => 100,
-                'category_id' => $foodCategory, // Kitchen Appliances
-                'seller_id' => $sellerId,
-                'average_rating' => 4.5,
-                'review_count' => 28,
-                'specifications' => json_encode([
-                    'weight' => '5kg',
-                    'origin' => 'Mandalay Region',
-                    'certification' => 'Organic Certified',
-                    'shelf_life' => '12 months',
-                    'cooking_time' => '15-20 minutes',
-                    'grain_type' => 'Long grain'
-                ]),
-                'images' => json_encode([
-                    [
-                        'url' => 'https://images.pexels.com/photos/4110256/pexels-photo-4110256.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'front',
-                        'is_primary' => true,
-                        'order' => 0
-                    ],
-                    [
-                        'url' => 'https://images.pexels.com/photos/1233528/pexels-photo-1233528.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'package',
-                        'is_primary' => false,
-                        'order' => 1
-                    ],
-                    [
-                        'url' => 'https://images.pexels.com/photos/4109724/pexels-photo-4109724.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'cooked',
-                        'is_primary' => false,
-                        'order' => 2
-                    ]
-                ]),
-                'moq' => 1,
-                'lead_time' => '2-3 days',
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Handwoven Bamboo Basket',
-                'description' => 'Beautiful handwoven bamboo basket made by local artisans. Perfect for storage and decorative purposes.',
-                'price' => 15000,
-                'quantity' => 50,
-                'category_id' => $homeCategory, // Furniture
-                'seller_id' => $sellerId,
-                'average_rating' => 4.8,
-                'review_count' => 15,
-                'specifications' => json_encode([
-                    'material' => 'Natural bamboo',
-                    'dimensions' => '30cm x 30cm x 20cm',
-                    'weight' => '0.5kg',
-                    'origin' => 'Sagaing Region',
-                    'craftsmanship' => 'Handwoven',
-                    'color' => 'Natural bamboo color'
-                ]),
-                'images' => json_encode([
-                    [
-                        'url' => 'https://images.pexels.com/photos/7766569/pexels-photo-7766569.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'front',
-                        'is_primary' => true,
-                        'order' => 0
-                    ],
-                    [
-                        'url' => 'https://images.pexels.com/photos/7766568/pexels-photo-7766568.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'side',
-                        'is_primary' => false,
-                        'order' => 1
-                    ],
-                    [
-                        'url' => 'https://images.pexels.com/photos/7766570/pexels-photo-7766570.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'top',
-                        'is_primary' => false,
-                        'order' => 2
-                    ]
-                ]),
-                'moq' => 1,
-                'lead_time' => '3-5 days',
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Traditional Shan Bag',
-                'description' => 'Colorful traditional Shan bag made with handwoven fabric. Features intricate patterns and durable construction.',
+                'name_en' => 'Shwe Pa Yone Premium Rice',
+                'name_mm' => 'ရွှေပါယုံ အထူးထွက်ဆန်',
+                'description_en' => 'Premium quality Myanmar rice, perfect for daily consumption. Grown in the fertile fields of Ayeyarwady Delta.',
+                'description_mm' => 'အရည်အသွေးမြင့် မြန်မာဆန်၊ နေ့စဉ်စားသုံးရန် အကောင်းဆုံး။ ဧရာဝတီမြစ်ဝကျွန်းပေါ်ဒေသများတွင် စိုက်ပျိုးထုတ်လုပ်သည်။',
                 'price' => 25000,
-                'quantity' => 30,
-                'category_id' => $fashionCategory, // Women's Clothing
-                'seller_id' => $sellerId,
-                'average_rating' => 4.7,
-                'review_count' => 22,
-                'specifications' => json_encode([
-                    'material' => 'Cotton blend',
-                    'dimensions' => '35cm x 40cm',
-                    'strap_length' => 'Adjustable up to 120cm',
-                    'origin' => 'Shan State',
-                    'closure' => 'Zipper',
-                    'pockets' => '2 main compartments, 1 front pocket'
-                ]),
-                'images' => json_encode([
-                    [
-                        'url' => 'https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'front',
-                        'is_primary' => true,
-                        'order' => 0
-                    ],
-                    [
-                        'url' => 'https://images.pexels.com/photos/1152078/pexels-photo-1152078.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'back',
-                        'is_primary' => false,
-                        'order' => 1
-                    ],
-                    [
-                        'url' => 'https://images.pexels.com/photos/1152081/pexels-photo-1152081.jpeg?auto=compress&cs=tinysrgb&w=600',
-                        'angle' => 'side',
-                        'is_primary' => false,
-                        'order' => 2
-                    ]
-                ]),
-                'moq' => 1,
-                'lead_time' => '4-6 days',
-                'is_active' => true,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'discount_price' => null,
+                'quantity' => 1000,
+                'category_id' => $riceCategory,
+                'sku' => 'RICE-001',
+                'barcode' => '8801234567890',
+                'brand' => 'Shwe Pa Yone',
+                'origin' => 'Myanmar',
+                'weight_kg' => 10,
+                'condition' => 'new',
+                'is_featured' => true,
+                'is_new' => true,
+                'min_order_unit' => 'bag',
+                'moq' => 2,
+                'shipping_cost' => 2000,
+                'shipping_time' => '2-4 days',
+                'warranty' => 'Quality Guarantee',
+                'warranty_type' => 'seller',
+                'warranty_period' => '6 months',
+                'return_policy' => '7 days return policy',
+                'packaging_details' => '50kg woven polypropylene bags',
+                'additional_info' => 'Can be customized for bulk orders',
             ],
             [
-        'name' => 'Premium Jasmine Rice',
-        'description' => 'Fragrant jasmine rice imported from Thailand, soft and fluffy texture.',
-        'price' => 38000,
-        'quantity' => 200,
-        'category_id' => $riceCategory,
-        'seller_id' => $sellerId,
-        'average_rating' => 4.6,
-        'review_count' => 34,
-        'specifications' => json_encode([
-            'weight' => '5kg',
-            'origin' => 'Thailand',
-            'shelf_life' => '12 months',
-            'grain_type' => 'Jasmine'
-        ]),
-        'images' => json_encode([
-            ['url' => 'https://images.pexels.com/photos/4110256/pexels-photo-4110256.jpeg?auto=compress&cs=tinysrgb&w=600','angle' => 'front','is_primary' => true,'order' => 0],
-        ]),
-        'moq' => 1,
-        'lead_time' => '3-4 days',
-        'is_active' => true,
-    ],
-    [
-        'name' => 'Potato Chips Pack',
-        'description' => 'Crunchy salted potato chips, perfect for snacks and parties.',
-        'price' => 1500,
-        'quantity' => 500,
-        'category_id' => $snacksCategory,
-        'seller_id' => $sellerId,
-        'average_rating' => 4.2,
-        'review_count' => 55,
-        'specifications' => json_encode([
-            'weight' => '150g',
-            'flavor' => 'Salted',
-            'shelf_life' => '6 months'
-        ]),
-        'images' => json_encode([
-            ['url' => 'https://images.pexels.com/photos/4110544/pexels-photo-4110544.jpeg?auto=compress&cs=tinysrgb&w=600','angle' => 'front','is_primary' => true,'order' => 0],
-        ]),
-        'moq' => 5,
-        'lead_time' => '1-2 days',
-        'is_active' => true,
-    ],
-    [
-        'name' => 'Herbal Face Cream',
-        'description' => 'Natural herbal skincare cream that hydrates and refreshes your skin.',
-        'price' => 12000,
-        'quantity' => 100,
-        'category_id' => $skincareCategory,
-        'seller_id' => $sellerId,
-        'average_rating' => 4.9,
-        'review_count' => 78,
-        'specifications' => json_encode([
-            'volume' => '100ml',
-            'ingredients' => 'Aloe Vera, Green Tea, Vitamin E',
-            'skin_type' => 'All skin types'
-        ]),
-        'images' => json_encode([
-            ['url' => 'https://images.pexels.com/photos/3735619/pexels-photo-3735619.jpeg?auto=compress&cs=tinysrgb&w=600','angle' => 'front','is_primary' => true,'order' => 0],
-        ]),
-        'moq' => 2,
-        'lead_time' => '2-3 days',
-        'is_active' => true,
-    ],
-    [
-        'name' => 'Shampoo with Natural Extracts',
-        'description' => 'Mild shampoo enriched with herbal extracts for strong and shiny hair.',
-        'price' => 8000,
-        'quantity' => 80,
-        'category_id' => $haircareCategory,
-        'seller_id' => $sellerId,
-        'average_rating' => 4.4,
-        'review_count' => 40,
-        'specifications' => json_encode([
-            'volume' => '250ml',
-            'suitable_for' => 'All hair types',
-            'ingredients' => 'Coconut oil, Hibiscus extract'
-        ]),
-        'images' => json_encode([
-            ['url' => 'https://images.pexels.com/photos/3735636/pexels-photo-3735636.jpeg?auto=compress&cs=tinysrgb&w=600','angle' => 'front','is_primary' => true,'order' => 0],
-        ]),
-        'moq' => 1,
-        'lead_time' => '3-4 days',
-        'is_active' => true,
-    ],
-    [
-        'name' => 'Dumbbell Set 10kg',
-        'description' => 'Adjustable dumbbell set for home workouts and fitness training.',
-        'price' => 45000,
-        'quantity' => 40,
-        'category_id' => $fitnessCategory,
-        'seller_id' => $sellerId,
-        'average_rating' => 4.8,
-        'review_count' => 60,
-        'specifications' => json_encode([
-            'weight' => '10kg',
-            'material' => 'Cast Iron',
-            'set' => '2 dumbbells'
-        ]),
-        'images' => json_encode([
-            ['url' => 'https://images.pexels.com/photos/2261485/pexels-photo-2261485.jpeg?auto=compress&cs=tinysrgb&w=600','angle' => 'front','is_primary' => true,'order' => 0],
-        ]),
-        'moq' => 1,
-        'lead_time' => '5-7 days',
-        'is_active' => true,
-    ],
-    [
-        'name' => 'Camping Tent (4 Person)',
-        'description' => 'Durable waterproof tent ideal for camping and outdoor adventures.',
-        'price' => 85000,
-        'quantity' => 25,
-        'category_id' => $campingCategory,
-        'seller_id' => $sellerId,
-        'average_rating' => 4.7,
-        'review_count' => 18,
-        'specifications' => json_encode([
-            'capacity' => '4 persons',
-            'material' => 'Polyester, Aluminum poles',
-            'weight' => '4.5kg'
-        ]),
-        'images' => json_encode([
-            ['url' => 'https://images.pexels.com/photos/1687845/pexels-photo-1687845.jpeg?auto=compress&cs=tinysrgb&w=600','angle' => 'front','is_primary' => true,'order' => 0],
-        ]),
-        'moq' => 1,
-        'lead_time' => '7-10 days',
-        'is_active' => true,
-    ],
-    [
-        'name' => 'Book: The Art of Mindfulness',
-        'description' => 'Inspirational book on practicing mindfulness and meditation techniques.',
-        'price' => 9000,
-        'quantity' => 70,
-        'category_id' => $booksCategory,
-        'seller_id' => $sellerId,
-        'average_rating' => 4.9,
-        'review_count' => 110,
-        'specifications' => json_encode([
-            'author' => 'John Smith',
-            'pages' => 220,
-            'language' => 'English'
-        ]),
-        'images' => json_encode([
-            ['url' => 'https://images.pexels.com/photos/46274/pexels-photo-46274.jpeg?auto=compress&cs=tinysrgb&w=600','angle' => 'front','is_primary' => true,'order' => 0],
-        ]),
-        'moq' => 1,
-        'lead_time' => '2-3 days',
-        'is_active' => true,
-    ],
-        ];
+                'name_en' => 'Mandalay Traditional Bamboo Basket',
+                'name_mm' => 'မန္တလေး ရိုးရာ ဝါးခြင်းတောင်း',
+                'description_en' => 'Handwoven bamboo basket, traditional Myanmar craftsmanship. Perfect for storage and decoration.',
+                'description_mm' => 'လက်ဖြင့်ရက်လုပ်ထားသော ဝါးခြင်းတောင်း၊ ရိုးရာမြန်မာလက်မှုအနုပညာ။ သိုလှောင်ရန်နှင့် အလှဆင်ရန် အကောင်းဆုံး။',
+                'price' => 15000,
+                'discount_price' => null,
+                'quantity' => 200,
+                'category_id' => $furnitureCategory,
+                'sku' => 'BAM-001',
+                'barcode' => '8801234567891',
+                'brand' => 'Mandalay Crafts',
+                'material' => 'Bamboo',
+                'origin' => 'Mandalay, Myanmar',
+                'condition' => 'used_like_new',
+                'is_featured' => true,
+                'min_order_unit' => 'piece',
+                'moq' => 10,
+                'shipping_cost' => 3000,
+                'shipping_time' => '2-4 days',
+                'packaging_details' => 'Individual bubble wrap packaging',
+            ],
+            [
+                'name_en' => 'Shan Traditional Shoulder Bag',
+                'name_mm' => 'ရှမ်းရိုးရာ ပခုံးအိတ်',
+                'description_en' => 'Colorful traditional Shan shoulder bag, handmade with cotton threads. Unique Myanmar ethnic design.',
+                'description_mm' => 'အရောင်စုံ ရှမ်းရိုးရာ ပခုံးအိတ်၊ ဝါဂွမ်းချည်ဖြင့် လက်ဖြင့်ရက်လုပ်ထားသည်။ ထူးခြားသော မြန်မာတိုင်းရင်းသားဒီဇိုင်း။',
+                'price' => 20000,
+                'discount_price' => null,
+                'quantity' => 150,
+                'category_id' => $clothingCategory,
+                'sku' => 'BAG-001',
+                'barcode' => '8801234567892',
+                'brand' => 'Shan Traditions',
+                'color' => 'Multi-color',
+                'material' => 'Cotton',
+                'origin' => 'Shan State, Myanmar',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 5,
+                'shipping_cost' => 2500,
+                'shipping_time' => '3-5 days',
+                'packaging_details' => 'Cotton drawstring bag packaging',
+            ],
+            [
+                'name_en' => 'Thanakha Powder - Premium Grade',
+                'name_mm' => 'သနပ်ခါးမှုန့် - အထူးတန်း',
+                'description_en' => 'Traditional Myanmar thanakha powder, 100% natural from Thanakha tree bark. For skincare and sun protection.',
+                'description_mm' => 'ရိုးရာမြန်မာသနပ်ခါးမှုန့်၊ သနပ်ခါးပင်အခေါက်မှ ၁၀၀% သဘာဝ။ အသားအရေထိန်းသိမ်းရန်နှင့် နေကာကွယ်ရန်အတွက်။',
+                'price' => 8000,
+                'discount_price' => null,
+                'quantity' => 500,
+                'category_id' => $skincareCategory,
+                'sku' => 'THAN-001',
+                'barcode' => '8801234567893',
+                'brand' => 'Myanmar Natural',
+                'origin' => 'Central Myanmar',
+                'weight_kg' => 0.5,
+                'condition' => 'new',
+                'min_order_unit' => 'pack',
+                'moq' => 20,
+                'shipping_cost' => 2000,
+                'shipping_time' => '2-4 days',
+                'packaging_details' => 'Sealed plastic container with label',
+            ],
+            [
+                'name_en' => 'Coconut Hair Oil',
+                'name_mm' => 'အုန်းဆီ',
+                'description_en' => 'Pure coconut oil for hair care. Promotes hair growth and prevents hair fall. Traditional Myanmar recipe.',
+                'description_mm' => 'ဆံပင်ထိန်းသိမ်းရန်အတွက် စင်ကြယ်သောအုန်းဆီ။ ဆံပင်ကြီးထွားမှုကို အားပေးပြီး ဆံပင်ကျွတ်ခြင်းကို ကာကွယ်ပေးသည်။ ရိုးရာမြန်မာနည်းပညာ။',
+                'price' => 12000,
+                'discount_price' => null,
+                'quantity' => 300,
+                'category_id' => $haircareCategory,
+                'sku' => 'OIL-003',
+                'barcode' => '8801234567994',
+                'brand' => 'CocoPure',
+                'origin' => 'Ayeyarwady Region',
+                'weight_kg' => 1,
+                'condition' => 'new',
+                'min_order_unit' => 'bottle',
+                'moq' => 10,
+                'shipping_cost' => 2500,
+                'shipping_time' => '3-5 days',
+                'packaging_details' => 'Glass bottle with safety seal',
+            ],
 
+            // Modern Products
+            [
+                'name_en' => 'Android Smartphone - 128GB',
+                'name_mm' => 'Android စမတ်ဖုန်း - 128GB',
+                'description_en' => 'Latest Android smartphone with 128GB storage, dual camera, and long battery life.',
+                'description_mm' => '128GB သိုလှောင်မှု၊ ကင်မရာနှစ်လုံးနှင့် ဘက်ထရီသက်တမ်းရှည်သော နောက်ဆုံးထွက် Android စမတ်ဖုန်း။',
+                'price' => 350000,
+                'discount_price' => null,
+                'quantity' => 100,
+                'category_id' => $electronicsCategory,
+                'sku' => 'PHN-001',
+                'barcode' => '8801234567895',
+                'brand' => 'TechPro',
+                'model' => 'TP-X200',
+                'color' => 'Midnight Black',
+                'warranty' => '1 Year Manufacturer Warranty',
+                'warranty_type' => 'manufacturer',
+                'warranty_period' => '12 months',
+                'warranty_conditions' => 'Coverage for manufacturing defects only',
+                'condition' => 'new',
+                'is_featured' => true,
+                'is_new' => true,
+                'min_order_unit' => 'piece',
+                'moq' => 1,
+                'shipping_cost' => 8000,
+                'shipping_time' => '5-7 days',
+                'packaging_details' => 'Original box with accessories',
+            ],
+            [
+                'name_en' => 'Fitness Dumbbell Set (20kg)',
+                'name_mm' => 'ကျန်းမာရေး ဒမ့်ဘယ်လ်အစုံ (၂၀ကီလို)',
+                'description_en' => 'Complete dumbbell set for home workouts. Includes adjustable weights and storage rack.',
+                'description_mm' => 'အိမ်တွင်လေ့ကျင့်ခန်းလုပ်ရန် ပြည့်စုံသော ဒမ့်ဘယ်လ်အစုံ။ ချိန်ညှိနိုင်သောအလေးချိန်များနှင့် သိုလှောင်စင်ပါဝင်။',
+                'price' => 85000,
+                'discount_price' => null,
+                'quantity' => 50,
+                'category_id' => $fitnessCategory,
+                'sku' => 'FIT-001',
+                'barcode' => '8801234567896',
+                'brand' => 'FitStrong',
+                'material' => 'Rubber Coated Steel',
+                'weight_kg' => 20,
+                'condition' => 'new',
+                'min_order_unit' => 'set',
+                'moq' => 2,
+                'shipping_cost' => 10000,
+                'shipping_time' => '7-10 days',
+                'packaging_details' => 'Heavy-duty cardboard box',
+            ],
+            [
+                'name_en' => 'Electric Rice Cooker 10L',
+                'name_mm' => 'လျှပ်စစ်ဆန်အိုး ၁၀လီတာ',
+                'description_en' => 'Large capacity electric rice cooker with multiple cooking functions and keep-warm feature.',
+                'description_mm' => 'အရွယ်အစားကြီး လျှပ်စစ်ဆန်အိုး၊ ချက်ပြုတ်လုပ်ဆောင်ချက်များစွာနှင့် အပူထိန်းစနစ်ပါဝင်။',
+                'price' => 45000,
+                'discount_price' => null,
+                'quantity' => 80,
+                'category_id' => $kitchenCategory,
+                'sku' => 'KET-001',
+                'barcode' => '8801234567915',
+                'brand' => 'QuickBoil',
+                'material' => 'Stainless Steel',
+                'color' => 'Silver',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 2,
+                'shipping_cost' => 2000,
+                'shipping_time' => '2-4 days',
+                'packaging_details' => 'Heavy-duty cardboard box'
+            ],
+            // More Products (20 more)
+            [
+                'name_en' => 'Portable Power Bank 20000mAh',
+                'name_mm' => 'လက်ကိုင်ဘက်ထရီ ၂၀၀၀၀ mAh',
+                'description_en' => 'High capacity power bank with fast charging, multiple ports, and LED display.',
+                'description_mm' => 'စွမ်းရည်မြင့် လက်ကိုင်ဘက်ထရီ၊ အမြန်အားသွင်း၊ ပို့များစွာနှင့် LED မျက်နှာပြင်။',
+                'price' => 35000,
+                'discount_price' => null,
+                'quantity' => 120,
+                'category_id' => $electronicsCategory,
+                'sku' => 'POW-001',
+                'barcode' => '8801234567900',
+                'brand' => 'PowerMax',
+                'model' => 'PM-20000',
+                'color' => 'Space Gray',
+                'condition' => 'new',
+                'is_featured' => true,
+                'min_order_unit' => 'piece',
+                'moq' => 3,
+                'shipping_cost' => 3000,
+                'shipping_time' => '3-5 days',
+            ],
+            [
+                'name_en' => 'Wireless Bluetooth Earbuds',
+                'name_mm' => 'ဝိုင်ယာလက်မဲ့ ဘလူးတုသ် နားကြပ်',
+                'description_en' => 'True wireless earbuds with noise cancellation, 30 hours battery life, and waterproof design.',
+                'description_mm' => 'ဆူညံသံဖျောက်၊ ဘက်ထရီသက်တမ်း ၃၀ နာရီနှင့် ရေခံဒီဇိုင်း။',
+                'price' => 75000,
+                'discount_price' => null,
+                'quantity' => 85,
+                'category_id' => $electronicsCategory,
+                'sku' => 'EAR-001',
+                'barcode' => '8801234567901',
+                'brand' => 'SoundWave',
+                'model' => 'SW-Pro',
+                'color' => 'Black',
+                'condition' => 'new',
+                'min_order_unit' => 'pair',
+                'moq' => 2,
+                'shipping_cost' => 2500,
+                'shipping_time' => '4-6 days',
+            ],
+            [
+                'name_en' => 'Office Desk Chair',
+                'name_mm' => 'ရုံးခုံထိုင်ခုံ',
+                'description_en' => 'Ergonomic office chair with lumbar support, adjustable height, and breathable mesh back.',
+                'description_mm' => 'ခါးထောက်ပံ့ပိုး၊ အမြင့်ညှိနိုင်ပြီး လေဝင်လေထွက်ကောင်းသော ရုံးခုံထိုင်ခုံ။',
+                'price' => 125000,
+                'discount_price' => null,
+                'quantity' => 40,
+                'category_id' => $furnitureCategory,
+                'sku' => 'CHA-001',
+                'barcode' => '8801234567902',
+                'brand' => 'OfficeComfort',
+                'material' => 'Mesh & Metal',
+                'color' => 'Black',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 1,
+                'shipping_cost' => 15000,
+                'shipping_time' => '7-10 days',
+                'dimensions' => json_encode(['height' => '120cm', 'width' => '60cm', 'depth' => '65cm']),
+            ],
+            [
+                'name_en' => 'Yoga Mat Premium',
+                'name_mm' => 'ယောဂ ဖျား အထူးတန်း',
+                'description_en' => 'Non-slip yoga mat with carrying strap, 10mm thickness for comfort and joint protection.',
+                'description_mm' => 'ချော်မလဲ၊ လွယ်အိတ်ပါ၊ ၁၀မီလီမီတာအထူ၊ သက်တောင့်သက်သာရှိပြီး အဆစ်များကို ကာကွယ်ပေး။',
+                'price' => 18000,
+                'discount_price' => null,
+                'quantity' => 200,
+                'category_id' => $fitnessCategory,
+                'sku' => 'YOG-001',
+                'barcode' => '8801234567903',
+                'brand' => 'FlexFit',
+                'material' => 'PVC',
+                'color' => 'Purple',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 5,
+                'shipping_cost' => 2000,
+                'shipping_time' => '3-5 days',
+            ],
+            [
+                'name_en' => 'Ceramic Dinner Set 16pcs',
+                'name_mm' => 'စက္ကူပန်းကန် အစုံ ၁၆ပစ္စည်း',
+                'description_en' => 'Complete ceramic dinner set for 4 persons, microwave and dishwasher safe.',
+                'description_mm' => '၄ ဦးအတွက် စက္ကူပန်းကန်အစုံ၊ မိုက်ခရိုဝေ့နှင့် ပန်းကန်ဆေးစက်တွင် အသုံးပြုနိုင်။',
+                'price' => 45000,
+                'discount_price' => null,
+                'quantity' => 60,
+                'category_id' => $kitchenCategory,
+                'sku' => 'CER-001',
+                'barcode' => '8801234567904',
+                'brand' => 'HomeStyle',
+                'material' => 'Ceramic',
+                'color' => 'White',
+                'condition' => 'new',
+                'min_order_unit' => 'set',
+                'moq' => 2,
+                'shipping_cost' => 6000,
+                'shipping_time' => '5-7 days',
+            ],
+            [
+                'name_en' => 'Cotton Bed Sheet Set',
+                'name_mm' => 'ဝါဂွမ်း အိပ်ရာခင်း အစုံ',
+                'description_en' => '100% cotton bed sheet set, breathable and soft, includes fitted sheet, flat sheet, and pillowcases.',
+                'description_mm' => '၁၀၀% ဝါဂွမ်း အိပ်ရာခင်းအစုံ၊ လေဝင်လေထွက်ကောင်း၊ နူးညံ့ပျော့ပျောင်း၊ အိပ်ရာခင်းနှင့် ခေါင်းအုံးစွပ်များ ပါဝင်။',
+                'price' => 32000,
+                'discount_price' => null,
+                'quantity' => 150,
+                'category_id' => $textileCategory,
+                'sku' => 'BED-001',
+                'barcode' => '8801234567905',
+                'brand' => 'SleepWell',
+                'material' => 'Cotton',
+                'color' => 'Sky Blue',
+                'condition' => 'new',
+                'min_order_unit' => 'set',
+                'moq' => 3,
+                'shipping_cost' => 3000,
+                'shipping_time' => '4-6 days',
+            ],
+            [
+                'name_en' => 'Portable Bluetooth Speaker',
+                'name_mm' => 'လက်ကိုင် ဘလူးတုသ် စပီကာ',
+                'description_en' => 'Waterproof portable speaker with 360° sound, 12 hours battery, and built-in microphone.',
+                'description_mm' => 'ရေခံ၊ ၃၆၀° အသံ၊ ဘက်ထရီသက်တမ်း ၁၂ နာရီ၊ မိုက်ခ်ရိုဖုန်းပါ။',
+                'price' => 28000,
+                'discount_price' => null,
+                'quantity' => 90,
+                'category_id' => $electronicsCategory,
+                'sku' => 'SPK-001',
+                'barcode' => '8801234567906',
+                'brand' => 'AudioFlow',
+                'color' => 'Red',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 2,
+                'shipping_cost' => 2500,
+                'shipping_time' => '3-5 days',
+            ],
+            [
+                'name_en' => 'Construction Safety Helmet',
+                'name_mm' => 'ဆောက်လုပ်ရေး လုံခြုံရေး ဦးထုပ်',
+                'description_en' => 'Industrial safety helmet with adjustable headband, meets safety standards for construction sites.',
+                'description_mm' => 'ချိန်ညှိနိုင်သော ခေါင်းပတ်ပါ၊ ဆောက်လုပ်ရေးလုပ်ငန်းခွင်အတွက် လုံခြုံရေးစံချိန်စံညွှန်းများနှင့် ကိုက်ညီ။',
+                'price' => 8000,
+                'discount_price' => null,
+                'quantity' => 300,
+                'category_id' => $constructionCategory,
+                'sku' => 'HEL-001',
+                'barcode' => '8801234567907',
+                'brand' => 'SafeBuild',
+                'material' => 'ABS Plastic',
+                'color' => 'Yellow',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 10,
+                'shipping_cost' => 1500,
+                'shipping_time' => '2-4 days',
+            ],
+            [
+                'name_en' => 'Car Engine Oil 5W-30',
+                'name_mm' => 'ကားအင်ဂျင်ဆီ 5W-30',
+                'description_en' => 'Full synthetic engine oil, improves fuel efficiency and engine performance.',
+                'description_mm' => 'အပြည့်အစုံ အင်ဂျင်ဆီ၊ လောင်စာစွမ်းဆောင်ရည်နှင့် အင်ဂျင်စွမ်းဆောင်ရည်ကို မြှင့်တင်ပေး။',
+                'price' => 35000,
+                'discount_price' => null,
+                'quantity' => 200,
+                'category_id' => $automotiveCategory,
+                'sku' => 'OIL-002',
+                'barcode' => '8801234567908',
+                'brand' => 'AutoPro',
+                'weight_kg' => 4,
+                'condition' => 'new',
+                'min_order_unit' => 'bottle',
+                'moq' => 5,
+                'shipping_cost' => 3000,
+                'shipping_time' => '3-5 days',
+            ],
+            [
+                'name_en' => 'Medical Face Mask 50pcs',
+                'name_mm' => 'ဆေးဘက်ဆိုင်ရာ မျက်နှာဖုံး ၅၀ခု',
+                'description_en' => '3-ply surgical face masks, bacterial filtration efficiency >95%, comfortable ear loops.',
+                'description_mm' => 'အလွှာ ၃ ထပ်ပါ ခွဲစိတ်ခန်းသုံး မျက်နှာဖုံး၊ ဘက်တီးရီးယားစစ်ထုတ်မှု ၉၅% ထက်ပိုမို၊ သက်တောင့်သက်သာ အကြိုးတံ။',
+                'price' => 15000,
+                'discount_price' => null,
+                'quantity' => 1000,
+                'category_id' => $healthcareCategory,
+                'sku' => 'MSK-001',
+                'barcode' => '8801234567909',
+                'brand' => 'MediSafe',
+                'condition' => 'new',
+                'min_order_unit' => 'pack',
+                'moq' => 20,
+                'shipping_cost' => 2000,
+                'shipping_time' => '2-3 days',
+            ],
+            // Add 10 more products
+            [
+                'name_en' => 'Desk Organizer Set',
+                'name_mm' => 'စားပွဲထိုင် စီစဉ်ရေးအစုံ',
+                'description_en' => 'Wooden desk organizer with compartments for pens, papers, and stationery.',
+                'description_mm' => 'သစ်သားစားပွဲထိုင်စီစဉ်ရေး၊ ဘောပင်များ၊ စက္ကူများနှင့် ရုံးသုံးပစ္စည်းများအတွက် ကန့်သတ်နေရာများ။',
+                'price' => 22000,
+                'discount_price' => null,
+                'quantity' => 120,
+                'category_id' => $officeCategory,
+                'sku' => 'ORG-001',
+                'barcode' => '8801234567910',
+                'brand' => 'OfficePlus',
+                'material' => 'Wood',
+                'condition' => 'new',
+                'min_order_unit' => 'set',
+                'moq' => 3,
+                'shipping_cost' => 2500,
+                'shipping_time' => '3-5 days',
+            ],
+            [
+                'name_en' => 'LED Desk Lamp',
+                'name_mm' => 'LED စားပွဲထိုင် မီးလုံး',
+                'description_en' => 'Adjustable LED desk lamp with 3 color temperatures and touch controls.',
+                'description_mm' => 'ချိန်ညှိနိုင်သော LED စားပွဲထိုင်မီးလုံး၊ အရောင် ၃ မျိုးနှင့် ထိတွေ့ထိန်းချုပ်မှု။',
+                'price' => 18000,
+                'discount_price' => null,
+                'quantity' => 80,
+                'category_id' => $officeCategory,
+                'sku' => 'LMP-001',
+                'barcode' => '8801234567911',
+                'brand' => 'LightPro',
+                'color' => 'White',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 2,
+                'shipping_cost' => 2000,
+                'shipping_time' => '3-5 days',
+            ],
+            [
+                'name_en' => 'Educational Toy Set',
+                'name_mm' => 'ပညာရေးဆိုင်ရာ ကလေးကစားစရာ အစုံ',
+                'description_en' => 'Montessori-inspired educational toys for children ages 3-6, promotes cognitive development.',
+                'description_mm' => '၃-၆ နှစ်ကလေးများအတွက် Montessori နည်းလမ်းမျိုးစုံ ပညာရေးကစားစရာ၊ ဉာဏ်ရည်ဖွံ့ဖြိုးမှုကို မြှင့်တင်ပေး။',
+                'price' => 35000,
+                'discount_price' => null,
+                'quantity' => 60,
+                'category_id' => $toyCategory,
+                'sku' => 'TOY-001',
+                'barcode' => '8801234567912',
+                'brand' => 'EduPlay',
+                'material' => 'Wood',
+                'condition' => 'new',
+                'min_order_unit' => 'set',
+                'moq' => 2,
+                'shipping_cost' => 4000,
+                'shipping_time' => '4-6 days',
+            ],
+            [
+                'name_en' => 'Backpack with USB Port',
+                'name_mm' => 'USB ပို့ပါ ကျောပိုးအိတ်',
+                'description_en' => 'Water-resistant backpack with built-in USB charging port and multiple compartments.',
+                'description_mm' => 'ရေခံ၊ တပ်ဆင်ထားသော USB အားသွင်းပို့နှင့် ကန့်သတ်နေရာများစွာ။',
+                'price' => 28000,
+                'discount_price' => null,
+                'quantity' => 150,
+                'category_id' => $clothingCategory,
+                'sku' => 'BAG-002',
+                'barcode' => '8801234567913',
+                'brand' => 'TravelPro',
+                'material' => 'Polyester',
+                'color' => 'Black',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 3,
+                'shipping_cost' => 3000,
+                'shipping_time' => '3-5 days',
+            ],
+            [
+                'name_en' => 'Electric Kettle 1.7L',
+                'name_mm' => 'လျှပ်စစ်ရေနွေးအိုး ၁.၇လီတာ',
+                'description_en' => 'Stainless steel electric kettle with auto shut-off and boil-dry protection.',
+                'description_mm' => 'သံမဏိလျှပ်စစ်ရေနွေးအိုး၊ အလိုအလျောက်ပိတ်ခြင်းနှင့် ရေခန်းခြောက်ကာကွယ်မှု။',
+                'price' => 25000,
+                'discount_price' => null,
+                'quantity' => 100,
+                'category_id' => $kitchenCategory,
+                'sku' => 'KET-002',
+                'barcode' => '8801234567914',
+                'brand' => 'QuickBoil',
+                'material' => 'Stainless Steel',
+                'color' => 'Silver',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 2,
+                'shipping_cost' => 2000,
+                'shipping_time' => '2-4 days',
+            ],
+            // Add some products with discounts for testing
+            [
+                'name_en' => 'Wireless Mouse - Special Offer',
+                'name_mm' => 'ဝိုင်ယာလက်မဲ့ မောက်စ် - အထူးအဆိုပြုချက်',
+                'description_en' => 'Wireless optical mouse with ergonomic design, 2.4GHz connectivity, and long battery life.',
+                'description_mm' => 'အာဂိုနိုမစ်ဒီဇိုင်း၊ 2.4GHz ချိတ်ဆက်မှု၊ ဘက်ထရီသက်တမ်းရှည် ဝိုင်ယာလက်မဲ့မောက်စ်။',
+                'price' => 15000,
+                'discount_price' => 12000,
+                'discount_type' => 'fixed',
+                'discount_percentage' => 20,
+                'discount_start' => now()->subDays(5),
+                'discount_end' => now()->addDays(15),
+                'is_on_sale' => true,
+                'sale_badge' => '20% OFF',
+                'compare_at_price' => 15000,
+                'sale_quantity' => 100,
+                'sale_sold' => 25,
+                'quantity' => 75,
+                'category_id' => $electronicsCategory,
+                'sku' => 'MOU-001',
+                'barcode' => '8801234567916',
+                'brand' => 'TechPro',
+                'color' => 'Black',
+                'condition' => 'new',
+                'is_featured' => true,
+                'min_order_unit' => 'piece',
+                'moq' => 1,
+                'shipping_cost' => 1500,
+                'shipping_time' => '2-3 days',
+            ],
+            [
+                'name_en' => 'Premium Coffee Maker - Limited Sale',
+                'name_mm' => 'အထူးတန်း ကော်ဖီဖျော်စက် - အကန့်အသတ်ရောင်းချ',
+                'description_en' => 'Automatic coffee maker with programmable settings, thermal carafe, and brew strength control.',
+                'description_mm' => 'ပရိုဂရမ်လုပ်နိုင်၊ အပူထိန်းအိုး၊ ချက်ပြုတ်အားထိန်းချုပ်မှု ပါဝင်သော အလိုအလျောက်ကော်ဖီဖျော်စက်။',
+                'price' => 65000,
+                'discount_price' => 52000,
+                'discount_type' => 'fixed',
+                'discount_percentage' => 20,
+                'discount_start' => now()->subDays(2),
+                'discount_end' => now()->addDays(10),
+                'is_on_sale' => true,
+                'sale_badge' => 'Limited Time',
+                'compare_at_price' => 65000,
+                'sale_quantity' => 50,
+                'sale_sold' => 15,
+                'quantity' => 35,
+                'category_id' => $kitchenCategory,
+                'sku' => 'COF-001',
+                'barcode' => '8801234567917',
+                'brand' => 'BrewMaster',
+                'material' => 'Stainless Steel',
+                'color' => 'Silver',
+                'condition' => 'new',
+                'min_order_unit' => 'piece',
+                'moq' => 1,
+                'shipping_cost' => 3000,
+                'shipping_time' => '3-5 days',
+            ],
+        ];
+        // Insert products with slug_en and assign seller_id
         foreach ($products as $product) {
+            // Generate slug_en from name_en
+            $product['slug_en'] = $this->slugify($product['name_en']);
+            // Assign a random seller_id
+            $product['seller_id'] = $sellers->random()->id;
             Product::create($product);
         }
+    }
+
+    private function slugify($string)
+    {
+        return strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $string)));
+    }
+
+    private function getOrCreateCategory($slug, $name)
+    {
+        $category = Category::where('slug_en', $slug)->first();
+        if (!$category) {
+            // Try to find parent category based on the slug
+            $parentSlug = $this->findParentSlug($slug);
+            $parent = null;
+
+            if ($parentSlug) {
+                $parent = Category::where('slug_en', $parentSlug)->first();
+            }
+
+            $category = Category::create([
+                'name_en' => $name,
+                'slug_en' => $slug,
+                'name_mm' => null,
+                'slug_mm' => null,
+                'commission_rate' => 0.10,
+                'is_active' => true,
+                'parent_id' => $parent ? $parent->id : null,
+            ]);
+
+            if ($parent) {
+                $category->appendToNode($parent)->save();
+            } else {
+                $category->makeRoot()->save();
+            }
+        }
+        return $category->id;
+    }
+
+    private function findParentSlug($slug)
+    {
+        $parentMappings = [
+            'smartphones' => 'electronics',
+            'laptops-computers' => 'electronics',
+            'tvs-monitors' => 'electronics',
+            'audio-headphones' => 'electronics',
+            'cameras' => 'electronics',
+            'home-appliances' => 'electronics',
+            'kitchen-appliances' => 'electronics',
+
+            'mens-clothing' => 'fashion-clothing',
+            'womens-clothing' => 'fashion-clothing',
+            'traditional-clothing' => 'fashion-clothing',
+            'shoes-footwear' => 'fashion-clothing',
+            'bags-accessories' => 'fashion-clothing',
+            'jewelry-watches' => 'fashion-clothing',
+
+            'furniture' => 'home-kitchen',
+            'home-decor' => 'home-kitchen',
+            'kitchenware' => 'home-kitchen',
+            'bedding-bath' => 'home-kitchen',
+            'lighting' => 'home-kitchen',
+            'storage-organization' => 'home-kitchen',
+
+            'grains-rice' => 'food-beverages',
+            'snacks' => 'food-beverages',
+            'beverages' => 'food-beverages',
+            'spices-condiments' => 'food-beverages',
+            'canned-food' => 'food-beverages',
+            'dairy-products' => 'food-beverages',
+            'fresh-produce' => 'food-beverages',
+
+            'skincare' => 'beauty-personal-care',
+            'haircare' => 'beauty-personal-care',
+            'makeup' => 'beauty-personal-care',
+            'fragrances' => 'beauty-personal-care',
+            'personal-hygiene' => 'beauty-personal-care',
+            'health-supplements' => 'beauty-personal-care',
+
+            'fitness-equipment' => 'sports-fitness',
+            'sports-clothing' => 'sports-fitness',
+            'outdoor-sports' => 'sports-fitness',
+            'indoor-games' => 'sports-fitness',
+            'cycling' => 'sports-fitness',
+            'water-sports' => 'sports-fitness',
+
+            'construction-materials' => 'industrial-construction',
+            'tools-machinery' => 'industrial-construction',
+            'safety-equipment' => 'industrial-construction',
+            'electrical-supplies' => 'industrial-construction',
+            'plumbing' => 'industrial-construction',
+            'hardware' => 'industrial-construction',
+
+            'seeds-plants' => 'agriculture',
+            'fertilizers' => 'agriculture',
+            'pesticides' => 'agriculture',
+            'farming-tools' => 'agriculture',
+            'irrigation' => 'agriculture',
+            'animal-feed' => 'agriculture',
+        ];
+
+        return $parentMappings[$slug] ?? null;
     }
 }

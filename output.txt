@@ -7,9 +7,12 @@
 #### Attributes:
 
 - `id` (bigint)
-- `name` (varchar)
-- `slug` (varchar)
-- `description` (varchar)
+- `name_en` (varchar)
+- `name_mm` (varchar)
+- `slug_en` (varchar)
+- `slug_mm` (varchar)
+- `description_en` (text)
+- `description_mm` (text)
 - `requires_registration` (tinyint)
 - `requires_tax_document` (tinyint)
 - `requires_identity_document` (tinyint)
@@ -19,6 +22,11 @@
 - `sort_order` (int)
 - `icon` (varchar)
 - `color` (varchar)
+- `commission_rate` (decimal)
+- `monthly_fee` (decimal)
+- `transaction_fee` (decimal)
+- `minimum_sale_amount` (decimal)
+- `verification_level` (varchar)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 - `deleted_at` (timestamp)
@@ -41,16 +49,21 @@
 #### Attributes:
 
 - `id` (bigint)
-- `name` (varchar)
+- `name_en` (varchar)
+- `slug_en` (varchar)
+- `name_mm` (varchar)
+- `slug_mm` (varchar)
 - `image` (varchar)
-- `description` (text)
-- `slug` (varchar)
+- `description_en` (text)
+- `description_mm` (text)
 - `commission_rate` (decimal)
 - `parent_id` (bigint)
 - `_lft` (int)
 - `_rgt` (int)
+- `is_active` (tinyint)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
+- `deleted_at` (timestamp)
 
 ### Commission (`App\Models\Commission`)
 
@@ -105,6 +118,8 @@
 - `updated_at` (timestamp)
 - `deleted_at` (timestamp)
 
+### DeliveryArea (`App\Models\DeliveryArea`)
+
 ### DeliveryUpdate (`App\Models\DeliveryUpdate`)
 
 #### Attributes:
@@ -119,6 +134,32 @@
 - `longitude` (decimal)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
+
+### Discount (`App\Models\Discount`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `name` (varchar)
+- `code` (varchar)
+- `type` (enum)
+- `value` (decimal)
+- `min_order_amount` (decimal)
+- `max_uses` (int)
+- `used_count` (int)
+- `starts_at` (datetime)
+- `expires_at` (datetime)
+- `is_active` (tinyint)
+- `applicable_to` (enum)
+- `applicable_product_ids` (longtext)
+- `applicable_category_ids` (longtext)
+- `applicable_seller_ids` (longtext)
+- `max_uses_per_user` (int)
+- `is_one_time_use` (tinyint)
+- `created_by` (bigint)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+- `deleted_at` (timestamp)
 
 ### Follow (`App\Models\Follow`)
 
@@ -184,8 +225,12 @@
 #### Attributes:
 
 - `id` (bigint)
-- `name` (varchar)
-- `description` (text)
+- `name_en` (varchar)
+- `name_mm` (varchar)
+- `slug_en` (varchar)
+- `slug_mm` (varchar)
+- `description_en` (text)
+- `description_mm` (text)
 - `price` (decimal)
 - `quantity` (int)
 - `category_id` (bigint)
@@ -194,7 +239,6 @@
 - `review_count` (int)
 - `specifications` (longtext)
 - `images` (longtext)
-- `weight_kg` (int)
 - `dimensions` (longtext)
 - `sku` (varchar)
 - `barcode` (varchar)
@@ -204,20 +248,28 @@
 - `material` (varchar)
 - `origin` (varchar)
 - `discount_price` (decimal)
+- `discount_type` (enum)
+- `discount_percentage` (decimal)
+- `sale_badge` (varchar)
+- `compare_at_price` (decimal)
+- `sale_quantity` (int)
+- `sale_sold` (int)
 - `discount_start` (date)
 - `discount_end` (date)
+- `is_on_sale` (tinyint)
 - `views` (int)
 - `sales` (int)
 - `is_featured` (tinyint)
 - `is_new` (tinyint)
-- `is_on_sale` (tinyint)
+- `condition` (enum)
+- `weight_kg` (decimal)
 - `warranty` (varchar)
 - `warranty_type` (varchar)
 - `warranty_period` (varchar)
-- `warranty_conditions` (varchar)
+- `warranty_conditions` (text)
 - `return_policy` (varchar)
-- `return_conditions` (varchar)
-- `shipping_details` (varchar)
+- `return_conditions` (text)
+- `shipping_details` (text)
 - `shipping_cost` (decimal)
 - `shipping_time` (varchar)
 - `shipping_origin` (varchar)
@@ -243,11 +295,12 @@
 - `id` (bigint)
 - `user_id` (bigint)
 - `product_id` (bigint)
-- `rating` (int)
+- `rating` (tinyint)
 - `comment` (text)
 - `status` (enum)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
+- `deleted_at` (timestamp)
 
 ### SellerProfile (`App\Models\SellerProfile`)
 
@@ -257,13 +310,13 @@
 - `user_id` (bigint)
 - `store_name` (varchar)
 - `store_slug` (varchar)
+- `store_description` (text)
 - `store_id` (varchar)
-- `business_type_id` (bigint)
 - `business_type` (varchar)
+- `business_type_id` (bigint)
 - `business_registration_number` (varchar)
 - `certificate` (varchar)
 - `tax_id` (varchar)
-- `description` (text)
 - `contact_email` (varchar)
 - `contact_phone` (varchar)
 - `website` (varchar)
@@ -291,6 +344,7 @@
 - `status` (enum)
 - `verification_status` (enum)
 - `verification_level` (enum)
+- `is_verified` (tinyint)
 - `verified_by` (bigint)
 - `verified_at` (timestamp)
 - `verification_notes` (text)
@@ -389,10 +443,20 @@
 - **BelongsTo** `platformCourier` to User (Local Key: `platform_courier_id`, Foreign Key: `id`)
 - **HasMany** `deliveryUpdates` to DeliveryUpdate (Local Key: `id`, Foreign Key: `delivery_id`)
 
+### DeliveryArea Relationships
+
+- **BelongsTo** `sellerProfile` to SellerProfile (Local Key: `seller_profile_id`, Foreign Key: `id`)
+- **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+
 ### DeliveryUpdate Relationships
 
 - **BelongsTo** `delivery` to Delivery (Local Key: `delivery_id`, Foreign Key: `id`)
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
+
+### Discount Relationships
+
+- **BelongsTo** `creator` to User (Local Key: `created_by`, Foreign Key: `id`)
+- **BelongsToMany** `products` to Product (Local Key: ``, Foreign Key: ``)
 
 ### Follow Relationships
 
@@ -435,6 +499,8 @@
 - **HasMany** `reviews` to SellerReview (Local Key: `id`, Foreign Key: `seller_id`)
 - **HasMany** `products` to Product (Local Key: `user_id`, Foreign Key: `seller_id`)
 - **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `seller_id`)
+- **HasMany** `deliveryAreas` to DeliveryArea (Local Key: `id`, Foreign Key: `seller_profile_id`)
+- **HasMany** `activeDeliveryAreas` to DeliveryArea (Local Key: `id`, Foreign Key: `seller_profile_id`)
 
 ### SellerReview Relationships
 

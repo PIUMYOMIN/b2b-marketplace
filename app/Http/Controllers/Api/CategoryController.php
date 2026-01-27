@@ -31,21 +31,30 @@ class CategoryController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            'name_en' => 'required|string|max:255',
             'name_mm' => 'nullable|string|max:255',
-            'description' => 'nullable|string',
+            'description_en' => 'nullable|string',
+            'description_mm' => 'nullable|string',
             'parent_id' => 'nullable|exists:categories,id',
             'commission_rate' => 'required|numeric|min:0|max:1',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
         ]);
 
-        // Generate slug from name
-        $slug = Str::slug($request->name);
+        // Generate slugs from names
+        $slugEn = Str::slug($request->name_en);
+        $slugMm = $request->name_mm ? Str::slug($request->name_mm) : null;
 
-        // Ensure slug is unique
-        $count = Category::where('slug', 'LIKE', "{$slug}%")->count();
-        if ($count > 0) {
-            $slug = "{$slug}-" . ($count + 1);
+        // Ensure slugs are unique
+        $countEn = Category::where('slug_en', 'LIKE', "{$slugEn}%")->count();
+        if ($countEn > 0) {
+            $slugEn = "{$slugEn}-" . ($countEn + 1);
+        }
+
+        if ($slugMm) {
+            $countMm = Category::where('slug_mm', 'LIKE', "{$slugMm}%")->count();
+            if ($countMm > 0) {
+                $slugMm = "{$slugMm}-" . ($countMm + 1);
+            }
         }
 
         // Handle image upload
@@ -61,51 +70,81 @@ class CategoryController extends Controller
         }
 
         $categoryData = [
-            'name' => $request->name,
+            'name_en' => $request->name_en,
+            'slug_en' => $slugEn,
             'name_mm' => $request->name_mm,
-            'description' => $request->description,
+            'slug_mm' => $slugMm,
+            'description_en' => $request->description_en,
+            'description_mm' => $request->description_mm,
             'commission_rate' => $request->commission_rate,
-            'slug' => $slug,
-            'image' => $imagePath
+            'image' => $imagePath,
+            'is_active' => $request->get('is_active', true),
         ];
 
         $category = Category::create($categoryData);
 
+        // Handle parent-child relationship
         if ($request->parent_id) {
             $parent = Category::find($request->parent_id);
-            $category->appendToNode($parent)->save();
+            if ($parent) {
+                $category->appendToNode($parent)->save();
+            }
         } else {
             $category->makeRoot()->save();
         }
 
         return response()->json([
             'success' => true,
-            'data' => $category
+            'data' => $category->fresh(),
+            'message' => 'Category created successfully'
         ], 201);
     }
 
     public function update(Request $request, Category $category)
     {
         $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'name_mm' => 'sometimes|string|max:255',
-            'description' => 'sometimes|string',
-            'parent_id' => 'sometimes|exists:categories,id',
+            'name_en' => 'sometimes|string|max:255',
+            'name_mm' => 'nullable|string|max:255',
+            'description_en' => 'nullable|string',
+            'description_mm' => 'nullable|string',
+            'parent_id' => 'nullable|exists:categories,id',
             'commission_rate' => 'sometimes|numeric|min:0|max:1',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'is_active' => 'sometimes|boolean'
         ]);
 
-        $data = $request->only(['name', 'name_mm', 'description', 'commission_rate']);
+        $data = [
+            'name_en' => $request->get('name_en', $category->name_en),
+            'name_mm' => $request->get('name_mm', $category->name_mm),
+            'description_en' => $request->get('description_en', $category->description_en),
+            'description_mm' => $request->get('description_mm', $category->description_mm),
+            'commission_rate' => $request->get('commission_rate', $category->commission_rate),
+            'is_active' => $request->get('is_active', $category->is_active)
+        ];
 
-        if ($request->has('name')) {
-            $slug = Str::slug($request->name);
-            $count = Category::where('slug', 'LIKE', "{$slug}%")
-                             ->where('id', '!=', $category->id)
-                             ->count();
+        // Generate new slugs if names changed
+        if ($request->has('name_en') && $request->name_en !== $category->name_en) {
+            $newSlugEn = Str::slug($request->name_en);
+            $count = Category::where('slug_en', 'LIKE', $newSlugEn . '%')
+                ->where('id', '!=', $category->id)
+                ->count();
             if ($count > 0) {
-                $slug = "{$slug}-" . ($count + 1);
+                $newSlugEn = $newSlugEn . '-' . ($count + 1);
             }
-            $data['slug'] = $slug;
+            $data['slug_en'] = $newSlugEn;
+        }
+
+        if ($request->has('name_mm') && $request->name_mm !== $category->name_mm) {
+            $newSlugMm = $request->name_mm ? Str::slug($request->name_mm) : null;
+            if ($newSlugMm) {
+                $count = Category::where('slug_mm', 'LIKE', $newSlugMm . '%')
+                    ->where('id', '!=', $category->id)
+                    ->count();
+                if ($count > 0) {
+                    $newSlugMm = $newSlugMm . '-' . ($count + 1);
+                }
+            }
+            $data['slug_mm'] = $newSlugMm;
         }
 
         // Handle image upload
@@ -136,23 +175,36 @@ class CategoryController extends Controller
 
         $category->update($data);
 
+        // Handle parent change
         if ($request->has('parent_id')) {
             if ($request->parent_id) {
                 $parent = Category::find($request->parent_id);
-                $category->appendToNode($parent)->save();
+                if ($parent && $parent->id !== $category->id) {
+                    $category->appendToNode($parent)->save();
+                }
             } else {
+                // Make it a root category
                 $category->makeRoot()->save();
             }
         }
 
         return response()->json([
             'success' => true,
-            'data' => $category->fresh()
+            'data' => $category->fresh(),
+            'message' => 'Category updated successfully'
         ]);
     }
 
     public function destroy(Category $category)
     {
+        // Check if category has products
+        if ($category->products()->count() > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete category with existing products'
+            ], 400);
+        }
+
         // Delete associated image
         if ($category->image) {
             Storage::disk('public')->delete($category->image);
@@ -174,17 +226,17 @@ class CategoryController extends Controller
         // Extract the image data from the base64 string
         list($type, $data) = explode(';', $base64Image);
         list(, $data) = explode(',', $data);
-        
+
         // Decode the base64 data
         $imageData = base64_decode($data);
-        
+
         // Generate a unique filename
         $extension = explode('/', $type)[1];
         $filename = 'categories/' . uniqid() . '.' . $extension;
-        
+
         // Store the image
         Storage::disk('public')->put($filename, $imageData);
-        
+
         return $filename;
     }
 }

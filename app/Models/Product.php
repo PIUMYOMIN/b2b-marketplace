@@ -19,6 +19,16 @@ class Product extends Model
         'description_en',
         'description_mm',
         'price',
+        'discount_price', // Updated from discount_amount
+        'discount_type',
+        'discount_percentage',
+        'sale_badge',
+        'compare_at_price',
+        'sale_quantity',
+        'sale_sold',
+        'discount_start',
+        'discount_end',
+        'is_on_sale',
         'quantity',
         'category_id',
         'seller_id',
@@ -34,15 +44,11 @@ class Product extends Model
         'color',
         'material',
         'origin',
-        'discount_price',
-        'discount_start',
-        'discount_end',
         'views',
         'sales',
         'is_featured',
         'is_new',
         'condition',
-        'is_on_sale',
         'weight_kg',
         'warranty',
         'warranty_type',
@@ -77,6 +83,8 @@ class Product extends Model
         'is_on_sale' => 'boolean',
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
+        'compare_at_price' => 'decimal:2',
+        'discount_percentage' => 'decimal:2',
         'weight_kg' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
         'average_rating' => 'decimal:2',
@@ -103,22 +111,118 @@ class Product extends Model
     }
 
     /**
-     * Get the primary image URL.
+     * Check if product is currently on sale
      */
-    public function getPrimaryImageAttribute(): ?string
+    public function getIsCurrentlyOnSaleAttribute(): bool
     {
-        if (empty($this->images)) {
+        if (!$this->is_on_sale) {
+            return false;
+        }
+
+        $now = now();
+
+        // Check if sale has started
+        if ($this->discount_start && $this->discount_start->gt($now)) {
+            return false;
+        }
+
+        // Check if sale has ended
+        if ($this->discount_end && $this->discount_end->lt($now)) {
+            return false;
+        }
+
+        // Check sale quantity limit
+        if ($this->sale_quantity && $this->sale_sold >= $this->sale_quantity) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get current selling price (with discount applied)
+     */
+    public function getSellingPriceAttribute(): float
+    {
+        if (!$this->isCurrentlyOnSale) {
+            return (float) $this->price;
+        }
+
+        if ($this->discount_price && $this->discount_price > 0) {
+            return (float) $this->discount_price;
+        }
+
+        if ($this->discount_percentage && $this->discount_percentage > 0) {
+            $discountAmount = $this->price * ($this->discount_percentage / 100);
+            return (float) ($this->price - $discountAmount);
+        }
+
+        return (float) $this->price;
+    }
+
+    /**
+     * Get discount amount saved
+     */
+    public function getDiscountSavedAttribute(): float
+    {
+        if (!$this->isCurrentlyOnSale) {
+            return 0.0;
+        }
+
+        return (float) ($this->price - $this->selling_price);
+    }
+
+    /**
+     * Get discount percentage
+     */
+    public function getDiscountPercentageAttribute(): float
+    {
+        if (!$this->isCurrentlyOnSale || $this->price <= 0) {
+            return 0.0;
+        }
+
+        if ($this->attributes['discount_percentage']) {
+            return (float) $this->attributes['discount_percentage'];
+        }
+
+        $saved = $this->discount_saved;
+        if ($saved <= 0) {
+            return 0.0;
+        }
+
+        return (float) round(($saved / $this->price) * 100, 2);
+    }
+
+    /**
+     * Get sale ends in days
+     */
+    public function getSaleEndsInAttribute(): ?int
+    {
+        if (!$this->isCurrentlyOnSale || !$this->discount_end) {
             return null;
         }
 
-        // Find primary image or return first
-        foreach ($this->images as $image) {
-            if (isset($image['is_primary']) && $image['is_primary']) {
-                return $image['url'];
-            }
-        }
+        return now()->diffInDays($this->discount_end, false);
+    }
 
-        return $this->images[0]['url'] ?? null;
+    /**
+     * Scope for products currently on sale
+     */
+    public function scopeOnSale($query)
+    {
+        return $query->where('is_on_sale', true)
+            ->where(function ($q) {
+                $q->whereNull('discount_start')
+                    ->orWhere('discount_start', '<=', now());
+            })
+            ->where(function ($q) {
+                $q->whereNull('discount_end')
+                    ->orWhere('discount_end', '>=', now());
+            })
+            ->where(function ($q) {
+                $q->whereNull('sale_quantity')
+                    ->orWhereRaw('sale_sold < sale_quantity');
+            });
     }
 
     /**
@@ -135,6 +239,25 @@ class Product extends Model
     public function getDescriptionAttribute(): string
     {
         return $this->description_en ?? $this->description_mm ?? '';
+    }
+
+    /**
+     * Get the primary image URL.
+     */
+    public function getPrimaryImageAttribute(): ?string
+    {
+        if (empty($this->images)) {
+            return null;
+        }
+
+        // Find primary image or return first
+        foreach ($this->images as $image) {
+            if (isset($image['is_primary']) && $image['is_primary']) {
+                return $image['url'];
+            }
+        }
+
+        return $this->images[0]['url'] ?? null;
     }
 
     /**
@@ -212,6 +335,14 @@ class Product extends Model
         return number_format($this->price, 0) . ' MMK';
     }
 
+    /**
+     * Get formatted selling price.
+     */
+    public function getFormattedSellingPriceAttribute(): string
+    {
+        return number_format($this->selling_price, 0) . ' MMK';
+    }
+
     public function reviews()
     {
         return $this->hasMany(Review::class);
@@ -233,5 +364,28 @@ class Product extends Model
     public function sellerProfile(): BelongsTo
     {
         return $this->belongsTo(SellerProfile::class, 'seller_id', 'user_id');
+    }
+
+    /**
+     * Increment sale sold count
+     */
+    public function incrementSaleSold(int $quantity = 1): bool
+    {
+        if ($this->sale_quantity && ($this->sale_sold + $quantity) > $this->sale_quantity) {
+            return false;
+        }
+
+        $this->increment('sale_sold', $quantity);
+        return true;
+    }
+
+    public function getAverageRatingAttribute($value)
+    {
+        return $value ?? 0;
+    }
+
+    public function getReviewCountAttribute($value)
+    {
+        return $value ?? 0;
     }
 }

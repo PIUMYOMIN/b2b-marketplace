@@ -4,15 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use App\Models\Category; // Added missing import
+use App\Models\Category;
 use App\Models\Review;
+use App\Models\Discount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Resources\ProductResource;
 use App\Http\Resources\ReviewResource;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str; // Added for slug generation
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -119,7 +120,7 @@ class ProductController extends Controller
                 'quantity' => $product->quantity,
                 'category_id' => $product->category_id,
                 'seller_id' => $product->seller_id,
-                'average_rating' => (float) $product->average_rating,
+                'average_rating' => (float) ($product->average_rating ?? 0),
                 'review_count' => $product->reviews_count,
                 'specifications' => $product->specifications,
                 'images' => $this->formatImages($product->images),
@@ -467,7 +468,7 @@ class ProductController extends Controller
     public function update(Request $request, Product $product)
     {
         // Authorization check - only seller or admin can update
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('seller')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to update this product'
@@ -1220,5 +1221,138 @@ class ProductController extends Controller
                 'message' => 'Failed to set primary image: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Apply or update product discount
+     */
+    public function applyProductDiscount(Request $request, Product $product)
+    {
+        // Authorization check - only seller or admin can update
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to apply discount to this product'
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'discount_type' => 'required|in:percentage,fixed,none',
+            'discount_value' => 'required_if:discount_type,percentage,fixed|numeric|min:0',
+            'discount_start' => 'nullable|date',
+            'discount_end' => 'nullable|date|after_or_equal:discount_start',
+            'compare_at_price' => 'nullable|numeric|min:0',
+            'sale_badge' => 'nullable|string|max:50',
+            'sale_quantity' => 'nullable|integer|min:1',
+            'is_on_sale' => 'boolean'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $updateData = [
+                'is_on_sale' => $request->get('is_on_sale', true),
+                'discount_start' => $request->discount_start,
+                'discount_end' => $request->discount_end,
+                'compare_at_price' => $request->compare_at_price,
+                'sale_badge' => $request->sale_badge,
+                'sale_quantity' => $request->sale_quantity,
+                'sale_sold' => 0 // Reset sold count when updating sale
+            ];
+
+            if ($request->discount_type === 'percentage') {
+                $updateData['discount_percentage'] = $request->discount_value;
+                $updateData['discount_price'] = null;
+            } elseif ($request->discount_type === 'fixed') {
+                $updateData['discount_price'] = $request->discount_value;
+                $updateData['discount_percentage'] = null;
+            } else {
+                $updateData['discount_price'] = null;
+                $updateData['discount_percentage'] = null;
+                $updateData['is_on_sale'] = false;
+            }
+
+            $product->update($updateData);
+
+            return response()->json([
+                'success' => true,
+                'data' => new ProductResource($product->fresh()),
+                'message' => 'Product discount updated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Product discount error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to apply discount: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove discount from product
+     */
+    public function removeDiscount(Product $product)
+    {
+        // Authorization check - only seller or admin can update
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to remove discount from this product'
+            ], 403);
+        }
+
+        try {
+            $product->update([
+                'discount_price' => null,
+                'discount_percentage' => null,
+                'discount_start' => null,
+                'discount_end' => null,
+                'compare_at_price' => null,
+                'sale_badge' => null,
+                'sale_quantity' => null,
+                'sale_sold' => 0,
+                'is_on_sale' => false
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Discount removed from product successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Remove discount error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to remove discount: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get active discounts for a product
+     */
+    public function productDiscounts(Product $product)
+    {
+        $discounts = Discount::where('is_active', true)
+            ->where('starts_at', '<=', now())
+            ->where('expires_at', '>=', now())
+            ->where(function ($query) use ($product) {
+                $query->where('applicable_to', 'all_products')
+                    ->orWhereJsonContains('applicable_product_ids', $product->id)
+                    ->orWhereJsonContains('applicable_category_ids', $product->category_id)
+                    ->orWhereJsonContains('applicable_seller_ids', $product->seller_id);
+            })
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $discounts
+        ]);
     }
 }

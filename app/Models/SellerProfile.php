@@ -1,14 +1,13 @@
 <?php
-
 namespace App\Models;
 
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\SellerReview;
-use Illuminate\Foundation\Auth\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User;
 
 class SellerProfile extends Model
 {
@@ -75,6 +74,7 @@ class SellerProfile extends Model
         'postal_code',
         'store_logo',
         'store_banner',
+        'shipping_enabled',
 
         // Document fields
         'business_registration_document',
@@ -124,6 +124,7 @@ class SellerProfile extends Model
         'badge_expires_at' => 'datetime',
         'onboarding_completed_at' => 'datetime',
         'documents_submitted' => 'boolean',
+        'shipping_enabled' => 'boolean',
     ];
 
     const STATUS_FLOW = [
@@ -131,7 +132,7 @@ class SellerProfile extends Model
         'pending' => 'under_review',
         'under_review' => 'approved',
         'approved' => 'active',
-        'rejected' => 'setup_pending'
+        'rejected' => 'setup_pending',
     ];
 
     public function getNextStep()
@@ -173,7 +174,7 @@ class SellerProfile extends Model
         $progress = json_decode($value, true) ?? [
             'current_step' => 'store-basic',
             'completed_steps' => [],
-            'progress_percentage' => 0
+            'progress_percentage' => 0,
         ];
 
         // Auto-calculate progress if missing
@@ -232,23 +233,23 @@ class SellerProfile extends Model
             'verified' => [
                 'name' => 'Verified Seller',
                 'color' => 'bg-green-100 text-green-800 border-green-300',
-                'icon' => '✓'
+                'icon' => '✓',
             ],
             'premium' => [
                 'name' => 'Premium Seller',
                 'color' => 'bg-purple-100 text-purple-800 border-purple-300',
-                'icon' => '★'
+                'icon' => '★',
             ],
             'featured' => [
                 'name' => 'Featured Store',
                 'color' => 'bg-blue-100 text-blue-800 border-blue-300',
-                'icon' => '✩'
+                'icon' => '✩',
             ],
             'top_rated' => [
                 'name' => 'Top Rated',
                 'color' => 'bg-yellow-100 text-yellow-800 border-yellow-300',
-                'icon' => '♥'
-            ]
+                'icon' => '♥',
+            ],
         ];
 
         return $badges[$this->badge_type] ?? $badges['verified'];
@@ -292,32 +293,6 @@ class SellerProfile extends Model
             return !empty($this->business_registration_document) &&
                 !empty($this->tax_registration_document);
         }
-    }
-
-    /**
-     * Get missing required fields
-     */
-    public function getMissingFields()
-    {
-        $missing = [];
-        $requiredFields = [
-            'store_name' => 'Store Name',
-            'business_type' => 'Business Type',
-            'contact_email' => 'Contact Email',
-            'contact_phone' => 'Contact Phone',
-            'address' => 'Address',
-            'city' => 'City',
-            'state' => 'State/Region',
-            'country' => 'Country',
-        ];
-
-        foreach ($requiredFields as $field => $label) {
-            if (empty(trim($this->$field))) {
-                $missing[] = $label;
-            }
-        }
-
-        return $missing;
     }
 
     /**
@@ -408,7 +383,7 @@ class SellerProfile extends Model
             'completed_steps' => $completedSteps,
             'total_steps' => $totalSteps,
             'percentage' => ($completedSteps / $totalSteps) * 100,
-            'next_step' => $this->getOnboardingStep()
+            'next_step' => $this->getOnboardingStep(),
         ];
     }
 
@@ -498,7 +473,7 @@ class SellerProfile extends Model
             $q->where('documents_submitted', true)
                 ->whereIn('verification_status', [
                     self::VERIFICATION_PENDING,
-                    self::VERIFICATION_UNDER_REVIEW
+                    self::VERIFICATION_UNDER_REVIEW,
                 ])
                 // Include sellers with uploaded documents regardless of status
                 ->where(function ($subQ) {
@@ -626,7 +601,6 @@ class SellerProfile extends Model
         return $this->business_type === 'individual';
     }
 
-
     /**
      * Relationship with user
      */
@@ -713,10 +687,10 @@ class SellerProfile extends Model
     public function topProducts($limit = 5)
     {
         return $this->products()
-                    ->withCount('orders')
-                    ->orderBy('orders_count', 'desc')
-                    ->limit($limit)
-                    ->get();
+            ->withCount('orders')
+            ->orderBy('orders_count', 'desc')
+            ->limit($limit)
+            ->get();
     }
 
     public function getRouteKeyName()
@@ -725,33 +699,87 @@ class SellerProfile extends Model
     }
 
     /**
- * Check if onboarding is complete
- */
-public function isOnboardingComplete()
-{
-    // All required fields must be filled with actual data (not empty strings)
+     * Check if onboarding is complete
+     */
+    public function isOnboardingComplete()
+    {
+        // All required fields must be filled with actual data (not empty strings)
         return !empty(trim($this->store_name)) &&
             (!empty($this->business_type_id) || !empty(trim($this->business_type))) &&
-           !empty(trim($this->contact_email)) &&
-           !empty(trim($this->contact_phone)) &&
+            !empty(trim($this->contact_email)) &&
+            !empty(trim($this->contact_phone)) &&
             !empty(trim($this->address)) &&
-           !empty(trim($this->city)) &&
-           !empty(trim($this->state)) &&
-           !empty(trim($this->country));
-}
-
-public static function generateUniqueSlug($storeName)
-{
-    $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $storeName)));
-    $originalSlug = $slug;
-    $counter = 1;
-
-    while (self::where('store_slug', $slug)->exists()) {
-        $slug = $originalSlug . '-' . $counter;
-        $counter++;
+            !empty(trim($this->city)) &&
+            !empty(trim($this->state)) &&
+            !empty(trim($this->country));
     }
 
-    return $slug;
-}
+    public static function generateUniqueSlug($storeName)
+    {
+        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $storeName)));
+        $originalSlug = $slug;
+        $counter = 1;
+
+        while (self::where('store_slug', $slug)->exists()) {
+            $slug = $originalSlug . '-' . $counter;
+            $counter++;
+        }
+
+        return $slug;
+    }
+
+    public function getMissingFields()
+    {
+        $missing = [];
+
+        if (empty($this->store_name)) {
+            $missing[] = 'store_name';
+        }
+
+        if (empty($this->business_type_id)) {
+            $missing[] = 'business_type';
+        }
+
+        if (empty($this->contact_email)) {
+            $missing[] = 'contact_email';
+        }
+
+        if (empty($this->contact_phone)) {
+            $missing[] = 'contact_phone';
+        }
+
+        if (empty($this->address)) {
+            $missing[] = 'address';
+        }
+
+        if (empty($this->city)) {
+            $missing[] = 'city';
+        }
+
+        if (empty($this->state)) {
+            $missing[] = 'state';
+        }
+
+        if (empty($this->country)) {
+            $missing[] = 'country';
+        }
+
+        return $missing;
+    }
+
+    public function deliveryAreas()
+    {
+        return $this->hasMany(DeliveryArea::class);
+    }
+
+    public function activeDeliveryAreas()
+    {
+        return $this->hasMany(DeliveryArea::class)->active()->deliverable()->orderBy('sort_order');
+    }
+
+    public function shippingSetting()
+    {
+        return $this->hasOne(ShippingSetting::class);
+    }
 
 }

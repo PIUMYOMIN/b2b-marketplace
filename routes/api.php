@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\DeliveryController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\FollowController;
 use App\Http\Controllers\Api\BusinessTypeController;
+use App\Http\Controllers\Api\DiscountController;
+use App\Http\Controllers\Api\DeliveryAreaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -137,8 +139,40 @@ Route::group([
             Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
             Route::get('/products/my-products', [ProductController::class, 'myProducts']);
 
+            //Product
+            Route::prefix('products')->group(function () {
+                Route::put('/{product}', [ProductController::class, 'update']);
+            });
+
             // Seller Product Reviews
             Route::get('/products/reviews', [ReviewController::class, 'sellerReviews']);
+
+            Route::prefix('discounts')->group(function () {
+                Route::get('/', [DiscountController::class, 'index']);
+                Route::post('/', [DiscountController::class, 'store']);
+                Route::get('/{discount}', [DiscountController::class, 'show']);
+                Route::put('/{discount}', [DiscountController::class, 'update']);
+                Route::delete('/{discount}', [DiscountController::class, 'destroy']);
+                Route::post('/validate', [DiscountController::class, 'validateDiscount']);
+                Route::get('/product/{productId}', [DiscountController::class, 'getProductDiscounts']);
+                Route::put('/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
+            });
+
+            // In routes/api.php, within seller prefix
+            Route::prefix('delivery-areas')->group(function () {
+                Route::get('/', [DeliveryAreaController::class, 'index']);
+                Route::post('/', [DeliveryAreaController::class, 'store']);
+                Route::get('/location-options', [DeliveryAreaController::class, 'getLocationOptions']);
+                Route::post('/check-shipping-fee', [DeliveryAreaController::class, 'checkShippingFee']);
+                Route::put('/{id}', [DeliveryAreaController::class, 'update']);
+                Route::delete('/{id}', [DeliveryAreaController::class, 'destroy']);
+            });
+
+            Route::prefix('shipping')->group(function () {
+                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
+                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
+                Route::post('/calculate', [SellerController::class, 'calculateShipping']);
+            });
         });
 
         // Dashboard
@@ -162,26 +196,37 @@ Route::group([
             Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts']);
             Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders']);
 
-            //Seller management
+            // Seller Verification Routes
             Route::prefix('seller')->group(function () {
                 Route::put('/{id}/status', [SellerController::class, 'update']);
                 Route::put('/{id}/status', [SellerController::class, 'updateStatus']);
                 Route::put('/{id}', [SellerController::class, 'update']);
                 Route::get('/{id}/status', [SellerController::class, 'getSellerStatus']);
                 Route::put('/{id}/status', [SellerController::class, 'sellerApprove']);
-                Route::get('/seller-verification', [SellerController::class, 'getAllSellerVerifications']);
-                Route::get('/seller-verification/{verification}', [SellerController::class, 'getSellerVerificationDetails']);
-                Route::post('/seller-verification/{verification}/approve', [SellerController::class, 'approveSellerVerification']);
-                Route::get('//pending-verification', [SellerController::class, 'getPendingVerification']);
-                Route::post('/{verification}/reject', [SellerController::class, 'rejectSellerVerification']);
+                // Get sellers for verification review
                 Route::get('/verification-review', [SellerController::class, 'getSellersForVerificationReview']);
+                Route::get('/pending-verification', [SellerController::class, 'getPendingVerification']);
+                Route::get('/sellers-with-documents', [SellerController::class, 'getSellersWithDocuments']);
+
+                // Individual seller verification
+                Route::get('/{id}/verification-status', [SellerController::class, 'getSellerStatus']);
+                Route::get('/{id}/documents', [SellerController::class, 'getSellerDocuments']);
+
+                // Verification actions
                 Route::post('/{id}/verify', [SellerController::class, 'verifySeller']);
                 Route::post('/{id}/reject', [SellerController::class, 'rejectVerification']);
                 Route::put('/{id}/verification-status', [SellerController::class, 'updateVerificationStatus']);
-                Route::get('/{id}/documents', [SellerController::class, 'getSellerDocuments']);
+
+                // Seller status management
+                Route::put('/{id}/status', [SellerController::class, 'updateStatus']);
+                Route::get('/{id}/status', [SellerController::class, 'getSellerStatus']);
+
+                Route::get('/seller-verification', [SellerController::class, 'getAllSellerVerifications']);
+                Route::get('/seller-verification/{verification}', [SellerController::class, 'getSellerVerificationDetails']);
+                Route::post('/seller-verification/{verification}/approve', [SellerController::class, 'approveSellerVerification']);
+                Route::post('/{verification}/reject', [SellerController::class, 'rejectSellerVerification']);
                 Route::post('/{seller}/approve', [DashboardController::class, 'adminApprove']);
             });
-
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
                 Route::post('/', [BusinessTypeController::class, 'store']);
@@ -258,10 +303,16 @@ Route::group([
             // Seller/Admin management
             Route::middleware('role:seller|admin')->group(function () {
                 Route::post('/', [ProductController::class, 'store']);
-                Route::put('/{product}', [ProductController::class, 'update']);
+
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
                 Route::get('/my-products', [ProductController::class, 'myProducts']);
             });
+        });
+
+        Route::prefix('products')->group(function () {
+            Route::post('/{product}/apply-discount', [ProductController::class, 'applyDiscount']);
+            Route::post('/{product}/remove-discount', [ProductController::class, 'removeDiscount']);
+            Route::get('/{product}/discounts', [ProductController::class, 'productDiscounts']);
         });
 
         // Buyer Cart Management
@@ -357,9 +408,5 @@ Route::group([
             'success' => false,
             'message' => 'API endpoint not found'
         ], 404);
-    });
-
-    Route::get('/test-cors', function () {
-        return response()->json(['message' => 'CORS is working']);
     });
 });

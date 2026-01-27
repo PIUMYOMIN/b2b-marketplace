@@ -13,19 +13,23 @@ class BusinessType extends Model
     protected $fillable = [
         'name_en',
         'name_mm',
-        'slug_en',
-        'slug_mm',
         'description_en',
         'description_mm',
+        'slug_en',
+        'slug_mm',
         'requires_registration',
         'requires_tax_document',
         'requires_identity_document',
         'requires_business_certificate',
-        'additional_requirements',
         'is_active',
         'sort_order',
         'icon',
-        'color'
+        'color',
+        'commission_rate',
+        'monthly_fee',
+        'transaction_fee',
+        'minimum_sale_amount',
+        'verification_level',
     ];
 
     protected $casts = [
@@ -33,6 +37,10 @@ class BusinessType extends Model
         'requires_tax_document' => 'boolean',
         'requires_identity_document' => 'boolean',
         'requires_business_certificate' => 'boolean',
+        'commission_rate' => 'decimal:2',
+        'monthly_fee' => 'decimal:2',
+        'transaction_fee' => 'decimal:2',
+        'minimum_sale_amount' => 'decimal:2',
         'is_active' => 'boolean',
         'additional_requirements' => 'array',
         'sort_order' => 'integer',
@@ -62,9 +70,9 @@ class BusinessType extends Model
     /**
      * Check if this is an individual business type
      */
-    public function isIndividualType(): bool
+    public function isIndividualType()
     {
-        return $this->slug_en === 'individual';
+        return in_array($this->slug_en, ['individual', 'sole_proprietor']);
     }
 
     /**

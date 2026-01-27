@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     */
+    */
     public function up(): void
     {
         Schema::create('seller_profiles', function (Blueprint $table) {
@@ -18,10 +18,11 @@ return new class extends Migration
             // Store Information
             $table->string('store_name');
             $table->string('store_slug')->unique();
+            $table->text('store_description')->nullable();
             $table->string('store_id')->unique();
+            $table->string('business_type')->nullable();
             $table->foreignId('business_type_id')->nullable()->constrained('business_types')->onDelete('set null');
 
-            $table->string('business_type')->nullable();
 
             // Business Registration Details
             $table->string('business_registration_number')->nullable();
@@ -29,7 +30,6 @@ return new class extends Migration
             $table->string('tax_id')->nullable();
 
             // Store Description
-            $table->text('description')->nullable();
 
             // Contact Information
             $table->string('contact_email');
@@ -81,6 +81,8 @@ return new class extends Migration
                 'closed'
             ])->default('setup_pending');
 
+            $table->boolean('shipping_enabled')->default(false);
+
             $table->enum('verification_status', [
                 'pending',
                 'under_review',
@@ -94,7 +96,7 @@ return new class extends Migration
                 'verified',
                 'premium'
             ])->default('unverified');
-
+            $table->boolean('is_verified')->default(true);
             $table->foreignId('verified_by')->nullable()->constrained('users');
             $table->timestamp('verified_at')->nullable();
             $table->text('verification_notes')->nullable();

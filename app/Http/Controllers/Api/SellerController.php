@@ -7,6 +7,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
 use App\Models\BusinessType;
+use App\Models\ShippingSetting;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1306,6 +1307,27 @@ class SellerController extends Controller
             Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to get status'], 500);
         }
+    }
+
+    private function determineCurrentStep($sellerProfile)
+    {
+        if (empty($sellerProfile->store_name) || empty($sellerProfile->business_type_id)) {
+            return 'store-basic';
+        }
+
+        if (empty($sellerProfile->business_registration_number) && $sellerProfile->business_type !== 'individual') {
+            return 'business-details';
+        }
+
+        if (empty($sellerProfile->address) || empty($sellerProfile->city)) {
+            return 'address';
+        }
+
+        if (!$sellerProfile->documents_submitted) {
+            return 'documents';
+        }
+
+        return 'review-submit';
     }
 
     /**
@@ -4713,5 +4735,395 @@ class SellerController extends Controller
         }
 
         return $results;
+    }
+
+    /**
+     * Get seller setup requirements
+     */
+    public function getSetupRequirements(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => true,
+                    'needs_setup' => true,
+                    'requirements' => [
+                        'create_profile' => true
+                    ]
+                ]);
+            }
+
+            $requirements = [
+                'store_basic' => !empty($sellerProfile->store_name) &&
+                    !empty($sellerProfile->business_type_id) &&
+                    !empty($sellerProfile->contact_email) &&
+                    !empty($sellerProfile->contact_phone),
+                'store_logo' => !empty($sellerProfile->store_logo),
+                'store_banner' => !empty($sellerProfile->store_banner),
+                'business_details' => $sellerProfile->business_type === 'individual' ?
+                    true : (!empty($sellerProfile->business_registration_number) &&
+                        !empty($sellerProfile->tax_id)),
+                'address' => !empty($sellerProfile->address) &&
+                    !empty($sellerProfile->city) &&
+                    !empty($sellerProfile->state) &&
+                    !empty($sellerProfile->country),
+                'documents' => $sellerProfile->documents_submitted,
+                'verification' => $sellerProfile->verification_status === 'verified',
+            ];
+
+            $completed = array_filter($requirements, function ($item) {
+                return $item === true;
+            });
+
+            $total = count($requirements);
+            $completedCount = count($completed);
+            $progress = $total > 0 ? ($completedCount / $total) * 100 : 0;
+
+            return response()->json([
+                'success' => true,
+                'needs_setup' => $completedCount < $total,
+                'progress' => $progress,
+                'requirements' => $requirements,
+                'next_step' => $this->getNextSetupStep($requirements)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get setup requirements: ' . $e->getMessage());
+            return response()->json(['success' => false], 500);
+        }
+    }
+
+    private function getNextSetupStep($requirements)
+    {
+        $steps = [
+            'store_basic' => 'store-basic',
+            'store_logo' => 'my-store',
+            'business_details' => 'business-details',
+            'address' => 'address',
+            'documents' => 'documents',
+            'verification' => 'verification'
+        ];
+
+        foreach ($steps as $key => $step) {
+            if (!$requirements[$key]) {
+                return $step;
+            }
+        }
+
+        return 'complete';
+    }
+
+    /**
+     * Get shipping settings for authenticated seller
+     */
+    public function getShippingSettings(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access shipping settings'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $shippingSetting = ShippingSetting::where('seller_profile_id', $sellerProfile->id)->first();
+
+            if (!$shippingSetting) {
+                // Create default settings if not exists
+                $defaultSettings = ShippingSetting::getDefaultSettings();
+                $shippingSetting = ShippingSetting::create(array_merge($defaultSettings, [
+                    'seller_profile_id' => $sellerProfile->id
+                ]));
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $shippingSetting
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get shipping settings: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get shipping settings'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update shipping settings for authenticated seller
+     */
+    public function updateShippingSettings(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can update shipping settings'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'enabled' => 'sometimes|boolean',
+                'processing_time' => 'sometimes|in:same_day,1_2_days,3_5_days,5_7_days,custom',
+                'custom_processing_time' => 'nullable|string|max:255',
+                'free_shipping_threshold' => 'nullable|numeric|min:0',
+                'free_shipping_enabled' => 'sometimes|boolean',
+                'shipping_methods' => 'sometimes|array',
+                'shipping_methods.*' => 'in:standard,express,next_day,free',
+                'delivery_areas' => 'sometimes|array',
+                'delivery_areas.*.city' => 'required|string|max:100',
+                'delivery_areas.*.state' => 'required|string|max:100',
+                'delivery_areas.*.country' => 'required|string|max:100',
+                'delivery_areas.*.delivery_time' => 'required|string|max:50',
+                'delivery_areas.*.rate' => 'required|numeric|min:0',
+                'shipping_rates' => 'sometimes|array',
+                'international_shipping' => 'sometimes|boolean',
+                'international_rates' => 'nullable|array',
+                'package_weight_unit' => 'sometimes|in:kg,g,lb,oz',
+                'default_package_weight' => 'sometimes|numeric|min:0.01',
+                'shipping_policy' => 'nullable|string|max:2000',
+                'return_policy' => 'nullable|string|max:2000'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Find or create shipping settings
+            $shippingSetting = ShippingSetting::where('seller_profile_id', $sellerProfile->id)->first();
+
+            if (!$shippingSetting) {
+                $defaultSettings = ShippingSetting::getDefaultSettings();
+                $shippingSetting = ShippingSetting::create(array_merge($defaultSettings, [
+                    'seller_profile_id' => $sellerProfile->id
+                ]));
+            }
+
+            // Update shipping settings
+            $shippingSetting->update($validated);
+
+            // Update seller profile shipping_enabled flag
+            if (isset($validated['enabled'])) {
+                $sellerProfile->update(['shipping_enabled' => $validated['enabled']]);
+            }
+
+            Log::info('Shipping settings updated', [
+                'seller_profile_id' => $sellerProfile->id,
+                'updated_fields' => array_keys($validated)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Shipping settings updated successfully',
+                'data' => $shippingSetting->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update shipping settings: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update shipping settings: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get shipping calculation for a product/cart
+     */
+    public function calculateShipping(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'seller_id' => 'required|exists:seller_profiles,user_id',
+                'total_amount' => 'required|numeric|min:0',
+                'items_count' => 'required|integer|min:1',
+                'delivery_city' => 'required|string|max:100',
+                'delivery_state' => 'required|string|max:100',
+                'delivery_country' => 'required|string|max:100',
+                'shipping_method' => 'sometimes|in:standard,express,next_day'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            $sellerProfile = SellerProfile::where('user_id', $validated['seller_id'])->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller not found'
+                ], 404);
+            }
+
+            $shippingSetting = ShippingSetting::where('seller_profile_id', $sellerProfile->id)->first();
+
+            if (!$shippingSetting || !$shippingSetting->enabled) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'shipping_available' => false,
+                        'message' => 'Shipping not available from this seller'
+                    ]
+                ]);
+            }
+
+            // Check if free shipping applies
+            $isFreeShipping = false;
+            if ($shippingSetting->free_shipping_enabled && $shippingSetting->free_shipping_threshold) {
+                if ($validated['total_amount'] >= $shippingSetting->free_shipping_threshold) {
+                    $isFreeShipping = true;
+                }
+            }
+
+            // Calculate shipping cost
+            $shippingCost = 0;
+            $shippingMethod = $validated['shipping_method'] ?? 'standard';
+
+            if (!$isFreeShipping && isset($shippingSetting->shipping_rates[$shippingMethod])) {
+                $rate = $shippingSetting->shipping_rates[$shippingMethod];
+
+                if ($rate['type'] === 'flat_rate') {
+                    $shippingCost = $rate['amount'];
+                    // Add per additional item cost
+                    if ($validated['items_count'] > 1 && isset($rate['per_additional_item'])) {
+                        $additionalItems = $validated['items_count'] - 1;
+                        $shippingCost += ($additionalItems * $rate['per_additional_item']);
+                    }
+                } elseif ($rate['type'] === 'weight_based') {
+                    // This would require weight calculation
+                    $shippingCost = $rate['base_rate'];
+                }
+            }
+
+            // Check delivery area
+            $deliveryAvailable = $this->checkDeliveryArea(
+                $shippingSetting,
+                $validated['delivery_city'],
+                $validated['delivery_state'],
+                $validated['delivery_country']
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'shipping_available' => $deliveryAvailable,
+                    'is_free_shipping' => $isFreeShipping,
+                    'shipping_cost' => $shippingCost,
+                    'shipping_method' => $shippingMethod,
+                    'estimated_delivery' => $this->getEstimatedDelivery($shippingSetting, $shippingMethod),
+                    'currency' => 'MMK'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to calculate shipping: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to calculate shipping'
+            ], 500);
+        }
+    }
+
+    /**
+     * Check if delivery is available to a specific area
+     */
+    private function checkDeliveryArea($shippingSetting, $city, $state, $country)
+    {
+        if (empty($shippingSetting->delivery_areas)) {
+            // If no delivery areas specified, assume delivery is available nationwide
+            return true;
+        }
+
+        foreach ($shippingSetting->delivery_areas as $area) {
+            if (
+                strtolower($area['city']) === strtolower($city) &&
+                strtolower($area['state']) === strtolower($state) &&
+                strtolower($area['country']) === strtolower($country)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get estimated delivery date
+     */
+    private function getEstimatedDelivery($shippingSetting, $shippingMethod)
+    {
+        $processingDays = 3; // Default 3-5 days
+
+        switch ($shippingSetting->processing_time) {
+            case 'same_day':
+                $processingDays = 0;
+                break;
+            case '1_2_days':
+                $processingDays = 1;
+                break;
+            case '3_5_days':
+                $processingDays = 3;
+                break;
+            case '5_7_days':
+                $processingDays = 5;
+                break;
+        }
+
+        // Add shipping method time
+        switch ($shippingMethod) {
+            case 'express':
+                $processingDays += 1;
+                break;
+            case 'next_day':
+                $processingDays = 1;
+                break;
+            default:
+                $processingDays += 2; // Standard shipping
+        }
+
+        $deliveryDate = Carbon::now()->addWeekdays($processingDays);
+
+        return [
+            'date' => $deliveryDate->format('Y-m-d'),
+            'days' => $processingDays,
+            'formatted' => $deliveryDate->format('F j, Y')
+        ];
     }
 }
