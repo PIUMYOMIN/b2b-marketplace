@@ -91,7 +91,7 @@ class SellerController extends Controller
         if ($request->has('search') && $request->search !== null) {
             $query->where(function ($q) use ($request) {
                 $q->where('store_name', 'like', '%' . $request->search . '%')
-                    ->orWhere('description', 'like', '%' . $request->search . '%');
+                                                            ->orWhere('store_description', 'like', '%' . $request->search . '%');
             });
         }
 
@@ -355,7 +355,7 @@ class SellerController extends Controller
             // Store Basic Info
             'store_name' => 'required|string|max:255|unique:seller_profiles,store_name',
             'business_type' => 'required|in:individual,company,retail,wholesale,manufacturer,service,partnership,   private_limited,public_limited,cooperative',
-            'description' => 'nullable|string|max:2000',
+            'store_description' => 'nullable|string|max:2000',
             'contact_email' => 'required|email|max:255',
             'contact_phone' => 'required|string|max:20',
             'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
@@ -807,7 +807,7 @@ class SellerController extends Controller
                 'business_type' => 'sometimes|in:individual,company,retail,wholesale,manufacturer',
                 'business_registration_number' => 'nullable|string|max:255',
                 'tax_id' => 'nullable|string|max:255',
-                'description' => 'nullable|string|max:2000',
+                'store_description' => 'nullable|string|max:2000',
                 'contact_email' => 'sometimes|email|max:255',
                 'contact_phone' => 'sometimes|string|max:20',
                 'website' => 'nullable|url|max:255',
@@ -922,7 +922,7 @@ class SellerController extends Controller
                 'business_type' => 'sometimes|in:individual,company,retail,wholesale,manufacturer,service',
                 'business_registration_number' => 'nullable|string|max:255',
                 'tax_id' => 'nullable|string|max:255',
-                'description' => 'nullable|string|max:2000',
+                'store_description' => 'nullable|string|max:2000',
                 'contact_email' => 'sometimes|email|max:255',
                 'contact_phone' => 'sometimes|string|max:20',
                 'website' => 'nullable|url|max:255',
@@ -1119,7 +1119,7 @@ class SellerController extends Controller
                 'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
                 // Use only the business types that exist in your database
                 'business_type' => 'required|in:individual,company,retail,wholesale,service',
-                'description' => 'nullable|string|max:2000',
+                'store_description' => 'nullable|string|max:2000',
                 'contact_email' => 'required|email|max:255',
                 'contact_phone' => 'required|string|max:20',
                 'store_logo' => 'nullable|string|max:500',
@@ -1477,7 +1477,7 @@ class SellerController extends Controller
             $validator = Validator::make($request->all(), [
                 'store_name' => 'required|string|max:255|unique:seller_profiles,store_name,' . $sellerProfile->id,
                 'business_type_slug' => 'required|exists:business_types,slug_en',
-                'description' => 'nullable|string|max:2000',
+                'store_description' => 'nullable|string|max:2000',
                 'contact_email' => 'required|email|max:255',
                 'contact_phone' => 'required|string|max:20',
                 'store_logo' => 'nullable|string|max:500',
@@ -1569,7 +1569,7 @@ class SellerController extends Controller
                 'store_slug' => $storeSlug,
                 'business_type_id' => $businessType->id,
                 'business_type' => $businessType->slug,
-                'description' => $validated['description'] ?? null,
+                'store_description' => $validated['store_description'] ?? null,
                 'contact_email' => $validated['contact_email'],
                 'contact_phone' => $validated['contact_phone'],
                 'store_logo' => $logoPath,
@@ -2813,7 +2813,7 @@ class SellerController extends Controller
                     'business_type_id' => $sellerProfile->business_type_id,
                     'contact_email' => $sellerProfile->contact_email,
                     'contact_phone' => $sellerProfile->contact_phone,
-                    'description' => $sellerProfile->description,
+                    'store_description' => $sellerProfile->store_description,
                     'store_logo' => $sellerProfile->store_logo ?
                         url('storage/' . ltrim($sellerProfile->store_logo, '/')) : null,
                     'store_banner' => $sellerProfile->store_banner ?
@@ -3697,9 +3697,6 @@ class SellerController extends Controller
                 $validated['notes'] ?? null
             );
 
-            // Send notification to seller (you can implement this)
-            // $sellerProfile->user->notify(new SellerVerifiedNotification($sellerProfile));
-
             return response()->json([
                 'success' => true,
                 'message' => 'Seller verified successfully',
@@ -3871,7 +3868,7 @@ class SellerController extends Controller
                         ->orWhereNull('document_status')
                         ->orWhere('verification_status', '!=', 'verified');
                 })
-                ->where('documents_submitted', true) // Only submitted documents
+                ->where('documents_submitted', true)
                 ->with(['user:id,name,email,phone'])
                 ->orderBy('documents_submitted_at', 'desc');
 
@@ -5126,4 +5123,396 @@ class SellerController extends Controller
             'formatted' => $deliveryDate->format('F j, Y')
         ];
     }
+
+    /**
+     * Get seller settings
+     */
+    public function getSettings(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access settings'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Get shipping settings
+            $shippingSettings = ShippingSetting::where('seller_profile_id', $sellerProfile->id)->first();
+
+            // Get user preferences
+            $userSettings = $user->settings ?? [];
+
+            $settings = [
+                // Store Policies
+                'return_policy' => $sellerProfile->return_policy,
+                'shipping_policy' => $sellerProfile->shipping_policy,
+                'warranty_policy' => $sellerProfile->warranty_policy,
+                'privacy_policy' => $sellerProfile->privacy_policy,
+                'terms_of_service' => $sellerProfile->terms_of_service,
+
+                // Notification Settings
+                'email_notifications' => $userSettings['email_notifications'] ?? true,
+                'order_notifications' => $userSettings['order_notifications'] ?? true,
+                'inventory_alerts' => $userSettings['inventory_alerts'] ?? true,
+                'review_notifications' => $userSettings['review_notifications'] ?? true,
+
+                // Payment Settings
+                'commission_rate' => $sellerProfile->commission_rate ?? 10,
+                'auto_withdrawal' => $sellerProfile->auto_withdrawal ?? false,
+                'withdrawal_threshold' => $sellerProfile->withdrawal_threshold ?? 100000,
+                'preferred_payment_method' => $sellerProfile->preferred_payment_method ?? 'bank_transfer',
+
+                // Store Status
+                'is_active' => $sellerProfile->is_active ?? true,
+                'vacation_mode' => $sellerProfile->vacation_mode ?? false,
+                'vacation_message' => $sellerProfile->vacation_message,
+                'vacation_start_date' => $sellerProfile->vacation_start_date,
+                'vacation_end_date' => $sellerProfile->vacation_end_date,
+
+                // Security Settings
+                'two_factor_auth' => $userSettings['two_factor_auth'] ?? false,
+                'login_notifications' => $userSettings['login_notifications'] ?? true,
+
+                // Display Settings
+                'show_sold_out' => $userSettings['show_sold_out'] ?? true,
+                'show_reviews' => $userSettings['show_reviews'] ?? true,
+                'show_inventory_count' => $userSettings['show_inventory_count'] ?? false,
+                'currency' => $sellerProfile->currency ?? 'MMK',
+
+                // Business Hours
+                'business_hours_enabled' => $sellerProfile->business_hours_enabled ?? false,
+                'business_hours' => $sellerProfile->business_hours ?? [],
+
+                // Shipping Settings
+                'shipping_settings' => $shippingSettings,
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $settings
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get seller settings: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get seller settings'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update seller settings
+     */
+    public function updateSettings(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can update settings'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                // Store Policies
+                'return_policy' => 'nullable|string|max:2000',
+                'shipping_policy' => 'nullable|string|max:2000',
+                'warranty_policy' => 'nullable|string|max:2000',
+                'privacy_policy' => 'nullable|string|max:2000',
+                'terms_of_service' => 'nullable|string|max:2000',
+
+                // Notification Settings
+                'email_notifications' => 'sometimes|boolean',
+                'order_notifications' => 'sometimes|boolean',
+                'inventory_alerts' => 'sometimes|boolean',
+                'review_notifications' => 'sometimes|boolean',
+
+                // Payment Settings
+                'commission_rate' => 'sometimes|numeric|min:0|max:30',
+                'auto_withdrawal' => 'sometimes|boolean',
+                'withdrawal_threshold' => 'nullable|numeric|min:0',
+                'preferred_payment_method' => 'sometimes|in:bank_transfer,wave_money,kbz_pay,mpu,visa_master',
+
+                // Store Status
+                'is_active' => 'sometimes|boolean',
+                'vacation_mode' => 'sometimes|boolean',
+                'vacation_message' => 'nullable|string|max:1000',
+                'vacation_start_date' => 'nullable|date',
+                'vacation_end_date' => 'nullable|date|after_or_equal:vacation_start_date',
+
+                // Security Settings
+                'two_factor_auth' => 'sometimes|boolean',
+                'login_notifications' => 'sometimes|boolean',
+
+                // Display Settings
+                'show_sold_out' => 'sometimes|boolean',
+                'show_reviews' => 'sometimes|boolean',
+                'show_inventory_count' => 'sometimes|boolean',
+                'currency' => 'sometimes|in:MMK,USD,EUR,THB',
+
+                // Business Hours
+                'business_hours_enabled' => 'sometimes|boolean',
+                'business_hours' => 'sometimes|array',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Update seller profile
+            $sellerProfile->update($validated);
+
+            // Update user settings
+            $userSettings = $user->settings ?? [];
+
+            // Update notification settings
+            if (isset($validated['email_notifications'])) {
+                $userSettings['email_notifications'] = $validated['email_notifications'];
+            }
+            if (isset($validated['order_notifications'])) {
+                $userSettings['order_notifications'] = $validated['order_notifications'];
+            }
+            if (isset($validated['inventory_alerts'])) {
+                $userSettings['inventory_alerts'] = $validated['inventory_alerts'];
+            }
+            if (isset($validated['review_notifications'])) {
+                $userSettings['review_notifications'] = $validated['review_notifications'];
+            }
+            if (isset($validated['two_factor_auth'])) {
+                $userSettings['two_factor_auth'] = $validated['two_factor_auth'];
+            }
+            if (isset($validated['login_notifications'])) {
+                $userSettings['login_notifications'] = $validated['login_notifications'];
+            }
+            if (isset($validated['show_sold_out'])) {
+                $userSettings['show_sold_out'] = $validated['show_sold_out'];
+            }
+            if (isset($validated['show_reviews'])) {
+                $userSettings['show_reviews'] = $validated['show_reviews'];
+            }
+            if (isset($validated['show_inventory_count'])) {
+                $userSettings['show_inventory_count'] = $validated['show_inventory_count'];
+            }
+
+            // Save user settings
+            $user->settings = $userSettings;
+            $user->save();
+
+            Log::info('Seller settings updated', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'updated_fields' => array_keys($validated)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Settings updated successfully',
+                'data' => $sellerProfile->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update seller settings: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update settings'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get store statistics
+     */
+    public function getStoreStats(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            if (!isset($user->type) || $user->type !== 'seller') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access store stats'
+                ], 403);
+            }
+
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $thirtyDaysAgo = Carbon::now()->subDays(30);
+
+            // Calculate stats
+            $totalProducts = Product::where('seller_id', $user->id)->count();
+            $totalOrders = Order::where('seller_id', $user->id)->count();
+            $totalRevenue = Order::where('seller_id', $user->id)
+                ->where('status', 'delivered')
+                ->sum('total_amount');
+
+            $recentOrders = Order::where('seller_id', $user->id)
+                ->where('created_at', '>=', $thirtyDaysAgo)
+                ->count();
+
+            $pendingOrders = Order::where('seller_id', $user->id)
+                ->whereIn('status', ['pending', 'processing'])
+                ->count();
+
+            $stats = [
+                'overall' => [
+                    'total_products' => $totalProducts,
+                    'total_orders' => $totalOrders,
+                    'total_revenue' => $totalRevenue,
+                    'total_revenue_formatted' => 'MMK ' . number_format($totalRevenue, 2)
+                ],
+                'recent' => [
+                    'orders_last_30_days' => $recentOrders,
+                    'pending_orders' => $pendingOrders
+                ],
+                'performance' => [
+                    'average_rating' => $sellerProfile->averageRating(),
+                    'total_reviews' => $sellerProfile->totalReviews(),
+                    'customer_satisfaction' => $sellerProfile->reviews()->where('rating', '>=', 4)->count() / max($sellerProfile->totalReviews(), 1) * 100
+                ]
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $stats
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get store stats: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get store stats'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update business hours
+     */
+    public function updateBusinessHours(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'business_hours_enabled' => 'sometimes|boolean',
+                'business_hours' => 'required|array',
+                'business_hours.*.open' => 'required|date_format:H:i',
+                'business_hours.*.close' => 'required|date_format:H:i',
+                'business_hours.*.closed' => 'required|boolean'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $sellerProfile->update($validator->validated());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Business hours updated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update business hours: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update business hours'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update store policies
+     */
+    public function updatePolicies(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'return_policy' => 'nullable|string|max:2000',
+                'shipping_policy' => 'nullable|string|max:2000',
+                'warranty_policy' => 'nullable|string|max:2000',
+                'privacy_policy' => 'nullable|string|max:2000',
+                'terms_of_service' => 'nullable|string|max:2000'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $sellerProfile->update($validator->validated());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store policies updated successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update store policies: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update store policies'
+            ], 500);
+        }
+    }
+
 }

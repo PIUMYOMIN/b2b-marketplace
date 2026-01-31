@@ -80,7 +80,7 @@ class SellerProfileSeeder extends Seeder
                     'customer_support_hours' => 'Monday-Friday: 9AM-6PM, Saturday: 9AM-1PM',
                     'support_phone' => $seller->phone,
                     'support_email' => 'support@' . Str::slug($seller->name) . '.com',
-                    'verification_status' => 'approved',
+                    'verification_status' => 'pending',
                     'verification_date' => now()->subDays(rand(1, 365)),
                     'is_verified' => false,
                     'store_rating' => rand(35, 50) / 10,

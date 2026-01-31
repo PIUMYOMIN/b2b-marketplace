@@ -173,6 +173,23 @@ Route::group([
                 Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
                 Route::post('/calculate', [SellerController::class, 'calculateShipping']);
             });
+
+            // Settings routes
+            Route::get('/settings', [SellerController::class, 'getSettings']);
+            Route::put('/settings', [SellerController::class, 'updateSettings']);
+            Route::get('/store-stats', [SellerController::class, 'getStoreStats']);
+
+            // Shipping settings (separate from general settings)
+            Route::prefix('shipping')->group(function () {
+                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
+                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
+            });
+
+            // Business hours
+            Route::put('/business-hours', [SellerController::class, 'updateBusinessHours']);
+
+            // Store policies
+            Route::put('/policies', [SellerController::class, 'updatePolicies']);
         });
 
         // Dashboard

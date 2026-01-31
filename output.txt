@@ -342,6 +342,7 @@
 - `additional_documents` (longtext)
 - `identity_document_type` (enum)
 - `status` (enum)
+- `shipping_enabled` (tinyint)
 - `verification_status` (enum)
 - `verification_level` (enum)
 - `is_verified` (tinyint)
@@ -374,6 +375,29 @@
 - `review` (text)
 - `status` (enum)
 - `deleted_at` (timestamp)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+
+### ShippingSetting (`App\Models\ShippingSetting`)
+
+#### Attributes:
+
+- `id` (bigint)
+- `seller_profile_id` (bigint)
+- `enabled` (tinyint)
+- `processing_time` (enum)
+- `custom_processing_time` (varchar)
+- `free_shipping_threshold` (decimal)
+- `free_shipping_enabled` (tinyint)
+- `shipping_methods` (longtext)
+- `delivery_areas` (longtext)
+- `shipping_rates` (longtext)
+- `international_shipping` (tinyint)
+- `international_rates` (longtext)
+- `package_weight_unit` (varchar)
+- `default_package_weight` (decimal)
+- `shipping_policy` (text)
+- `return_policy` (text)
 - `created_at` (timestamp)
 - `updated_at` (timestamp)
 
@@ -501,12 +525,17 @@
 - **HasMany** `orders` to Order (Local Key: `id`, Foreign Key: `seller_id`)
 - **HasMany** `deliveryAreas` to DeliveryArea (Local Key: `id`, Foreign Key: `seller_profile_id`)
 - **HasMany** `activeDeliveryAreas` to DeliveryArea (Local Key: `id`, Foreign Key: `seller_profile_id`)
+- **HasOne** `shippingSetting` to ShippingSetting (Local Key: `id`, Foreign Key: `seller_profile_id`)
 
 ### SellerReview Relationships
 
 - **BelongsTo** `user` to User (Local Key: `user_id`, Foreign Key: `id`)
 - **BelongsTo** `seller` to SellerProfile (Local Key: `seller_id`, Foreign Key: `id`)
 - **BelongsTo** `buyer` to User (Local Key: `user_id`, Foreign Key: `id`)
+
+### ShippingSetting Relationships
+
+- **BelongsTo** `sellerProfile` to SellerProfile (Local Key: `seller_profile_id`, Foreign Key: `id`)
 
 ### User Relationships
 

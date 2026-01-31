@@ -28,9 +28,26 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'settings' => 'array',
+            'peferences' => 'array',
             'password' => 'hashed',
         ];
     }
+
+    // protected $attributes = [
+    //     'settings' => '{
+    //     "email_notifications": true,
+    //     "order_notifications": true,
+    //     "inventory_alerts": true,
+    //     "review_notifications": true,
+    //     "two_factor_auth": false,
+    //     "login_notifications": true,
+    //     "show_sold_out": true,
+    //     "show_reviews": true,
+    //     "show_inventory_count": false
+    // }',
+    //     'preferences' => '{}'
+    // ];
 
     public function sellerProfile()
     {

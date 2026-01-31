@@ -57,7 +57,7 @@ class SellerProfile extends Model
         'business_registration_number',
         'certificate',
         'tax_id',
-        'description',
+        'store_description',
         'contact_email',
         'contact_phone',
         'website',
@@ -111,6 +111,24 @@ class SellerProfile extends Model
 
         // Admin notes
         'admin_notes',
+
+        'return_policy',
+        'shipping_policy',
+        'warranty_policy',
+        'privacy_policy',
+        'terms_of_service',
+        'commission_rate',
+        'auto_withdrawal',
+        'withdrawal_threshold',
+        'preferred_payment_method',
+        'is_active',
+        'vacation_mode',
+        'vacation_message',
+        'vacation_start_date',
+        'vacation_end_date',
+        'currency',
+        'business_hours_enabled',
+        'business_hours'
     ];
 
     protected $attributes = [
@@ -125,6 +143,12 @@ class SellerProfile extends Model
         'onboarding_completed_at' => 'datetime',
         'documents_submitted' => 'boolean',
         'shipping_enabled' => 'boolean',
+        'is_active' => 'boolean',
+        'vacation_mode' => 'boolean',
+        'auto_withdrawal' => 'boolean',
+        'business_hours' => 'array',
+        'vacation_start_date' => 'date',
+        'vacation_end_date' => 'date'
     ];
 
     const STATUS_FLOW = [
@@ -433,7 +457,7 @@ class SellerProfile extends Model
             'verification_status' => self::VERIFICATION_VERIFIED,
             'verification_level' => $level,
             'badge_type' => $badgeType,
-            'badge_expires_at' => now()->addYear(), // Valid for 1 year
+            'badge_expires_at' => now()->addYear(),
             'verification_notes' => $notes,
             'document_status' => self::DOCUMENT_APPROVED,
             'status' => self::STATUS_APPROVED,

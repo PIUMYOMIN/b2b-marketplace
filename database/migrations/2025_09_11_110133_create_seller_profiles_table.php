@@ -96,7 +96,7 @@ return new class extends Migration
                 'verified',
                 'premium'
             ])->default('unverified');
-            $table->boolean('is_verified')->default(true);
+            $table->boolean('is_verified')->default(false);
             $table->foreignId('verified_by')->nullable()->constrained('users');
             $table->timestamp('verified_at')->nullable();
             $table->text('verification_notes')->nullable();
@@ -136,6 +136,31 @@ return new class extends Migration
 
             // Admin Notes
             $table->text('admin_notes')->nullable();
+
+            // Store policies
+            $table->text('return_policy')->nullable();
+            $table->text('shipping_policy')->nullable();
+            $table->text('warranty_policy')->nullable();
+            $table->text('privacy_policy')->nullable();
+            $table->text('terms_of_service')->nullable();
+
+            // Payment settings
+            $table->decimal('commission_rate', 5, 2)->default(10);
+            $table->boolean('auto_withdrawal')->default(false);
+            $table->decimal('withdrawal_threshold', 15, 2)->default(100000);
+            $table->string('preferred_payment_method')->default('bank_transfer');
+
+            // Store status
+            $table->boolean('is_active')->default(true);
+            $table->boolean('vacation_mode')->default(false);
+            $table->text('vacation_message')->nullable();
+            $table->date('vacation_start_date')->nullable();
+            $table->date('vacation_end_date')->nullable();
+
+            // Display settings
+            $table->string('currency')->default('MMK');
+            $table->boolean('business_hours_enabled')->default(false);
+            $table->json('business_hours')->nullable();
 
             // Timestamps
             $table->timestamps();

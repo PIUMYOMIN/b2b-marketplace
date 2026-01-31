@@ -491,12 +491,12 @@ class UserSeeder extends Seeder
                 'tax_id' => 'TIN-' . str_pad($index + 1000, 9, '0', STR_PAD_LEFT),
 
                 // Status Fields
-                'status' => $statuses[array_rand(['approved', 'active'])], // Mostly approved/active
-                'verification_status' => 'verified',
-                'verification_level' => ['basic', 'verified', 'premium'][array_rand([1, 2])], // Mostly verified or premium
+                'status' => $statuses[array_rand(['pending', 'active'])], // Mostly approved/active
+                'verification_status' => 'pending',
+                'verification_level' => ['unverified', 'basic', 'verified', 'premium'][array_rand([1, 2])], // Mostly verified or premium
                 // 'verification_date' => now()->subDays(rand(30, 365)),
                 'verification_notes' => 'Documents verified successfully',
-                'is_verified' => true,
+                'is_verified' => false,
 
                 // Document Submission
                 'documents_submitted' => true,
