@@ -16,12 +16,12 @@ return new class extends Migration {
 
             // Area type and location
             $table->enum('area_type', ['country', 'state', 'city', 'township', 'specific_address'])->default('city');
-            $table->string('country')->default('Myanmar');
-            $table->string('state')->nullable();
-            $table->string('city')->nullable();
-            $table->string('township')->nullable();
-            $table->string('specific_location')->nullable();
-            $table->string('postal_code')->nullable();
+            $table->string('country', 80)->default('Myanmar');
+            $table->string('state', 80)->nullable();
+            $table->string('city', 80)->nullable();
+            $table->string('township', 150)->nullable();
+            $table->string('specific_location', 200)->nullable();
+            $table->string('postal_code', 20)->nullable();
 
             // Delivery settings
             $table->boolean('is_deliverable')->default(true);
@@ -34,7 +34,7 @@ return new class extends Migration {
             $table->boolean('standard_shipping_available')->default(true);
             $table->boolean('express_shipping_available')->default(false);
             $table->boolean('pickup_available')->default(false);
-            $table->string('pickup_location')->nullable();
+            $table->string('pickup_location', 150)->nullable();
 
             // Restrictions
             $table->boolean('has_weight_limit')->default(false);
