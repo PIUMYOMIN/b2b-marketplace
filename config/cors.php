@@ -1,15 +1,34 @@
 <?php
 
 return [
-    'paths' => ['api/v1/*', 'login', 'logout', 'sanctum/csrf-cookie'],
-    'allowed_methods' => ['*'],
-    'allowed_origins' => [
-        'https://db.pyonea.com',
-        'http://localhost:5173',
+
+    'paths' => [
+        'api/*',
     ],
+
+    'allowed_methods' => ['*'],
+
+    'allowed_origins' => [
+        'http://localhost:5173',
+        'https://db.pyonea.com',
+    ],
+
     'allowed_origins_patterns' => [],
-    'allowed_headers' => ['*'],
-    'exposed_headers' => [],
+
+    'allowed_headers' => [
+        'Content-Type',
+        'X-Requested-With',
+        'Authorization',
+        'Accept',
+        'Origin',
+    ],
+
+    'exposed_headers' => [
+        'Authorization',
+    ],
+
     'max_age' => 0,
-    'supports_credentials' => true,
+
+    'supports_credentials' => false,
+
 ];
