@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('image')->nullable();
             $table->text('description_en')->nullable();
             $table->text('description_mm')->nullable();
-            $table->decimal('commission_rate', 5, 2)->default(0.1);
+            $table->decimal('commission_rate', 5, 2)->default(10.00);
             $table->unsignedBigInteger('parent_id')->nullable();
             $table->unsignedInteger('_lft');
             $table->unsignedInteger('_rgt');

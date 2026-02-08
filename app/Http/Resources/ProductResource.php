@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class ProductResource extends JsonResource
 {
@@ -10,14 +11,19 @@ class ProductResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'name' => $this->name,
-            'description' => $this->description,
+            'name_en' => $this->name_en ?? $this->name_en,
+            'slug_en' => $this->slug_slug_en ?? $this->slug,
+            'name_mm' => $this->name_mm,
+            'slug_mm' => $this->slug_mm,
+            'description' => $this->description_en ?? $this->description,
+            'description_en' => $this->description_en,
+            'description_mm' => $this->description_mm,
             'price' => (float) $this->price,
             'quantity' => $this->quantity,
             'category_id' => $this->category_id,
             'seller_id' => $this->seller_id,
             'average_rating' => (float) $this->average_rating,
-            'review_count' => $this->reviews_count,
+            'review_count' => $this->review_count ?? $this->reviews_count ?? 0,
             'specifications' => $this->specifications,
             'images' => $this->formatImages($this->images),
             'weight_kg' => $this->weight_kg,
@@ -75,25 +81,49 @@ class ProductResource extends JsonResource
             try {
                 $images = json_decode($images, true);
             } catch (\Exception $e) {
-                return [[
-                    'url' => $images,
-                    'angle' => 'default',
-                    'is_primary' => true
-                ]];
+                $url = $images;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+                return [
+                    [
+                        'path' => $images,
+                        'url' => $url,
+                        'angle' => 'default',
+                        'is_primary' => true
+                    ]
+                ];
             }
         }
 
         $formattedImages = [];
         foreach ($images as $index => $image) {
             if (is_string($image)) {
+                $url = $image;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
                 $formattedImages[] = [
-                    'url' => $image,
+                    'path' => $image,
+                    'url' => $url,
                     'angle' => 'default',
                     'is_primary' => $index === 0
                 ];
             } else {
+                $path = $image['path'] ?? $image['url'] ?? '';
+                $url = $image['url'] ?? $path;
+
+                if ($url && !filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+
+                if (!$path && filter_var($image['url'] ?? '', FILTER_VALIDATE_URL)) {
+                    $path = str_replace(Storage::disk('public')->url(''), '', $image['url']);
+                }
+
                 $formattedImages[] = [
-                    'url' => $image['url'] ?? $image['path'] ?? '',
+                    'path' => $path,
+                    'url' => $url,
                     'angle' => $image['angle'] ?? 'default',
                     'is_primary' => $image['is_primary'] ?? ($index === 0)
                 ];

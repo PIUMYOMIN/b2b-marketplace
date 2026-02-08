@@ -19,7 +19,7 @@ class Product extends Model
         'description_en',
         'description_mm',
         'price',
-        'discount_price', // Updated from discount_amount
+        'discount_price',
         'discount_type',
         'discount_percentage',
         'sale_badge',
@@ -250,14 +250,44 @@ class Product extends Model
             return null;
         }
 
-        // Find primary image or return first
-        foreach ($this->images as $image) {
-            if (isset($image['is_primary']) && $image['is_primary']) {
-                return $image['url'];
+        $images = $this->images;
+        if (is_string($images)) {
+            try {
+                $images = json_decode($images, true);
+            } catch (\Exception $e) {
+                // If it's not valid JSON, treat it as a single image
+                $url = $images;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+                return $url;
             }
         }
 
-        return $this->images[0]['url'] ?? null;
+        // Find primary image or return first
+        foreach ($images as $image) {
+            if (is_array($image) && isset($image['is_primary']) && $image['is_primary']) {
+                return $image['url'] ??
+                    (isset($image['path']) ? Storage::disk('public')->url($image['path']) : null);
+            }
+        }
+
+        // Return first image
+        if (!empty($images[0])) {
+            $firstImage = $images[0];
+            if (is_array($firstImage)) {
+                return $firstImage['url'] ??
+                    (isset($firstImage['path']) ? Storage::disk('public')->url($firstImage['path']) : null);
+            } else {
+                $url = $firstImage;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+                return $url;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -269,9 +299,104 @@ class Product extends Model
             return [];
         }
 
-        return array_map(function ($image) {
-            return $image['url'];
-        }, $this->images);
+        $images = $this->images;
+        if (is_string($images)) {
+            try {
+                $images = json_decode($images, true);
+            } catch (\Exception $e) {
+                // If it's not valid JSON, treat it as a single image
+                $url = $images;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+                return [$url];
+            }
+        }
+
+        $urls = [];
+        foreach ($images as $image) {
+            if (is_array($image)) {
+                $url = $image['url'] ??
+                    (isset($image['path']) ? Storage::disk('public')->url($image['path']) : null);
+            } else {
+                $url = $image;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+            }
+
+            if ($url) {
+                $urls[] = $url;
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * Get formatted images array with both path and URL
+     */
+    public function getFormattedImagesAttribute(): array
+    {
+        if (empty($this->images)) {
+            return [];
+        }
+
+        $images = $this->images;
+        if (is_string($images)) {
+            try {
+                $images = json_decode($images, true);
+            } catch (\Exception $e) {
+                // If it's not valid JSON, treat it as a single image
+                $url = $images;
+                $path = $images;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+                return [
+                    [
+                        'path' => $path,
+                        'url' => $url,
+                        'angle' => 'default',
+                        'is_primary' => true
+                    ]
+                ];
+            }
+        }
+
+        $formattedImages = [];
+        foreach ($images as $index => $image) {
+            if (is_array($image)) {
+                $path = $image['path'] ?? $image['url'] ?? '';
+                $url = $image['url'] ?? $path;
+
+                if ($url && !filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+
+                $formattedImages[] = [
+                    'path' => $path,
+                    'url' => $url,
+                    'angle' => $image['angle'] ?? 'default',
+                    'is_primary' => $image['is_primary'] ?? ($index === 0)
+                ];
+            } else {
+                $path = $image;
+                $url = $image;
+                if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                    $url = Storage::disk('public')->url($url);
+                }
+
+                $formattedImages[] = [
+                    'path' => $path,
+                    'url' => $url,
+                    'angle' => 'default',
+                    'is_primary' => $index === 0
+                ];
+            }
+        }
+
+        return $formattedImages;
     }
 
     /**

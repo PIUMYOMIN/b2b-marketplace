@@ -18,9 +18,9 @@ class CartController extends Controller
     {
         try {
             Log::info('Cart index called for user: ' . Auth::id());
-            
+
             $user = Auth::user();
-            
+
             // Check if user has buyer role
             // if (!$user->hasRole('buyer')) {
             //     Log::warning('User does not have buyer role', ['user_id' => $user->id, 'roles' => $user->getRoleNames()]);
@@ -35,11 +35,11 @@ class CartController extends Controller
                 ->get()
                 ->map(function ($item) {
                     $product = $item->product;
-                    
+
                     // Handle product availability
                     $isAvailable = $product->is_active && $product->quantity > 0;
                     $isQuantityValid = $item->quantity <= $product->quantity;
-                    
+
                     // Handle product image
                     $image = '/placeholder-product.jpg';
                     if ($product->images) {
@@ -52,7 +52,7 @@ class CartController extends Controller
                             }
                         }
                     }
-                    
+
                     // Convert relative path to full URL
                     $image = url('storage/' . ltrim($image, '/'));
 
@@ -98,7 +98,7 @@ class CartController extends Controller
                 'user_id' => Auth::id(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch cart items',
@@ -114,7 +114,7 @@ class CartController extends Controller
     {
         try {
             $user = Auth::user();
-            
+
             // Check if user has buyer role
             // if (!$user->hasRole('buyer')) {
             //     return response()->json([
@@ -162,7 +162,7 @@ class CartController extends Controller
             if ($existingCartItem) {
                 // Update quantity if exists
                 $newQuantity = $existingCartItem->quantity + $request->quantity;
-                
+
                 if ($product->quantity < $newQuantity) {
                     return response()->json([
                         'success' => false,
@@ -211,7 +211,7 @@ class CartController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Cart store error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to add product to cart',
@@ -299,7 +299,7 @@ class CartController extends Controller
     public function clear()
     {
         // Only buyers can clear cart
-        // if (Auth::user()->roles->pluck('name')->contains('admin') || 
+        // if (Auth::user()->roles->pluck('name')->contains('admin') ||
         //     Auth::user()->roles->pluck('name')->contains('seller')) {
         //     return response()->json([
         //         'success' => false,
@@ -321,7 +321,7 @@ class CartController extends Controller
     public function count()
     {
         // Only buyers can access cart count
-        // if (Auth::user()->roles->pluck('name')->contains('admin') || 
+        // if (Auth::user()->roles->pluck('name')->contains('admin') ||
         //     Auth::user()->roles->pluck('name')->contains('seller')) {
         //     return response()->json([
         //         'success' => false,

@@ -72,6 +72,11 @@ Route::group([
     // Categories
     Route::prefix('categories')->group(function () {
         Route::get('/', [CategoryController::class, 'index']);
+        Route::get('/homepage', [CategoryController::class, 'homepage']);
+        Route::get('/tree', [CategoryController::class, 'tree']);
+        Route::get('/for-filter', [CategoryController::class, 'forFilter']);
+        Route::get('/{category}/descendants', [CategoryController::class, 'descendants']);
+        Route::get('/categories-with-products', [CategoryController::class, 'indexWithProductCounts']);
         Route::get('/{category}', [CategoryController::class, 'show']);
     });
 

@@ -10,10 +10,11 @@ class Category extends Model
 
     protected $fillable = [
         'name_en',
+        'slug_en',
         'name_mm',
+        'slug_mm',
         'description_en',
         'description_mm',
-        'slug',
         'image',
         'commission_rate',
         'parent_id',
