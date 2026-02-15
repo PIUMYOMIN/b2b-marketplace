@@ -15,7 +15,7 @@ return new class extends Migration {
             $table->string('name_en');
             $table->string('name_mm')->nullable();
             $table->string('slug_en')->unique();
-            $table->string('slug_mm')->unique()->nullable();
+            $table->string('slug_mm')->nullable();
             $table->text('description_en')->nullable();
             $table->text('description_mm')->nullable();
             $table->decimal('price', 12, 2);

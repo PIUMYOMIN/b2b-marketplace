@@ -72,11 +72,8 @@ Route::group([
     // Categories
     Route::prefix('categories')->group(function () {
         Route::get('/', [CategoryController::class, 'index']);
-        Route::get('/homepage', [CategoryController::class, 'homepage']);
-        Route::get('/tree', [CategoryController::class, 'tree']);
         Route::get('/for-filter', [CategoryController::class, 'forFilter']);
         Route::get('/{category}/descendants', [CategoryController::class, 'descendants']);
-        Route::get('/categories-with-products', [CategoryController::class, 'indexWithProductCounts']);
         Route::get('/{category}', [CategoryController::class, 'show']);
     });
 
@@ -254,6 +251,14 @@ Route::group([
                 Route::post('/', [BusinessTypeController::class, 'store']);
                 Route::put('/{id}', [BusinessTypeController::class, 'update']);
                 Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
+            });
+
+
+            //Product management by admin
+            Route::prefix('products')->group(function () {
+                Route::get('/', [ProductController::class, 'adminIndex']); // list all products for admin
+                Route::post('/{product}/approve', [ProductController::class, 'approve']);
+                Route::post('/{product}/reject', [ProductController::class, 'reject']);
             });
 
         });

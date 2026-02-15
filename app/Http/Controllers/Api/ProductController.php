@@ -168,6 +168,7 @@ class ProductController extends Controller
                 'specifications' => $product->specifications,
                 'images' => $this->formatImages($product->images),
                 'is_active' => $product->is_active,
+                'status' => $product->status,
                 'created_at' => $product->created_at,
                 'updated_at' => $product->updated_at,
                 'category' => $product->category,
@@ -184,6 +185,117 @@ class ProductController extends Controller
                 'total' => $products->total(),
                 'last_page' => $products->lastPage(),
             ]
+        ]);
+    }
+
+    /**
+     * Admin: List all products with filters (for admin panel)
+     */
+    public function adminIndex(Request $request)
+    {
+        if (!Auth::user()->hasRole('admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $perPage = $request->input('per_page', 15);
+        $query = Product::with(['category', 'seller']);
+
+        // Apply filters
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->has('seller_id')) {
+            $query->where('seller_id', $request->seller_id);
+        }
+        if ($request->has('search')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('name_en', 'like', '%' . $request->search . '%')
+                    ->orWhere('name_mm', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        $products = $query->latest()->paginate($perPage);
+
+        $formatted = $products->getCollection()->map(function ($product) {
+            return [
+                'id' => $product->id,
+                'name_en' => $product->name_en,
+                'name_mm' => $product->name_mm,
+                'price' => (float) $product->price,
+                'quantity' => $product->quantity,
+                'status' => $product->status,
+                'is_active' => $product->is_active,
+                'approved_at' => $product->approved_at,
+                'created_at' => $product->created_at,
+                'category' => $product->category ? ['id' => $product->category->id, 'name_en' => $product->category->name_en] : null,
+                'seller' => $product->seller ? ['id' => $product->seller->id, 'name' => $product->seller->name] : null,
+                'images' => $this->formatImages($product->images),
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $formatted,
+            'meta' => [
+                'current_page' => $products->currentPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
+            ]
+        ]);
+    }
+
+    /**
+     * Approve a product (admin only)
+     */
+    public function approve(Product $product)
+    {
+        if (!Auth::user()->hasRole('admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        if ($product->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'Product is not pending'], 422);
+        }
+
+        $product->update([
+            'status' => 'approved',
+            'approved_at' => now(),
+            'listed_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product approved',
+            'data' => new ProductResource($product)
+        ]);
+    }
+
+
+    /**
+     * Reject a product (admin only)
+     */
+    public function reject(Request $request, Product $product)
+    {
+        if (!Auth::user()->hasRole('admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate(['reason' => 'nullable|string|max:500']);
+
+        if ($product->status !== 'pending') {
+            return response()->json(['success' => false, 'message' => 'Product is not pending'], 422);
+        }
+
+        $product->update([
+            'status' => 'rejected',
+            'approved_at' => null,
+            'listed_at' => null,
+            // optionally store reason in a new column
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product rejected',
         ]);
     }
 

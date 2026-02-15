@@ -12,47 +12,35 @@ class CategoryController extends Controller
     /**
      * Display a listing of categories with product counts
      */
-    public function index(Request $request)
+    public function index()
     {
-        $query = Category::with(['children']);
+        $categories = Category::whereNull('parent_id')
+            ->with('children')
+            ->where('is_active', 1)
+            ->get();
 
-        // Include product counts if requested
-        if ($request->has('include') && str_contains($request->include, 'products_count')) {
-            $query->withCount(['products as products_count']);
-        }
+        foreach ($categories as $category) {
 
-        // Filter only parent categories if needed
-        if ($request->has('parent_only')) {
-            $query->whereNull('parent_id');
-        }
+            // Get all child IDs including itself
+            $categoryIds = $category->descendants()
+                ->pluck('id')
+                ->push($category->id);
 
-        // Pagination
-        $perPage = $request->get('per_page', 20);
-        $categories = $query->paginate($perPage);
+            $category->products_count = \App\Models\Product::whereIn('category_id', $categoryIds)
+                ->where('is_active', 1)
+                ->where('status', 'approved')
+                ->count();
 
-        // If we need to add product counts for children too
-        if ($request->has('include') && str_contains($request->include, 'products_count')) {
-            foreach ($categories as $category) {
-                if ($category->children) {
-                    foreach ($category->children as $child) {
-                        $child->products_count = Product::where('category_id', $child->id)
-                            ->where('is_active', true)
-                            ->count();
-                    }
-                }
-            }
+            $category->children_count = $category->children->count();
         }
 
         return response()->json([
             'success' => true,
-            'data' => $categories->items(),
-            'meta' => [
-                'current_page' => $categories->currentPage(),
-                'per_page' => $categories->perPage(),
-                'total' => $categories->total(),
-            ]
+            'data' => $categories
         ]);
     }
+
+
 
     /**
      * Get categories with detailed product counts (including active products)
@@ -106,4 +94,55 @@ class CategoryController extends Controller
             ]
         ]);
     }
+
+    /**
+     * Get categories with their active products
+     */
+    public function indexWithProducts(Request $request)
+    {
+        $categories = Category::whereNull('parent_id')
+            ->withCount([
+                'products as products_count' => function ($q) {
+                    $q->where('is_active', true);
+                }
+            ])
+            ->with([
+                'products' => function ($q) {
+                    $q->select('id', 'name_en', 'category_id') // IMPORTANT
+                        ->where('is_active', true);
+                }
+            ])
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $categories
+        ]);
+    }
+
+
+    /**
+     * Display the specified category with its active products
+     */
+    public function show(Category $category)
+    {
+        $category->load([
+            'children' => function ($query) {
+                $query->with([
+                    'products' => function ($q) {
+                        $q->where('is_active', true);
+                    }
+                ]);
+            },
+            'products' => function ($q) {
+                $q->where('is_active', true);
+            }
+        ]);
+        $category->products_count = $category->products()->where('is_active', true)->count();
+        return response()->json([
+            'success' => true,
+            'data' => $category
+        ]);
+    }
+
 }
