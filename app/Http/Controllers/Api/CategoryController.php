@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\CategoryResource;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\Request;
@@ -10,24 +11,21 @@ use Illuminate\Http\Request;
 class CategoryController extends Controller
 {
     /**
-     * Display a listing of categories with product counts
+     * Display a listing of categories with product counts.
      */
     public function index()
     {
+        // Get only root categories (parent_id null) that are active
         $categories = Category::whereNull('parent_id')
             ->with('children')
-            ->where('is_active', 1)
+            ->where('is_active', true)
             ->get();
 
+        // Calculate product count including all descendants for each root category
         foreach ($categories as $category) {
-
-            // Get all child IDs including itself
-            $categoryIds = $category->descendants()
-                ->pluck('id')
-                ->push($category->id);
-
-            $category->products_count = \App\Models\Product::whereIn('category_id', $categoryIds)
-                ->where('is_active', 1)
+            $categoryIds = $category->descendants()->pluck('id')->push($category->id);
+            $category->products_count = Product::whereIn('category_id', $categoryIds)
+                ->where('is_active', true)
                 ->where('status', 'approved')
                 ->count();
 
@@ -36,14 +34,13 @@ class CategoryController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $categories
+            'data' => CategoryResource::collection($categories)
         ]);
     }
 
-
-
     /**
-     * Get categories with detailed product counts (including active products)
+     * Get categories with detailed product counts (including active products).
+     * Optionally filter to only categories that have products.
      */
     public function indexWithProductCounts(Request $request)
     {
@@ -63,8 +60,8 @@ class CategoryController extends Controller
                 }
             ]);
 
-        // Filter categories with products only if requested
-        if ($request->get('with_products_only')) {
+        // Optional: only categories that have at least one active product
+        if ($request->boolean('with_products_only')) {
             $query->whereHas('products', function ($q) {
                 $q->where('is_active', true);
             });
@@ -74,29 +71,25 @@ class CategoryController extends Controller
 
         // Calculate total products including children
         foreach ($categories as $category) {
-            $totalProducts = $category->products_count;
-
-            if ($category->children) {
-                foreach ($category->children as $child) {
-                    $totalProducts += $child->products_count ?? 0;
-                }
+            $total = $category->products_count;
+            foreach ($category->children as $child) {
+                $total += $child->products_count ?? 0;
             }
-
-            $category->total_products = $totalProducts;
+            $category->total_products = $total;
         }
 
         return response()->json([
             'success' => true,
-            'data' => $categories,
+            'data' => CategoryResource::collection($categories),
             'meta' => [
                 'count' => $categories->count(),
-                'total_products' => $categories->sum('total_products')
-            ]
+                'total_products' => $categories->sum('total_products'),
+            ],
         ]);
     }
 
     /**
-     * Get categories with their active products
+     * Get categories with their active products (for category browser or sitemap).
      */
     public function indexWithProducts(Request $request)
     {
@@ -108,7 +101,7 @@ class CategoryController extends Controller
             ])
             ->with([
                 'products' => function ($q) {
-                    $q->select('id', 'name_en', 'category_id') // IMPORTANT
+                    $q->select('id', 'name_en', 'name_mm', 'slug_en', 'image', 'category_id')
                         ->where('is_active', true);
                 }
             ])
@@ -116,13 +109,12 @@ class CategoryController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $categories
+            'data' => CategoryResource::collection($categories)
         ]);
     }
 
-
     /**
-     * Display the specified category with its active products
+     * Display the specified category with its active products and children.
      */
     public function show(Category $category)
     {
@@ -138,11 +130,13 @@ class CategoryController extends Controller
                 $q->where('is_active', true);
             }
         ]);
+
+        // Set a dynamic attribute for the resource
         $category->products_count = $category->products()->where('is_active', true)->count();
+
         return response()->json([
             'success' => true,
-            'data' => $category
+            'data' => new CategoryResource($category)
         ]);
     }
-
 }
