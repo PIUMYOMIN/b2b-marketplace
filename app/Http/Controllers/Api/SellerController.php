@@ -683,106 +683,87 @@ class SellerController extends Controller
     /**
      * Get seller details (public endpoint)
      */
-    public function show($idOrSlug)
+    public function show(SellerProfile $seller)
     {
-        try {
-            $seller = SellerProfile::where('id', $idOrSlug)
-                ->orWhere('store_id', $idOrSlug)
-                ->orWhere('store_slug', $idOrSlug)
-                ->with(['user', 'reviews.user'])
-                ->withAvg('reviews', 'rating')
-                ->withCount('reviews')
-                ->firstOrFail();
-
-            if ($seller->status !== 'approved' && $seller->status !== 'active') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
-            }
-
-            // Get seller's products (only active ones)
-            $products = Product::where('seller_id', $seller->user_id)
-                ->where('is_active', true)
-                ->with(['category'])
-                ->withAvg('reviews', 'rating')
-                ->withCount('reviews')
-                ->paginate(12);
-
-            // Convert seller logo and banner to full URLs
-            $sellerData = $seller->toArray();
-            $sellerData['store_logo'] = !empty($sellerData['store_logo'])
-                ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
-                : null;
-
-            $sellerData['store_banner'] = !empty($sellerData['store_banner'])
-                ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
-                : null;
-
-            // Convert product images to full URLs
-            if ($products->count() > 0) {
-                $products->getCollection()->transform(function ($product) {
-                    if (isset($product['images'])) {
-                        $images = is_string($product['images']) ? json_decode($product['images'], true) : $product['images'];
-                        if (is_array($images)) {
-                            foreach ($images as &$image) {
-                                if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
-                                    $image['url'] = url('storage/' . ltrim($image['url'], '/'));
-                                }
-                            }
-                            $product['images'] = $images;
-                        }
-                    }
-                    return $product;
-                });
-            }
-
-            // Get follow status and count
-            $isFollowing = false;
-            $followersCount = 0;
-
-            try {
-                if ($seller->user && method_exists($seller->user, 'followers')) {
-                    $followersCount = $seller->user->followers()->count();
-
-                    if (auth()->check() && method_exists(auth()->user(), 'isFollowing')) {
-                        $isFollowing = auth()->user()->isFollowing($seller->user->id);
-                    }
-                }
-            } catch (\Exception $e) {
-                \Log::warning('Follow functionality not available: ' . $e->getMessage());
-                // Continue without follow data
-            }
-
-            // Get seller stats
-            $stats = [
-                'total_products' => Product::where('seller_id', $seller->user_id)->count(),
-                'active_products' => Product::where('seller_id', $seller->user_id)
-                    ->where('is_active', true)->count(),
-                'total_orders' => \App\Models\Order::where('seller_id', $seller->user_id)->count(),
-                'total_sales' => \App\Models\Order::where('seller_id', $seller->user_id)
-                    ->where('status', 'delivered')->count(),
-                'member_since' => $seller->created_at->format('M Y'),
-                'followers_count' => $followersCount
-            ];
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'seller' => $sellerData,
-                    'products' => $products,
-                    'stats' => $stats,
-                    'is_following' => $isFollowing
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('Error in seller show: ' . $e->getMessage());
+        // Check if seller is approved/active (optional)
+        if (!in_array($seller->status, ['approved', 'active'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Seller not found'
+                'message' => 'Seller profile not found'
             ], 404);
         }
+
+        // Get seller's products (only active ones)
+        $products = Product::where('seller_id', $seller->user_id)
+            ->where('is_active', true)
+            ->with(['category'])
+            ->withAvg('reviews', 'rating')
+            ->withCount('reviews')
+            ->paginate(12);
+
+        // Convert seller logo and banner to full URLs
+        $sellerData = $seller->toArray();
+        $sellerData['store_logo'] = !empty($sellerData['store_logo'])
+            ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
+            : null;
+        $sellerData['store_banner'] = !empty($sellerData['store_banner'])
+            ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
+            : null;
+
+        // Convert product images to full URLs
+        if ($products->count() > 0) {
+            $products->getCollection()->transform(function ($product) {
+                if (isset($product['images'])) {
+                    $images = is_string($product['images']) ? json_decode($product['images'], true) : $product['images'];
+                    if (is_array($images)) {
+                        foreach ($images as &$image) {
+                            if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
+                                $image['url'] = url('storage/' . ltrim($image['url'], '/'));
+                            }
+                        }
+                        $product['images'] = $images;
+                    }
+                }
+                return $product;
+            });
+        }
+
+        // Get follow status and count
+        $isFollowing = false;
+        $followersCount = 0;
+
+        try {
+            if ($seller->user && method_exists($seller->user, 'followers')) {
+                $followersCount = $seller->user->followers()->count();
+                if (auth()->check() && method_exists(auth()->user(), 'isFollowing')) {
+                    $isFollowing = auth()->user()->isFollowing($seller->user->id);
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Follow functionality not available: ' . $e->getMessage());
+        }
+
+        // Get seller stats
+        $stats = [
+            'total_products' => Product::where('seller_id', $seller->user_id)->count(),
+            'active_products' => Product::where('seller_id', $seller->user_id)
+                ->where('is_active', true)->count(),
+            'total_orders' => \App\Models\Order::where('seller_id', $seller->user_id)->count(),
+            'total_sales' => \App\Models\Order::where('seller_id', $seller->user_id)
+                ->where('status', 'delivered')->count(),
+            'member_since' => $seller->created_at->format('M Y'),
+            'followers_count' => $followersCount
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'seller' => $sellerData,
+                'products' => $products,
+                'stats' => $stats,
+                'is_following' => $isFollowing
+            ]
+        ]);
     }
 
     /**

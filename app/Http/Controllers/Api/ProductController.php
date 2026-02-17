@@ -24,8 +24,8 @@ class ProductController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'per_page' => 'sometimes|integer|min:1|max:100',
-            'category' => 'sometimes|exists:categories,id', // Changed from category_id
-            'category_id' => 'sometimes|exists:categories,id', // Keep for backward compatibility
+            'category' => 'sometimes|exists:categories,id',
+            'category_id' => 'sometimes|exists:categories,id',
             'seller_id' => 'sometimes|exists:users,id',
             'min_price' => 'sometimes|numeric|min:0',
             'max_price' => 'sometimes|numeric|min:0',
@@ -156,7 +156,9 @@ class ProductController extends Controller
             return [
                 'id' => $product->id,
                 'name_en' => $product->name_en,
+                'slug_en' => $product->slug_en,
                 'name_mm' => $product->name_mm,
+                'slug_mm' => $product->slug_mm,
                 'description_en' => $product->description_en,
                 'description_mm' => $product->description_mm,
                 'price' => (float) $product->price,
@@ -169,8 +171,6 @@ class ProductController extends Controller
                 'images' => $this->formatImages($product->images),
                 'is_active' => $product->is_active,
                 'status' => $product->status,
-                'created_at' => $product->created_at,
-                'updated_at' => $product->updated_at,
                 'category' => $product->category,
                 'seller' => $product->seller,
             ];
@@ -302,20 +302,19 @@ class ProductController extends Controller
     /**
      * Display the specified product with reviews
      */
-    public function showPublic($id)
+    public function showPublic(Product $product)
     {
-        $product = Product::with(['category', 'seller'])
-            ->withCount([
+        $product->load(['category', 'seller.sellerProfile'])
+            ->loadCount([
                 'reviews as reviews_count' => function ($query) {
                     $query->where('status', 'approved');
                 }
             ])
-            ->withAvg([
+            ->loadAvg([
                 'reviews as average_rating' => function ($query) {
                     $query->where('status', 'approved');
                 }
-            ], 'rating')
-            ->findOrFail($id);
+            ], 'rating');
 
         // Format images
         $product->images = $this->formatImages($product->images);
@@ -357,10 +356,10 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255', // English name
-            'name_mm' => 'nullable|string|max:255', // Myanmar name
-            'description' => 'required|string', // English description
-            'description_mm' => 'nullable|string', // Myanmar description
+            'name' => 'required|string|max:255',
+            'name_mm' => 'nullable|string|max:255',
+            'description' => 'required|string',
+            'description_mm' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'quantity' => 'required|integer|min:0',
             'category_id' => 'required|exists:categories,id',
@@ -563,21 +562,19 @@ class ProductController extends Controller
     /**
      * Display the specified product
      */
-    public function show($id)
+    public function show(Product $product)
     {
-        // Fixed: Remove infinite recursion
-        $product = Product::with(['category', 'seller'])
-            ->withCount([
+        $product->load(['category', 'seller'])
+            ->loadCount([
                 'reviews as reviews_count' => function ($query) {
                     $query->where('status', 'approved');
                 }
             ])
-            ->withAvg([
+            ->loadAvg([
                 'reviews as average_rating' => function ($query) {
                     $query->where('status', 'approved');
                 }
-            ], 'rating')
-            ->findOrFail($id);
+            ], 'rating');
 
         return response()->json([
             'success' => true,

@@ -513,4 +513,12 @@ class Product extends Model
     {
         return $value ?? 0;
     }
+
+    /**
+     * Get the route key for the model.
+     */
+    public function getRouteKeyName()
+    {
+        return 'slug_en';
+    }
 }

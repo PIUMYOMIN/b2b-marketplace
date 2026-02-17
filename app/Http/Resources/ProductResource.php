@@ -12,7 +12,7 @@ class ProductResource extends JsonResource
         return [
             'id' => $this->id,
             'name_en' => $this->name_en ?? $this->name_en,
-            'slug_en' => $this->slug_slug_en ?? $this->slug,
+            'slug_en' => $this->slug_en ?? $this->slug_en,
             'name_mm' => $this->name_mm,
             'slug_mm' => $this->slug_mm,
             'description' => $this->description_en ?? $this->description,
