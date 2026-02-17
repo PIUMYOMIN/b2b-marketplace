@@ -85,11 +85,11 @@ class ProductController extends Controller
             $query->where('seller_id', $request->seller_id);
         }
 
-        if ($request->has('min_price')) {
+        if ($request->filled('min_price')) {
             $query->where('price', '>=', $request->min_price);
         }
 
-        if ($request->has('max_price')) {
+        if ($request->filled('max_price')) {
             $query->where('price', '<=', $request->max_price);
         }
 
@@ -180,7 +180,7 @@ class ProductController extends Controller
             'success' => true,
             'data' => $formattedProducts,
             'meta' => [
-                'current_page' => $products->currentPage(),
+                'current_xpage' => $products->currentPage(),
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
                 'last_page' => $products->lastPage(),

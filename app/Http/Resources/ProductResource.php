@@ -64,8 +64,6 @@ class ProductResource extends JsonResource
             'approved_at' => $this->approved_at,
             'status' => $this->status,
             'is_active' => $this->is_active,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
             'category' => $this->whenLoaded('category'),
             'seller' => $this->whenLoaded('seller'),
         ];
