@@ -302,8 +302,18 @@ class ProductController extends Controller
     /**
      * Display the specified product with reviews
      */
-    public function showPublic(Product $product)
+    public function showPublic($slugOrId)
     {
+        $product = Product::where('slug_en', $slugOrId)->first();
+
+        if (!$product) {
+            $product = Product::find($slugOrId);
+        }
+
+        if (!$product) {
+            return response()->json(['success' => false, 'message' => 'Product not found'], 404);
+        }
+
         $product->load(['category', 'seller.sellerProfile'])
             ->loadCount([
                 'reviews as reviews_count' => function ($query) {
@@ -585,8 +595,17 @@ class ProductController extends Controller
     /**
      * Update the specified product
      */
-    public function update(Request $request, Product $product)
+    public function update($slugOrId, Request $request)
     {
+        $product = Product::where('slug_en', $slugOrId)->first() ?? Product::find($slugOrId);
+
+        if (!$product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+        }
+
         // Authorization check - only seller or admin can update
         if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('seller')) {
             return response()->json([

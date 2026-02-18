@@ -26,12 +26,12 @@ class SellerController extends Controller
     {
         // ✅ Handle "top sellers" case
         if ($request->boolean('top')) {
-            $topSellers = SellerProfile::with(['user'])
+            $topSellers = SellerProfile::with(['user', 'reviews'])
                 ->withAvg('reviews', 'rating')
-                ->withCount(['reviews', 'products']) // products_count
+                ->withCount(['reviews', 'products'])
                 ->withCount([
                     'orders as customers_count' => function ($q) {
-                        $q->distinct('user_id'); // unique customers
+                        $q->distinct('user_id');
                     }
                 ])
                 ->whereIn('status', ['approved', 'active'])
@@ -84,7 +84,7 @@ class SellerController extends Controller
         // Base query
         $query = SellerProfile::with(['user', 'reviews'])
             ->withAvg('reviews', 'rating')
-            ->withCount('reviews')
+            ->withCount('reviews', 'products')
             ->whereIn('status', ['approved', 'active']);
 
         // Apply filters
@@ -116,7 +116,7 @@ class SellerController extends Controller
             case 'name':
                 $query->orderBy('store_name', 'asc');
                 break;
-            default: // newest
+            default:
                 $query->latest();
         }
 

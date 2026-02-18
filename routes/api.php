@@ -64,7 +64,7 @@ Route::group([
     // Public Routes For Products
     Route::prefix('products')->group(function () {
         Route::get('/', [ProductController::class, 'indexPublic']);
-        Route::get('/{product}', [ProductController::class, 'showPublic']);
+        Route::get('/{slugOrId}', [ProductController::class, 'showPublic']);
         Route::get('/search/public', [ProductController::class, 'searchPublic']);
         Route::get('/category/{categoryId}', [ProductController::class, 'categoryProducts']);
     });
@@ -143,7 +143,8 @@ Route::group([
 
             //Product
             Route::prefix('products')->group(function () {
-                Route::put('/{product}', [ProductController::class, 'update']);
+                Route::put('/{slugOrId}', [ProductController::class, 'update']);
+                Route::delete('/{product}', [ProductController::class, 'destroy']);
             });
 
             // Seller Product Reviews
