@@ -172,6 +172,12 @@ class ProductController extends Controller
                 'status' => $product->status,
                 'category' => $product->category,
                 'seller' => $product->seller,
+                'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
+                'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
+                'is_on_sale' => (bool) $product->is_on_sale,
+                'discount_start' => $product->discount_start,
+                'discount_end' => $product->discount_end,
+                'compare_at_price' => $product->compare_at_price ? (float) $product->compare_at_price : null,
             ];
         });
 
@@ -223,11 +229,21 @@ class ProductController extends Controller
                 'price' => (float) $product->price,
                 'quantity' => $product->quantity,
                 'status' => $product->status,
+                'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
+                'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
+                'is_on_sale' => (bool) $product->is_on_sale,
+                'discount_start' => $product->discount_start,
+                'discount_end' => $product->discount_end,
                 'is_active' => $product->is_active,
                 'approved_at' => $product->approved_at,
-                'created_at' => $product->created_at,
-                'category' => $product->category ? ['id' => $product->category->id, 'name_en' => $product->category->name_en] : null,
-                'seller' => $product->seller ? ['id' => $product->seller->id, 'name' => $product->seller->name] : null,
+                'category' => $product->category ? [
+                    'id' => $product->category->id,
+                    'name_en' => $product->category->name_en
+                ] : null,
+                'seller' => $product->seller ? [
+                    'id' => $product->seller->id,
+                    'name' => $product->seller->name
+                ] : null,
                 'images' => $this->formatImages($product->images),
             ];
         });
@@ -846,13 +862,18 @@ class ProductController extends Controller
                     'review_count' => $product->reviews_count,
                     'specifications' => $product->specifications,
                     'images' => $this->formatImages($product->images),
+                    'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
+                    'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
+                    'is_on_sale' => (bool) $product->is_on_sale,
+                    'discount_start' => $product->discount_start,
+                    'discount_end' => $product->discount_end,
                     'is_active' => (bool) $product->is_active,
                     'created_at' => $product->created_at->toISOString(),
                     'updated_at' => $product->updated_at->toISOString(),
                     'category' => $product->category ? [
                         'id' => $product->category->id,
-                        'name' => $product->category->name,
-                        'slug' => $product->category->slug
+                        'name_en' => $product->category->name_en,
+                        'slug_en' => $product->category->slug_en
                     ] : null
                 ];
             });
@@ -1364,8 +1385,17 @@ class ProductController extends Controller
     /**
      * Apply or update product discount
      */
-    public function applyProductDiscount(Request $request, Product $product)
+    public function applyProductDiscount(Request $request, $id)
     {
+        // Find the product by ID
+        $product = Product::find($id);
+        if (!$product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+        }
+
         // Authorization check - only seller or admin can update
         if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
@@ -1435,8 +1465,15 @@ class ProductController extends Controller
     /**
      * Remove discount from product
      */
-    public function removeDiscount(Product $product)
+    public function removeDiscount($id)
     {
+        $product = Product::find($id);
+        if (!$product) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+        }
         // Authorization check - only seller or admin can update
         if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
@@ -1475,8 +1512,9 @@ class ProductController extends Controller
     /**
      * Get active discounts for a product
      */
-    public function productDiscounts(Product $product)
+    public function productDiscounts($id)
     {
+        $product = Product::find($id);
         $discounts = Discount::where('is_active', true)
             ->where('starts_at', '<=', now())
             ->where('expires_at', '>=', now())

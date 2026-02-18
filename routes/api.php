@@ -87,114 +87,6 @@ Route::group([
     // --------------------
     Route::middleware(['auth:sanctum'])->group(function () {
 
-        Route::prefix('seller')->middleware('role:seller')->group(function () {
-
-            Route::prefix('onboarding')->group(function () {
-                // Onboarding Status
-                Route::get('/status', [SellerController::class, 'getOnboardingStatus']);
-                Route::get('/check-status', [SellerController::class, 'checkProfileStatus']);
-
-                // Onboarding Steps
-                // Store logo and banner upload endpoints
-                Route::post('/storeLogo', [SellerController::class, 'uploadStoreLogo']);
-                Route::post('/storeBanner', [SellerController::class, 'uploadStoreBanner']);
-                // Basic store info save endpoint
-                Route::post('/store-basic', [SellerController::class, 'updateStoreBasic']);
-                //Business save endpoint
-                Route::post('/business-details', [SellerController::class, 'updateBusinessDetails']);
-                // Address save endpoint
-                Route::post('/address', [SellerController::class, 'updateAddress']);
-                // Document upload endpoint
-                Route::post('/documents', [SellerController::class, 'uploadDocument']);
-                // Document completion endpoint
-                Route::post('/mark-documents-complete', [SellerController::class, 'markDocumentsComplete']);
-
-                Route::post('/step/{step}', [SellerController::class, 'saveStep']);
-
-                // Get current onboarding data
-                Route::get('/data', [SellerController::class, 'getOnboardingData']);
-
-                // Final submission endpoint
-                Route::post('/submit', [SellerController::class, 'submitOnboarding']);
-                Route::post('/upload-document', [SellerController::class, 'uploadDocument']);
-            });
-
-            // Document Upload & Management
-            Route::get('/document-requirements', [SellerController::class, 'getDocumentRequirements']);
-            Route::get('/documents', [SellerController::class, 'getUploadedDocuments']);
-            Route::delete('/documents/{documentId}', [SellerController::class, 'deleteDocument']);
-
-            // Complete Onboarding
-            Route::post('/complete-onboarding', [SellerController::class, 'completeOnboardingWithDocuments']);
-
-            // Verification Status
-            Route::get('/verification-status', [SellerController::class, 'getVerificationStatus']);
-            Route::get('/verification-history', [SellerController::class, 'getVerificationHistory']);
-
-            // Seller Dashboard
-            Route::get('/my-store', [SellerController::class, 'myStore']);
-            Route::get('/dashboard', [SellerController::class, 'dashboard']);
-            Route::get('/sales-summary', [SellerController::class, 'salesSummary']);
-            Route::get('/top-products', [SellerController::class, 'topProducts']);
-            Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
-            Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
-            Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
-            Route::get('/products/my-products', [ProductController::class, 'myProducts']);
-
-            //Product
-            Route::prefix('products')->group(function () {
-                Route::put('/{slugOrId}', [ProductController::class, 'update']);
-                Route::delete('/{product}', [ProductController::class, 'destroy']);
-            });
-
-            // Seller Product Reviews
-            Route::get('/products/reviews', [ReviewController::class, 'sellerReviews']);
-
-            Route::prefix('discounts')->group(function () {
-                Route::get('/', [DiscountController::class, 'index']);
-                Route::post('/', [DiscountController::class, 'store']);
-                Route::get('/{discount}', [DiscountController::class, 'show']);
-                Route::put('/{discount}', [DiscountController::class, 'update']);
-                Route::delete('/{discount}', [DiscountController::class, 'destroy']);
-                Route::post('/validate', [DiscountController::class, 'validateDiscount']);
-                Route::get('/product/{productId}', [DiscountController::class, 'getProductDiscounts']);
-                Route::put('/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
-            });
-
-            // In routes/api.php, within seller prefix
-            Route::prefix('delivery-areas')->group(function () {
-                Route::get('/', [DeliveryAreaController::class, 'index']);
-                Route::post('/', [DeliveryAreaController::class, 'store']);
-                Route::get('/location-options', [DeliveryAreaController::class, 'getLocationOptions']);
-                Route::post('/check-shipping-fee', [DeliveryAreaController::class, 'checkShippingFee']);
-                Route::put('/{id}', [DeliveryAreaController::class, 'update']);
-                Route::delete('/{id}', [DeliveryAreaController::class, 'destroy']);
-            });
-
-            Route::prefix('shipping')->group(function () {
-                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
-                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
-                Route::post('/calculate', [SellerController::class, 'calculateShipping']);
-            });
-
-            // Settings routes
-            Route::get('/settings', [SellerController::class, 'getSettings']);
-            Route::put('/settings', [SellerController::class, 'updateSettings']);
-            Route::get('/store-stats', [SellerController::class, 'getStoreStats']);
-
-            // Shipping settings (separate from general settings)
-            Route::prefix('shipping')->group(function () {
-                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
-                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
-            });
-
-            // Business hours
-            Route::put('/business-hours', [SellerController::class, 'updateBusinessHours']);
-
-            // Store policies
-            Route::put('/policies', [SellerController::class, 'updatePolicies']);
-        });
-
         // Dashboard
         Route::prefix('admin')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
@@ -257,11 +149,128 @@ Route::group([
 
             //Product management by admin
             Route::prefix('products')->group(function () {
-                Route::get('/', [ProductController::class, 'adminIndex']); // list all products for admin
+                Route::get('/', [ProductController::class, 'adminIndex']);
                 Route::post('/{product}/approve', [ProductController::class, 'approve']);
                 Route::post('/{product}/reject', [ProductController::class, 'reject']);
             });
 
+        });
+
+        Route::prefix('seller')->middleware('role:seller')->group(function () {
+
+            Route::prefix('onboarding')->group(function () {
+                // Onboarding Status
+                Route::get('/status', [SellerController::class, 'getOnboardingStatus']);
+                Route::get('/check-status', [SellerController::class, 'checkProfileStatus']);
+
+                // Onboarding Steps
+                // Store logo and banner upload endpoints
+                Route::post('/storeLogo', [SellerController::class, 'uploadStoreLogo']);
+                Route::post('/storeBanner', [SellerController::class, 'uploadStoreBanner']);
+                // Basic store info save endpoint
+                Route::post('/store-basic', [SellerController::class, 'updateStoreBasic']);
+                //Business save endpoint
+                Route::post('/business-details', [SellerController::class, 'updateBusinessDetails']);
+                // Address save endpoint
+                Route::post('/address', [SellerController::class, 'updateAddress']);
+                // Document upload endpoint
+                Route::post('/documents', [SellerController::class, 'uploadDocument']);
+                // Document completion endpoint
+                Route::post('/mark-documents-complete', [SellerController::class, 'markDocumentsComplete']);
+
+                Route::post('/step/{step}', [SellerController::class, 'saveStep']);
+
+                // Get current onboarding data
+                Route::get('/data', [SellerController::class, 'getOnboardingData']);
+
+                // Final submission endpoint
+                Route::post('/submit', [SellerController::class, 'submitOnboarding']);
+                Route::post('/upload-document', [SellerController::class, 'uploadDocument']);
+            });
+
+            // Document Upload & Management
+            Route::get('/document-requirements', [SellerController::class, 'getDocumentRequirements']);
+            Route::get('/documents', [SellerController::class, 'getUploadedDocuments']);
+            Route::delete('/documents/{documentId}', [SellerController::class, 'deleteDocument']);
+
+            // Complete Onboarding
+            Route::post('/complete-onboarding', [SellerController::class, 'completeOnboardingWithDocuments']);
+
+            // Verification Status
+            Route::get('/verification-status', [SellerController::class, 'getVerificationStatus']);
+            Route::get('/verification-history', [SellerController::class, 'getVerificationHistory']);
+
+            // Seller Dashboard
+            Route::get('/my-store', [SellerController::class, 'myStore']);
+            Route::get('/dashboard', [SellerController::class, 'dashboard']);
+            Route::get('/sales-summary', [SellerController::class, 'salesSummary']);
+            Route::get('/top-products', [SellerController::class, 'topProducts']);
+            Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
+            Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
+            Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
+
+            // Seller Product Management
+            Route::get('/products/my-products', [ProductController::class, 'myProducts']);
+
+            Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
+            Route::get('/my-store', [SellerController::class, 'myStore']);
+
+            //Product
+            Route::prefix('products')->group(function () {
+                Route::put('/{slugOrId}', [ProductController::class, 'update']);
+                Route::delete('/{product}', [ProductController::class, 'destroy']);
+
+                Route::post('/{id}/apply-discount', [ProductController::class, 'applyProductDiscount']);
+                Route::post('/{id}/remove-discount', [ProductController::class, 'removeDiscount']);
+                Route::get('/{id}/discounts', [ProductController::class, 'productDiscounts']);
+            });
+
+            // Seller Product Reviews
+            Route::get('/products/reviews', [ReviewController::class, 'sellerReviews']);
+
+            Route::prefix('discounts')->group(function () {
+                Route::get('/', [DiscountController::class, 'index']);
+                Route::post('/', [DiscountController::class, 'store']);
+                Route::get('/{discount}', [DiscountController::class, 'show']);
+                Route::put('/{discount}', [DiscountController::class, 'update']);
+                Route::delete('/{discount}', [DiscountController::class, 'destroy']);
+                Route::post('/validate', [DiscountController::class, 'validateDiscount']);
+                Route::get('/product/{productId}', [DiscountController::class, 'getProductDiscounts']);
+                Route::put('/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
+            });
+
+            // In routes/api.php, within seller prefix
+            Route::prefix('delivery-areas')->group(function () {
+                Route::get('/', [DeliveryAreaController::class, 'index']);
+                Route::post('/', [DeliveryAreaController::class, 'store']);
+                Route::get('/location-options', [DeliveryAreaController::class, 'getLocationOptions']);
+                Route::post('/check-shipping-fee', [DeliveryAreaController::class, 'checkShippingFee']);
+                Route::put('/{id}', [DeliveryAreaController::class, 'update']);
+                Route::delete('/{id}', [DeliveryAreaController::class, 'destroy']);
+            });
+
+            Route::prefix('shipping')->group(function () {
+                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
+                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
+                Route::post('/calculate', [SellerController::class, 'calculateShipping']);
+            });
+
+            // Settings routes
+            Route::get('/settings', [SellerController::class, 'getSettings']);
+            Route::put('/settings', [SellerController::class, 'updateSettings']);
+            Route::get('/store-stats', [SellerController::class, 'getStoreStats']);
+
+            // Shipping settings (separate from general settings)
+            Route::prefix('shipping')->group(function () {
+                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
+                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
+            });
+
+            // Business hours
+            Route::put('/business-hours', [SellerController::class, 'updateBusinessHours']);
+
+            // Store policies
+            Route::put('/policies', [SellerController::class, 'updatePolicies']);
         });
 
         // Delivery Management
@@ -281,11 +290,6 @@ Route::group([
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
-
-            Route::middleware('role:seller')->group(function () {
-                Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
-                Route::get('/my-store', [SellerController::class, 'myStore']);
-            });
 
             // Admin only routes
             Route::middleware('role:admin|seller')->group(function () {
@@ -335,12 +339,6 @@ Route::group([
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
                 Route::get('/my-products', [ProductController::class, 'myProducts']);
             });
-        });
-
-        Route::prefix('products')->group(function () {
-            Route::post('/{product}/apply-discount', [ProductController::class, 'applyDiscount']);
-            Route::post('/{product}/remove-discount', [ProductController::class, 'removeDiscount']);
-            Route::get('/{product}/discounts', [ProductController::class, 'productDiscounts']);
         });
 
         // Buyer Cart Management

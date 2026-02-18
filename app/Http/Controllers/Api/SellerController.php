@@ -450,59 +450,80 @@ class SellerController extends Controller
     }
 
     /**
-     * Upload store logo (public endpoint)
+     * Upload store logo (public endpoint or internal usage)
      */
-    public function uploadStoreLogo(Request $request)
+    public function uploadStoreLogo($requestOrFile, $sellerProfileId = null)
     {
         try {
-            $user = $request->user();
-            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+            // Handle both Request object and UploadedFile object
+            if ($requestOrFile instanceof Request) {
+                $user = $requestOrFile->user();
+                $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
 
-            if (!$sellerProfile) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
+                if (!$sellerProfile) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Seller profile not found'
+                    ], 404);
+                }
+
+                $validator = Validator::make($requestOrFile->all(), [
+                    'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+                ]);
+
+                if ($validator->fails()) {
+                    return response()->json([
+                        'success' => false,
+                        'errors' => $validator->errors()
+                    ], 422);
+                }
+
+                $file = $requestOrFile->file('image');
+                $profileId = $sellerProfile->id;
+            } else {
+                // Direct file upload (internal usage)
+                $file = $requestOrFile;
+                $profileId = $sellerProfileId;
             }
 
-            $validator = Validator::make($request->all(), [
-                'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $path = $this->saveStoreLogo($request->file('image'), $sellerProfile->id);
+            $path = $this->saveStoreLogo($file, $profileId);
 
             if (!$path) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to upload logo'
-                ], 500);
+                if ($requestOrFile instanceof Request) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to upload logo'
+                    ], 500);
+                }
+                return null;
             }
 
-            // Update seller profile with logo path
-            $sellerProfile->update(['store_logo' => $path]);
+            // Update seller profile with logo path if Request object
+            if ($requestOrFile instanceof Request) {
+                $sellerProfile->update(['store_logo' => $path]);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Store logo uploaded successfully',
-                'data' => [
-                    'url' => url('storage/' . $path),
-                    'path' => $path
-                ]
-            ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Store logo uploaded successfully',
+                    'data' => [
+                        'url' => url('storage/' . $path),
+                        'path' => $path
+                    ]
+                ]);
+            }
+
+            // Return path if called internally
+            return $path;
 
         } catch (\Exception $e) {
             Log::error('Failed to upload store logo: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to upload store logo'
-            ], 500);
+            if ($requestOrFile instanceof Request) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to upload store logo'
+                ], 500);
+            }
+            return null;
         }
     }
 
