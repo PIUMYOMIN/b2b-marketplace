@@ -154,7 +154,6 @@ class ProductController extends Controller
 
         $formattedProducts = $products->getCollection()->map(function ($product) {
             return [
-                'id' => $product->id,
                 'name_en' => $product->name_en,
                 'slug_en' => $product->slug_en,
                 'name_mm' => $product->name_mm,
