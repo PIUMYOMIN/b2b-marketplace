@@ -24,7 +24,7 @@ class DashboardController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             if ($user->hasRole('seller')) {
                 // Return seller dashboard data
                 $salesSummary = $this->sellerSalesSummary($request);
@@ -67,7 +67,7 @@ class DashboardController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'per_page' => 'sometimes|integer|min:1|max:100',
-            'status' => 'sometimes|in:pending,approved,active,suspended,closed', // Updated status values
+            'status' => 'sometimes|in:pending,approved,active,suspended,closed',
             'search' => 'sometimes|string|max:255'
         ]);
 
@@ -270,13 +270,13 @@ class DashboardController extends Controller
         while ($current <= $end) {
             $date = $current->format('Y-m-d');
             $sale = $sales->firstWhere('date', $date);
-            
+
             $results[] = [
                 'date' => $date,
                 'count' => $sale ? $sale->count : 0,
                 'revenue' => $sale ? $sale->revenue : 0
             ];
-            
+
             $current->addDay();
         }
 
@@ -555,7 +555,7 @@ class DashboardController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             // Check if user is a seller
             if (!$user->hasRole('seller')) {
                 return response()->json([
@@ -674,7 +674,7 @@ class DashboardController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             if (!$user->hasRole('seller')) {
                 return response()->json([
                     'success' => false,
@@ -707,7 +707,7 @@ class DashboardController extends Controller
             $topProducts = $topProducts->map(function ($product) {
                 $images = json_decode($product->images, true) ?? [];
                 $primaryImage = collect($images)->firstWhere('is_primary', true) ?? $images[0] ?? null;
-                
+
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
@@ -740,7 +740,7 @@ class DashboardController extends Controller
     {
         try {
             $user = $request->user();
-            
+
             if (!$user->hasRole('seller')) {
                 return response()->json([
                     'success' => false,

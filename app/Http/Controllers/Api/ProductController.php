@@ -1397,7 +1397,7 @@ class ProductController extends Controller
         }
 
         // Authorization check - only seller or admin can update
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('seller')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to apply discount to this product'
