@@ -346,7 +346,7 @@ Route::group([
             Route::get('/', [CartController::class, 'index']);
             Route::post('/', [CartController::class, 'store']);
             Route::put('/{cart}', [CartController::class, 'update']);
-            Route::delete('/{cart}', [CartController::class, 'destroy']);
+            Route::delete('/{id}', [CartController::class, 'destroy']);
             Route::post('/clear', [CartController::class, 'clear']);
             Route::get('/count', [CartController::class, 'count']);
         });

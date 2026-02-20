@@ -287,8 +287,9 @@ class CartController extends Controller
     /**
      * Remove item from cart
      */
-    public function destroy(Cart $cart)
+    public function destroy($id)
     {
+        $cart = Cart::findOrFail($id);
         // Check ownership
         if ($cart->user_id !== Auth::id()) {
             return response()->json([
