@@ -21,14 +21,13 @@ class CartController extends Controller
 
             $user = Auth::user();
 
-            // Check if user has buyer role
-            // if (!$user->hasRole('buyer')) {
-            //     Log::warning('User does not have buyer role', ['user_id' => $user->id, 'roles' => $user->getRoleNames()]);
-            //     return response()->json([
-            //         'success' => false,
-            //         'message' => 'Only buyers can access cart'
-            //     ], 403);
-            // }
+            if (!$user->hasRole('buyer')) {
+                Log::warning('User does not have buyer role', ['user_id' => $user->id, 'roles' => $user->getRoleNames()]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only buyers can access cart'
+                ], 403);
+            }
 
             $cartItems = Cart::with(['product.category'])
                 ->where('user_id', Auth::id())
@@ -36,28 +35,41 @@ class CartController extends Controller
                 ->map(function ($item) {
                     $product = $item->product;
 
-                    // Handle product availability
                     $isAvailable = $product->is_active && $product->quantity > 0;
                     $isQuantityValid = $item->quantity <= $product->quantity;
 
-                    // Handle product image
+                    // ---- FIXED IMAGE HANDLING ----
                     $image = '/placeholder-product.jpg';
                     if ($product->images) {
-                        if (is_array($product->images)) {
-                            $image = $product->images[0]['url'] ?? $product->images[0] ?? $image;
-                        } else if (is_string($product->images)) {
-                            $imagesArray = json_decode($product->images, true);
-                            if (is_array($imagesArray)) {
-                                $image = $imagesArray[0]['url'] ?? $imagesArray[0] ?? $image;
+                        $images = $product->images;
+                        if (is_string($images)) {
+                            $images = json_decode($images, true) ?? [];
+                        }
+                        if (is_array($images) && count($images) > 0) {
+                            $firstImage = $images[0];
+                            if (is_array($firstImage)) {
+                                // Try common keys
+                                $image = $firstImage['full_url'] ?? $firstImage['url'] ?? $firstImage['path'] ?? null;
+                                // If still null, maybe it's an indexed array of strings
+                                if (!$image && isset($firstImage[0]) && is_string($firstImage[0])) {
+                                    $image = $firstImage[0];
+                                }
+                            } elseif (is_string($firstImage)) {
+                                $image = $firstImage;
+                            }
+                            // If no valid image found, keep placeholder
+                            if (!$image) {
+                                $image = '/placeholder-product.jpg';
                             }
                         }
                     }
 
-                    // Convert relative path to full URL
+                    // Convert relative path to full URL only if it's not already a full URL
+                    if ($image && !filter_var($image, FILTER_VALIDATE_URL)) {
                     $image = url('storage/' . ltrim($image, '/'));
-
-
-
+                    }
+                    // ---------------------------------
+    
                     return [
                         'id' => $item->id,
                         'product_id' => $product->id,
