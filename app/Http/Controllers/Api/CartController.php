@@ -13,7 +13,7 @@ use Illuminate\Validation\ValidationException;
 class CartController extends Controller
 {
     /**
-     * Check if user is allowed to access cart (admin or buyer)
+     * Check if user is allowed to access cart buyers
      */
     private function isAllowed()
     {
@@ -35,7 +35,7 @@ class CartController extends Controller
                 Log::warning('User not allowed to access cart', ['user_id' => $user->id]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only buyers and admins can access cart'
+                    'message' => 'Only buyers can access cart'
                 ], 403);
             }
 
@@ -136,7 +136,7 @@ class CartController extends Controller
             if (!$this->isAllowed()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only buyers and admins can add items to cart'
+                    'message' => 'Only buyers can add items to cart'
                 ], 403);
             }
 
@@ -250,7 +250,7 @@ class CartController extends Controller
             $cart = Cart::findOrFail($id);
 
             // Check ownership
-            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('buyer')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized'
@@ -318,7 +318,7 @@ class CartController extends Controller
             $cart = Cart::findOrFail($id);
 
             // Check ownership
-            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('buyer')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized'
@@ -349,11 +349,11 @@ class CartController extends Controller
         try {
             $user = Auth::user();
 
-            // Only allow admin or buyer to clear their own cart
+            // Only allow buyer to clear their own cart
             if (!$this->isAllowed()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only buyers and admins can clear cart'
+                    'message' => 'Only buyers can clear cart'
                 ], 403);
             }
 
@@ -384,7 +384,7 @@ class CartController extends Controller
             if (!$this->isAllowed()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only buyers and admins can access cart count'
+                    'message' => 'Only buyers can access cart count'
                 ], 403);
             }
 
