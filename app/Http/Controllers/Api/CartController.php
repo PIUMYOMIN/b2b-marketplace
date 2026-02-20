@@ -8,9 +8,19 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class CartController extends Controller
 {
+    /**
+     * Check if user is allowed to access cart (admin or buyer)
+     */
+    private function isAllowed()
+    {
+        $user = Auth::user();
+        return $user && ($user->hasRole('buyer'));
+    }
+
     /**
      * Get user's cart items
      */
@@ -21,11 +31,11 @@ class CartController extends Controller
 
             $user = Auth::user();
 
-            if (!$user->hasRole('buyer')) {
-                Log::warning('User does not have buyer role', ['user_id' => $user->id, 'roles' => $user->getRoleNames()]);
+            if (!$this->isAllowed()) {
+                Log::warning('User not allowed to access cart', ['user_id' => $user->id]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only buyers can access cart'
+                    'message' => 'Only buyers and admins can access cart'
                 ], 403);
             }
 
@@ -38,7 +48,7 @@ class CartController extends Controller
                     $isAvailable = $product->is_active && $product->quantity > 0;
                     $isQuantityValid = $item->quantity <= $product->quantity;
 
-                    // ---- FIXED IMAGE HANDLING ----
+                    // Image handling (same as before)
                     $image = '/placeholder-product.jpg';
                     if ($product->images) {
                         $images = $product->images;
@@ -48,27 +58,23 @@ class CartController extends Controller
                         if (is_array($images) && count($images) > 0) {
                             $firstImage = $images[0];
                             if (is_array($firstImage)) {
-                                // Try common keys
                                 $image = $firstImage['full_url'] ?? $firstImage['url'] ?? $firstImage['path'] ?? null;
-                                // If still null, maybe it's an indexed array of strings
                                 if (!$image && isset($firstImage[0]) && is_string($firstImage[0])) {
                                     $image = $firstImage[0];
                                 }
                             } elseif (is_string($firstImage)) {
                                 $image = $firstImage;
                             }
-                            // If no valid image found, keep placeholder
                             if (!$image) {
                                 $image = '/placeholder-product.jpg';
                             }
                         }
                     }
 
-                    // Convert relative path to full URL only if it's not already a full URL
+                    // Convert relative path to full URL if needed
                     if ($image && !filter_var($image, FILTER_VALIDATE_URL)) {
-                    $image = url('storage/' . ltrim($image, '/'));
+                        $image = url('storage/' . ltrim($image, '/'));
                     }
-                    // ---------------------------------
 
                     return [
                         'id' => $item->id,
@@ -127,11 +133,10 @@ class CartController extends Controller
         try {
             $user = Auth::user();
 
-            // Check if user has buyer role
-            if (!$user->hasRole('buyer')) {
+            if (!$this->isAllowed()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only buyers can add items to cart'
+                    'message' => 'Only buyers and admins can add items to cart'
                 ], 403);
             }
 
@@ -221,9 +226,13 @@ class CartController extends Controller
                 'data' => $cartItem
             ]);
 
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Cart store error: ' . $e->getMessage());
-
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to add product to cart',
@@ -235,53 +244,69 @@ class CartController extends Controller
     /**
      * Update cart item quantity
      */
-    public function update(Request $request, Cart $cart)
+    public function update(Request $request, $id)
     {
-        // Check ownership
-        if ($cart->user_id !== Auth::id()) {
+        try {
+            $cart = Cart::findOrFail($id);
+
+            // Check ownership
+            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            $request->validate([
+                'quantity' => 'required|integer|min:1'
+            ]);
+
+            // Check product availability
+            if (!$cart->product->is_active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product is no longer available'
+                ], 400);
+            }
+
+            if ($cart->product->quantity < $request->quantity) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only ' . $cart->product->quantity . ' items available in stock'
+                ], 400);
+            }
+
+            // Check minimum order
+            $minOrder = $cart->product->min_order ?? 1;
+            if ($request->quantity < $minOrder) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Minimum order quantity is ' . $minOrder
+                ], 400);
+            }
+
+            $cart->update([
+                'quantity' => $request->quantity
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cart updated successfully',
+                'data' => $cart
+            ]);
+
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized'
-            ], 403);
-        }
-
-        $request->validate([
-            'quantity' => 'required|integer|min:1'
-        ]);
-
-        // Check product availability
-        if (!$cart->product->is_active) {
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Cart update error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Product is no longer available'
-            ], 400);
+                'message' => 'Failed to update cart'
+            ], 500);
         }
-
-        if ($cart->product->quantity < $request->quantity) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Only ' . $cart->product->quantity . ' items available in stock'
-            ], 400);
-        }
-
-        // Check minimum order
-        $minOrder = $cart->product->min_order ?? 1;
-        if ($request->quantity < $minOrder) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Minimum order quantity is ' . $minOrder
-            ], 400);
-        }
-
-        $cart->update([
-            'quantity' => $request->quantity
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cart updated successfully',
-            'data' => $cart
-        ]);
     }
 
     /**
@@ -289,21 +314,31 @@ class CartController extends Controller
      */
     public function destroy($id)
     {
-        $cart = Cart::findOrFail($id);
-        // Check ownership
-        if ($cart->user_id !== Auth::id()) {
+        try {
+            $cart = Cart::findOrFail($id);
+
+            // Check ownership
+            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            $cart->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Item removed from cart'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Cart destroy error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized'
-            ], 403);
+                'message' => 'Failed to remove item'
+            ], 500);
         }
-
-        $cart->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Item removed from cart'
-        ]);
     }
 
     /**
@@ -311,20 +346,31 @@ class CartController extends Controller
      */
     public function clear()
     {
-        // Only buyers can clear cart
-        if (Auth::user()->roles->pluck('name')->contains('seller')) {
+        try {
+            $user = Auth::user();
+
+            // Only allow admin or buyer to clear their own cart
+            if (!$this->isAllowed()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only buyers and admins can clear cart'
+                ], 403);
+            }
+
+            Cart::where('user_id', $user->id)->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Cart cleared successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Cart clear error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Only buyers can clear cart'
-            ], 403);
+                'message' => 'Failed to clear cart'
+            ], 500);
         }
-
-        Cart::where('user_id', Auth::id())->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Cart cleared successfully'
-        ]);
     }
 
     /**
@@ -332,21 +378,31 @@ class CartController extends Controller
      */
     public function count()
     {
-        // Only buyers can access cart count
-        if (Auth::user()->roles->pluck('name')->contains('seller')) {
+        try {
+            $user = Auth::user();
+
+            if (!$this->isAllowed()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only buyers and admins can access cart count'
+                ], 403);
+            }
+
+            $count = Cart::where('user_id', $user->id)->sum('quantity');
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'count' => $count
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Cart count error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Only buyers can access cart'
-            ], 403);
+                'message' => 'Failed to get cart count'
+            ], 500);
         }
-
-        $count = Cart::where('user_id', Auth::id())->sum('quantity');
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'count' => $count
-            ]
-        ]);
     }
 }
