@@ -39,6 +39,171 @@ class CategoryController extends Controller
     }
 
     /**
+     * Store a newly created category (admin only).
+     */
+    public function store(Request $request)
+    {
+        // Authorize – only admin can create categories
+        if (!Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin access required.'
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'name_en' => 'required|string|max:255',
+            'name_mm' => 'nullable|string|max:255',
+            'description_en' => 'nullable|string',
+            'description_mm' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // file upload
+            'commission_rate' => 'nullable|numeric|min:0|max:100',
+            'parent_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('categories', 'id')->whereNull('deleted_at')
+            ],
+            'is_active' => 'boolean'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $data = $request->only([
+                'name_en',
+                'name_mm',
+                'description_en',
+                'description_mm',
+                'commission_rate',
+                'parent_id',
+                'is_active'
+            ]);
+
+            // Generate slugs
+            $data['slug_en'] = $this->generateUniqueSlug($request->name_en, 'slug_en');
+            if ($request->filled('name_mm')) {
+                $data['slug_mm'] = $this->generateUniqueSlug($request->name_mm, 'slug_mm');
+            }
+
+            // Set default values
+            $data['commission_rate'] = $data['commission_rate'] ?? 10.00;
+            $data['is_active'] = $data['is_active'] ?? true;
+            $data['parent_id'] = $data['parent_id'] ?? null;
+
+            // Handle image upload
+            if ($request->hasFile('image')) {
+                $path = $request->file('image')->store('categories', 'public');
+                $data['image'] = $path;
+            }
+
+            $category = Category::create($data);
+
+            return response()->json([
+                'success' => true,
+                'data' => new CategoryResource($category),
+                'message' => 'Category created successfully.'
+            ], 201);
+        } catch (\Exception $e) {
+            \Log::error('Category creation failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create category.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update the specified category (admin only).
+     */
+    public function update(Request $request, Category $category)
+    {
+        // Authorize – only admin can update categories
+        if (!Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin access required.'
+            ], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'name_en' => 'sometimes|required|string|max:255',
+            'name_mm' => 'nullable|string|max:255',
+            'description_en' => 'nullable|string',
+            'description_mm' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // file upload
+            'commission_rate' => 'nullable|numeric|min:0|max:100',
+            'parent_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('categories', 'id')->whereNull('deleted_at')
+            ],
+            'is_active' => 'boolean'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $data = $request->only([
+                'name_en',
+                'name_mm',
+                'description_en',
+                'description_mm',
+                'commission_rate',
+                'parent_id',
+                'is_active'
+            ]);
+
+            // Handle slug regeneration if name changes
+            if ($request->has('name_en') && $request->name_en !== $category->name_en) {
+                $data['slug_en'] = $this->generateUniqueSlug($request->name_en, 'slug_en', $category->id);
+            }
+            if ($request->has('name_mm') && $request->name_mm !== $category->name_mm) {
+                $data['slug_mm'] = $this->generateUniqueSlug($request->name_mm, 'slug_mm', $category->id);
+            }
+
+            // Handle image upload
+            if ($request->hasFile('image')) {
+                // Delete old image if exists
+                if ($category->image && Storage::disk('public')->exists($category->image)) {
+                    Storage::disk('public')->delete($category->image);
+                }
+                $path = $request->file('image')->store('categories', 'public');
+                $data['image'] = $path;
+            } elseif ($request->has('image') && $request->input('image') === null) {
+                // Explicitly removing image
+                if ($category->image && Storage::disk('public')->exists($category->image)) {
+                    Storage::disk('public')->delete($category->image);
+                }
+                $data['image'] = null;
+            }
+
+            $category->update($data);
+
+            return response()->json([
+                'success' => true,
+                'data' => new CategoryResource($category->fresh()),
+                'message' => 'Category updated successfully.'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Category update failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update category.'
+            ], 500);
+        }
+    }
+
+    /**
      * Get categories with detailed product counts (including active products).
      * Optionally filter to only categories that have products.
      */
@@ -138,5 +303,77 @@ class CategoryController extends Controller
             'success' => true,
             'data' => new CategoryResource($category)
         ]);
+    }
+
+    /**
+     * Remove the specified category (admin only).
+     */
+    public function destroy(Category $category)
+    {
+        // Authorize – only admin can delete categories
+        if (!Auth::user()->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Admin access required.'
+            ], 403);
+        }
+
+        try {
+            // Check if category has products – prevent deletion if any
+            if ($category->products()->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot delete category because it has associated products.'
+                ], 422);
+            }
+
+            // Delete the image if exists
+            if ($category->image && Storage::disk('public')->exists($category->image)) {
+                Storage::disk('public')->delete($category->image);
+            }
+
+            $category->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Category deleted successfully.'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Category deletion failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete category.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate a unique slug for a given name and column.
+     *
+     * @param string $name
+     * @param string $column (slug_en or slug_mm)
+     * @param int|null $ignoreId (for updates, ignore this category id)
+     * @return string
+     */
+    private function generateUniqueSlug($name, $column, $ignoreId = null)
+    {
+        $slug = Str::slug($name);
+        $originalSlug = $slug;
+        $count = 1;
+
+        $query = Category::where($column, $slug);
+        if ($ignoreId) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        while ($query->exists()) {
+            $slug = $originalSlug . '-' . $count++;
+            $query = Category::where($column, $slug);
+            if ($ignoreId) {
+                $query->where('id', '!=', $ignoreId);
+            }
+        }
+
+        return $slug;
     }
 }
