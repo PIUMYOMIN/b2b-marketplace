@@ -366,7 +366,7 @@ Route::group([
         // Categories
         Route::prefix('categories')->group(function () {
             Route::post('/', [CategoryController::class, 'store'])->middleware('role:admin');
-            Route::put('/{category}', [CategoryController::class, 'update'])->middleware('role:admin');
+            Route::put('/{id}', [CategoryController::class, 'update'])->middleware('role:admin');
             Route::delete('/{category}', [CategoryController::class, 'destroy'])->middleware('role:admin');
         });
 

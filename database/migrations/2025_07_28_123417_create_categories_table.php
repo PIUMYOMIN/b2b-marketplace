@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
+return new class extends Migration {
     /**
      * Run the migrations.
      */
@@ -16,14 +15,14 @@ return new class extends Migration
             $table->string('name_en');
             $table->string('slug_en')->unique();
             $table->string('name_mm')->nullable()->unique();
-            $table->string('slug_mm')->unique()->nullable();
+            $table->string('slug_mm')->nullable()->unique();
             $table->string('image')->nullable();
             $table->text('description_en')->nullable();
             $table->text('description_mm')->nullable();
             $table->decimal('commission_rate', 5, 2)->default(10.00);
-            $table->unsignedBigInteger('parent_id')->nullable();
-            $table->unsignedInteger('_lft');
-            $table->unsignedInteger('_rgt');
+
+            // NestedSet columns (parent_id, _lft, _rgt)
+            $table->nestedSet();
 
             // Status
             $table->boolean('is_active')->default(true);
@@ -34,12 +33,6 @@ return new class extends Migration
             // Indexes
             $table->index('slug_en');
             $table->index('is_active');
-            $table->index('parent_id');
-
-            $table->foreign('parent_id')
-                ->references('id')
-                ->on('categories')
-                ->onDelete('cascade');
         });
     }
 

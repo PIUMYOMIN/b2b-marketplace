@@ -125,29 +125,31 @@ class CategoryController extends Controller
     /**
      * Update the specified category (admin only).
      */
-    public function update(Request $request, Category $category)
+    public function update(Request $request, $id)
     {
-        // Authorize – only admin can update categories
-        if (!Auth::user()->hasRole('admin')) {
+        $category = Category::find($id);
+        $user = Auth::user();
+        if (!$user->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized. Admin access required.'
             ], 403);
         }
-
+        
         $validator = Validator::make($request->all(), [
             'name_en' => 'sometimes|required|string|max:255',
-            'name_mm' => 'nullable|string|max:255',
-            'description_en' => 'nullable|string',
-            'description_mm' => 'nullable|string',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // file upload
-            'commission_rate' => 'nullable|numeric|min:0|max:100',
+            'name_mm' => 'sometimes|nullable|string|max:255',
+            'description_en' => 'sometimes|nullable|string',
+            'description_mm' => 'sometimes|nullable|string',
+            'image' => 'sometimes|nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // file upload
+            'commission_rate' => 'sometimes|nullable|numeric|min:0|max:100',
             'parent_id' => [
+                'sometimes',
                 'nullable',
                 'integer',
                 Rule::exists('categories', 'id')->whereNull('deleted_at')
             ],
-            'is_active' => 'boolean'
+            'is_active' => 'sometimes|boolean'
         ]);
 
         if ($validator->fails()) {
@@ -157,55 +159,30 @@ class CategoryController extends Controller
             ], 422);
         }
 
-        try {
-            $data = $request->only([
-                'name_en',
-                'name_mm',
-                'description_en',
-                'description_mm',
-                'commission_rate',
-                'parent_id',
-                'is_active'
-            ]);
-
-            // Handle slug regeneration if name changes
-            if ($request->has('name_en') && $request->name_en !== $category->name_en) {
-                $data['slug_en'] = $this->generateUniqueSlug($request->name_en, 'slug_en', $category->id);
-            }
-            if ($request->has('name_mm') && $request->name_mm !== $category->name_mm) {
-                $data['slug_mm'] = $this->generateUniqueSlug($request->name_mm, 'slug_mm', $category->id);
-            }
-
-            // Handle image upload
-            if ($request->hasFile('image')) {
-                // Delete old image if exists
-                if ($category->image && Storage::disk('public')->exists($category->image)) {
-                    Storage::disk('public')->delete($category->image);
+        // Handle parent change
+        if ($request->filled('parent_id')) {
+            if ($request->parent_id != $category->id) { // prevent self-parent
+                if ($request->parent_id) {
+                    $parent = Category::find($request->parent_id);
+                    if ($parent) {
+                        $category->appendToNode($parent)->save();
+                    } else {
+                        $category->makeRoot()->save();
+                    }
+                } else {
+                    $category->makeRoot()->save();
                 }
-                $path = $request->file('image')->store('categories', 'public');
-                $data['image'] = $path;
-            } elseif ($request->has('image') && $request->input('image') === null) {
-                // Explicitly removing image
-                if ($category->image && Storage::disk('public')->exists($category->image)) {
-                    Storage::disk('public')->delete($category->image);
-                }
-                $data['image'] = null;
             }
-
-            $category->update($data);
-
-            return response()->json([
-                'success' => true,
-                'data' => new CategoryResource($category->fresh()),
-                'message' => 'Category updated successfully.'
-            ]);
-        } catch (\Exception $e) {
-            \Log::error('Category update failed: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update category.'
-            ], 500);
+        } else {
+            // keep original parent if parent_id not sent
+            $category->save();
         }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category updated successfully',
+            'data' => new CategoryResource($category->fresh()),
+        ]);
     }
 
     /**
