@@ -71,10 +71,10 @@ class OrderController extends Controller
 
                 // assign back
                 $item->product_data = $productData;
-            
+
                 return $item;
             });
-        
+
             return $order;
         });
 
@@ -87,10 +87,10 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         DB::beginTransaction();
-        
+
         try {
             $user = Auth::user();
-            
+
             // Validate request - UPDATED PAYMENT METHODS
             $request->validate([
                 'items' => 'required|array|min:1',
@@ -105,14 +105,14 @@ class OrderController extends Controller
 
             // Get cart items or use provided items
             $cartItems = $request->items;
-            
+
             // Group items by seller to create separate orders
             $itemsBySeller = [];
             $subtotal = 0;
 
             foreach ($cartItems as $item) {
                 $product = Product::find($item['product_id']);
-                
+
                 if (!$product) {
                     throw new \Exception("Product not found: " . $item['product_id']);
                 }
@@ -143,7 +143,7 @@ class OrderController extends Controller
 
             // Create orders for each seller
             $orders = [];
-            
+
             foreach ($itemsBySeller as $sellerId => $sellerItems) {
                 // Calculate seller-specific totals
                 $sellerSubtotal = collect($sellerItems)->sum('subtotal');
@@ -243,7 +243,7 @@ class OrderController extends Controller
     public function show(Order $order)
     {
         $user = Auth::user();
-    
+
         // Authorization check
         if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
             return response()->json([
@@ -251,31 +251,31 @@ class OrderController extends Controller
                 'message' => 'Unauthorized to view this order'
             ], 403);
         }
-    
+
         if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to view this order'
             ], 403);
         }
-    
+
         // Load relations
         $order->load(['items.product', 'buyer', 'seller', 'delivery']);
-    
+
         // Modify images URLs in product_data and product
         foreach ($order->items as $item) {
             // Update product_data images
             $productData = $item->product_data;
-        
+
             if (!empty($productData['images']) && is_array($productData['images'])) {
                 $productData['images'] = array_map(function ($img) {
                     $img['url'] = url('storage/' . ltrim($img['url'], '/'));
                     return $img;
                 }, $productData['images']);
             }
-        
+
             $item->product_data = $productData;
-        
+
             // Update product images
             if ($item->product) {
                 $productImages = $item->product->images;
@@ -287,7 +287,7 @@ class OrderController extends Controller
                 }
             }
         }
-    
+
         return response()->json([
             'success' => true,
             'data' => $order
@@ -301,27 +301,27 @@ class OrderController extends Controller
             'payment_status' => 'required|in:paid,failed,refunded',
             'payment_data' => 'nullable|array'
         ]);
-    
+
         DB::beginTransaction();
         try {
             $order->update([
                 'payment_status' => $request->payment_status,
                 'payment_data' => $request->payment_data
             ]);
-        
+
             // If payment is successful, update order status
             if ($request->payment_status === 'paid') {
                 $order->update(['status' => 'confirmed']);
             }
-        
+
             DB::commit();
-        
+
             return response()->json([
                 'success' => true,
                 'message' => 'Payment status updated successfully',
                 'data' => $order
             ]);
-        
+
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -335,7 +335,7 @@ class OrderController extends Controller
     public function cancel(Order $order)
     {
         $user = Auth::user();
-        
+
         // Authorization check
         if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
             return response()->json([
@@ -343,7 +343,7 @@ class OrderController extends Controller
                 'message' => 'Unauthorized to cancel this order'
             ], 403);
         }
-        
+
         if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
             return response()->json([
                 'success' => false,
@@ -380,22 +380,22 @@ class OrderController extends Controller
     public function confirm($id)
     {
         $order = Order::findOrFail($id);
-        
+
         // Update order status
         $order->status = 'confirmed';
         $order->save();
-    
+
         // Create delivery record
         $delivery = new Delivery();
         $delivery->order_id = $order->id;
         $delivery->supplier_id = $order->seller_id;
-        $delivery->delivery_method = 'supplier'; // Default to supplier delivery
-        $delivery->pickup_address = ''; // Will be set by seller
+        $delivery->delivery_method = 'supplier';
+        $delivery->pickup_address = '';
         $delivery->delivery_address = $order->shipping_address;
         $delivery->status = 'pending';
         $delivery->estimated_delivery_date = now()->addDays(5);
         $delivery->save();
-    
+
         // Create initial delivery update
         DeliveryUpdate::create([
             'delivery_id' => $delivery->id,
@@ -403,7 +403,7 @@ class OrderController extends Controller
             'status' => 'pending',
             'notes' => 'Delivery record created. Waiting for seller to choose delivery method.',
         ]);
-    
+
         return response()->json([
             'success' => true,
             'message' => 'Order confirmed successfully',
@@ -417,7 +417,7 @@ class OrderController extends Controller
     public function process(Order $order)
     {
         $user = Auth::user();
-        
+
         if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
             return response()->json([
                 'success' => false,
@@ -448,7 +448,7 @@ class OrderController extends Controller
     public function ship(Request $request, Order $order)
     {
         $user = Auth::user();
-        
+
         if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
             return response()->json([
                 'success' => false,
@@ -486,7 +486,7 @@ class OrderController extends Controller
     public function confirmDelivery(Order $order)
     {
         $user = Auth::user();
-        
+
         if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
             return response()->json([
                 'success' => false,
@@ -518,7 +518,7 @@ class OrderController extends Controller
     public function sellerRecentOrders()
     {
         $user = Auth::user();
-        
+
         if (!$user->hasRole('seller')) {
             return response()->json([
                 'success' => false,
@@ -544,7 +544,7 @@ class OrderController extends Controller
     public function sellerOrderStats()
     {
         $user = Auth::user();
-        
+
         if (!$user->hasRole('seller')) {
             return response()->json([
                 'success' => false,

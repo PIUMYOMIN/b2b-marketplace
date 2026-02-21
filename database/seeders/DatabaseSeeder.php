@@ -13,8 +13,8 @@ class DatabaseSeeder extends Seeder
             CategorySeeder::class,
             UserSeeder::class,
             BusinessTypeSeeder::class,
-            ProductSeeder::class,
-            SellerProfileSeeder::class
+            // ProductSeeder::class,
+            // SellerProfileSeeder::class
         ]);
     }
 }

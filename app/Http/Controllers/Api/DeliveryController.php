@@ -8,7 +8,6 @@ use App\Models\Order;
 use App\Models\DeliveryUpdate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class DeliveryController extends Controller
 {
@@ -16,9 +15,15 @@ class DeliveryController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        
-        $query = Delivery::with(['order', 'platformCourier', 'deliveryUpdates']);
-        
+
+        $query = Delivery::with([
+            'order' => function ($q) {
+                $q->with('items.product');
+            },
+            'platformCourier',
+            'deliveryUpdates'
+        ]);
+
         if ($user->type === 'supplier') {
             $query->where('supplier_id', $user->id);
         } elseif ($user->type === 'courier') {
@@ -29,24 +34,24 @@ class DeliveryController extends Controller
                 $q->where('buyer_id', $user->id);
             });
         }
-        
+
         // Filter by order_id if provided
         if ($request->has('order_id')) {
             $query->where('order_id', $request->order_id);
         }
-        
+
         // Filter by status
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
-        
+
         // Filter by delivery method
         if ($request->has('delivery_method')) {
             $query->where('delivery_method', $request->delivery_method);
         }
-        
+
         $deliveries = $query->latest()->paginate(20);
-        
+
         return response()->json([
             'success' => true,
             'data' => $deliveries
@@ -54,8 +59,19 @@ class DeliveryController extends Controller
     }
 
     // Choose delivery method for an order
-    public function chooseDeliveryMethod(Request $request, Order $order)
+    public function chooseDeliveryMethod(Request $request, $orderId)
     {
+        $order = Order::find($orderId);
+
+        if (!$order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order not found'
+            ], 404);
+        }
+
+        $order->load('delivery');
+
         $request->validate([
             'delivery_method' => 'required|in:supplier,platform',
             'platform_delivery_fee' => 'required_if:delivery_method,platform|numeric|min:0',
@@ -139,13 +155,16 @@ class DeliveryController extends Controller
             $oldStatus = $delivery->status;
             $delivery->status = $request->status;
 
+            if ($request->status === 'delivered') {
+                $delivery->delivered_at = now();
+                // Update the associated order status
+                $delivery->order->update(['status' => 'delivered']);
+            }
+
             // Set timestamps based on status
             switch ($request->status) {
                 case 'picked_up':
                     $delivery->picked_up_at = now();
-                    break;
-                case 'delivered':
-                    $delivery->delivered_at = now();
                     break;
             }
 
@@ -207,6 +226,10 @@ class DeliveryController extends Controller
             $delivery->recipient_phone = $request->recipient_phone;
             $delivery->status = 'delivered';
             $delivery->delivered_at = now();
+
+            // Update the associated order status
+            $delivery->order->update(['status' => 'delivered']);
+
             $delivery->save();
 
             // Create status update

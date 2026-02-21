@@ -62,6 +62,8 @@ class Delivery extends Model
         return $this->belongsTo(Order::class);
     }
 
+     
+
     public function supplier()
     {
         return $this->belongsTo(User::class, 'supplier_id');
@@ -144,7 +146,7 @@ class Delivery extends Model
         $baseFee = 5000; // 5000 MMK base fee
         $weightFee = ($weight ?? $this->package_weight ?? 0) * 100; // 100 MMK per kg
         $distanceFee = $distance ? ($distance * 200) : 0; // 200 MMK per km
-        
+
         return $baseFee + $weightFee + $distanceFee;
     }
 }
