@@ -127,8 +127,20 @@ class CategoryController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $category = Category::find($id);
+        $requestId = uniqid();
+        \Log::info("=== UPDATE REQUEST [$requestId] ===");
+        \Log::info("Method: " . $request->method());
+        \Log::info("URL: " . $request->fullUrl());
+        \Log::info("Headers: " . json_encode($request->headers->all()));
+        \Log::info("All input: ", $request->all());
+        \Log::info("Has name_en? " . ($request->has('name_en') ? 'YES' : 'NO'));
+        \Log::info("Has description_en? " . ($request->has('description_en') ? 'YES' : 'NO'));
+        \Log::info("Has commission_rate? " . ($request->has('commission_rate') ? 'YES' : 'NO'));
+        \Log::info("Files: ", $_FILES);
+
+        $category = Category::findOrFail($id);
         $user = Auth::user();
+
         if (!$user->hasRole('admin')) {
             return response()->json([
                 'success' => false,
@@ -141,7 +153,7 @@ class CategoryController extends Controller
             'name_mm' => 'sometimes|nullable|string|max:255',
             'description_en' => 'sometimes|nullable|string',
             'description_mm' => 'sometimes|nullable|string',
-            'image' => 'sometimes|nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'image' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,jpg,gif,webp|max:5120',
             'commission_rate' => 'sometimes|nullable|numeric|min:0|max:100',
             'parent_id' => [
                 'sometimes',
@@ -149,47 +161,78 @@ class CategoryController extends Controller
                 'integer',
                 Rule::exists('categories', 'id')->whereNull('deleted_at')
             ],
-            'is_active' => 'sometimes|boolean'
+            'is_active' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
-        $data = $request->only([
-            'name_en',
-            'name_mm',
-            'description_en',
-            'description_mm',
-            'commission_rate',
-            'is_active'
-        ]);
-
-        // Regenerate slug if name changed
+        // name_en + slug
         if ($request->has('name_en')) {
-            $data['slug_en'] = $this->generateUniqueSlug(
+            $category->name_en = $request->name_en;
+            $category->slug_en = $this->generateUniqueSlug(
                 $request->name_en,
                 'slug_en',
                 $category->id
             );
         }
 
-        if ($request->has('name_mm') && $request->name_mm) {
-            $data['slug_mm'] = $this->generateUniqueSlug(
-                $request->name_mm,
-                'slug_mm',
-                $category->id
-            );
+        // name_mm + slug_mm
+        if ($request->has('name_mm')) {
+            $category->name_mm = $request->name_mm;
+            if ($request->name_mm) {
+                $category->slug_mm = $this->generateUniqueSlug(
+                    $request->name_mm,
+                    'slug_mm',
+                    $category->id
+                );
+            } else {
+                $category->slug_mm = null;
+            }
         }
 
-        $category->update($data);
+        // descriptions
+        if ($request->has('description_en')) {
+            $category->description_en = $request->description_en;
+        }
+        if ($request->has('description_mm')) {
+            $category->description_mm = $request->description_mm;
+        }
 
-        // Handle parent change
+        // commission_rate
+        if ($request->has('commission_rate')) {
+            $category->commission_rate = $request->commission_rate;
+        }
+
+        // is_active
+        if ($request->has('is_active')) {
+            $category->is_active = (bool) $request->is_active;
+        }
+
+        // image
+        if ($request->hasFile('image')) {
+            if ($category->image && Storage::disk('public')->exists($category->image)) {
+                Storage::disk('public')->delete($category->image);
+            }
+            $path = $request->file('image')->store('categories', 'public');
+            $category->image = $path;
+        } elseif ($request->has('image') && $request->image === "") {
+            if ($category->image && Storage::disk('public')->exists($category->image)) {
+                Storage::disk('public')->delete($category->image);
+            }
+            $category->image = null;
+        }
+
+        // save basic fields
+        $category->save();
+
+        // parent (NestedSet)
         if ($request->has('parent_id')) {
-            if ($request->parent_id != $category->id) { // prevent self-parent
+            if ($request->parent_id != $category->id) {
                 if ($request->parent_id) {
                     $parent = Category::find($request->parent_id);
                     if ($parent) {
@@ -198,13 +241,12 @@ class CategoryController extends Controller
                         $category->makeRoot()->save();
                     }
                 } else {
-                    $category->makeRoot()->save();
+                    $category->makeRoot()->save(); // root
                 }
             }
-        } else {
-            // keep original parent if parent_id not sent
-            $category->save();
         }
+
+        $category->refresh();
 
         return response()->json([
             'success' => true,
@@ -212,6 +254,7 @@ class CategoryController extends Controller
             'data' => new CategoryResource($category),
         ]);
     }
+
 
     /**
      * Get categories with detailed product counts (including active products).
@@ -365,25 +408,45 @@ class CategoryController extends Controller
      * @param int|null $ignoreId (for updates, ignore this category id)
      * @return string
      */
-    private function generateUniqueSlug($name, $column, $ignoreId = null)
+    private function generateUniqueSlug(string $name, string $column, ?int $ignoreId = null): string
     {
-        $slug = Str::slug($name);
-        $originalSlug = $slug;
-        $count = 1;
+        // Generate base slug
+        $baseSlug = preg_replace('/[^A-Za-z0-9\-]+/u', '-', $name);
+        $baseSlug = trim($baseSlug, '-');
 
-        $query = Category::where($column, $slug);
+        // Fallback if slug becomes empty (important for Burmese text)
+        if (empty($baseSlug)) {
+            $baseSlug = Str::random(8);
+        }
+
+        // Get all existing slugs that start with base slug
+        $query = Category::where($column, 'like', $baseSlug . '%');
+
         if ($ignoreId) {
             $query->where('id', '!=', $ignoreId);
         }
 
-        while ($query->exists()) {
-            $slug = $originalSlug . '-' . $count++;
-            $query = Category::where($column, $slug);
-            if ($ignoreId) {
-                $query->where('id', '!=', $ignoreId);
+        // Ignore soft deleted records
+        $query->whereNull('deleted_at');
+
+        $existingSlugs = $query->pluck($column)->toArray();
+
+        // If base slug not taken, return it
+        if (!in_array($baseSlug, $existingSlugs)) {
+            return $baseSlug;
+        }
+
+        // Extract numeric suffixes
+        $numbers = [];
+
+        foreach ($existingSlugs as $slug) {
+            if (preg_match('/^' . preg_quote($baseSlug, '/') . '-(\d+)$/', $slug, $matches)) {
+                $numbers[] = (int) $matches[1];
             }
         }
 
-        return $slug;
+        $nextNumber = empty($numbers) ? 1 : max($numbers) + 1;
+
+        return $baseSlug . '-' . $nextNumber;
     }
 }
