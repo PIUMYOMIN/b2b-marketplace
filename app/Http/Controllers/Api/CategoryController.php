@@ -135,13 +135,13 @@ class CategoryController extends Controller
                 'message' => 'Unauthorized. Admin access required.'
             ], 403);
         }
-        
+
         $validator = Validator::make($request->all(), [
             'name_en' => 'sometimes|required|string|max:255',
             'name_mm' => 'sometimes|nullable|string|max:255',
             'description_en' => 'sometimes|nullable|string',
             'description_mm' => 'sometimes|nullable|string',
-            'image' => 'sometimes|nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // file upload
+            'image' => 'sometimes|nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
             'commission_rate' => 'sometimes|nullable|numeric|min:0|max:100',
             'parent_id' => [
                 'sometimes',
@@ -159,8 +159,36 @@ class CategoryController extends Controller
             ], 422);
         }
 
+        $data = $request->only([
+            'name_en',
+            'name_mm',
+            'description_en',
+            'description_mm',
+            'commission_rate',
+            'is_active'
+        ]);
+
+        // Regenerate slug if name changed
+        if ($request->has('name_en')) {
+            $data['slug_en'] = $this->generateUniqueSlug(
+                $request->name_en,
+                'slug_en',
+                $category->id
+            );
+        }
+
+        if ($request->has('name_mm') && $request->name_mm) {
+            $data['slug_mm'] = $this->generateUniqueSlug(
+                $request->name_mm,
+                'slug_mm',
+                $category->id
+            );
+        }
+
+        $category->update($data);
+
         // Handle parent change
-        if ($request->filled('parent_id')) {
+        if ($request->has('parent_id')) {
             if ($request->parent_id != $category->id) { // prevent self-parent
                 if ($request->parent_id) {
                     $parent = Category::find($request->parent_id);
@@ -181,7 +209,7 @@ class CategoryController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Category updated successfully',
-            'data' => new CategoryResource($category->fresh()),
+            'data' => new CategoryResource($category),
         ]);
     }
 

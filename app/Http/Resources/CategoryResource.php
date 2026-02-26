@@ -55,4 +55,45 @@ class CategoryResource extends JsonResource
         }
         return Storage::disk('public')->url($path);
     }
+
+    private function generateUniqueSlug(string $name, string $column, ?int $ignoreId = null): string
+    {
+        // Generate base slug
+        $baseSlug = Str::slug($name);
+
+        // Fallback if slug becomes empty (important for Burmese text)
+        if (empty($baseSlug)) {
+            $baseSlug = Str::random(8);
+        }
+
+        // Get all existing slugs that start with base slug
+        $query = Category::where($column, 'like', $baseSlug . '%');
+
+        if ($ignoreId) {
+            $query->where('id', '!=', $ignoreId);
+        }
+
+        // Ignore soft deleted records
+        $query->whereNull('deleted_at');
+
+        $existingSlugs = $query->pluck($column)->toArray();
+
+        // If base slug not taken, return it
+        if (!in_array($baseSlug, $existingSlugs)) {
+            return $baseSlug;
+        }
+
+        // Extract numeric suffixes
+        $numbers = [];
+
+        foreach ($existingSlugs as $slug) {
+            if (preg_match('/^' . preg_quote($baseSlug, '/') . '-(\d+)$/', $slug, $matches)) {
+                $numbers[] = (int) $matches[1];
+            }
+        }
+
+        $nextNumber = empty($numbers) ? 1 : max($numbers) + 1;
+
+        return $baseSlug . '-' . $nextNumber;
+    }
 }

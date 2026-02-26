@@ -12,15 +12,30 @@ class Category extends Model
 
     protected $fillable = [
         'name_en',
-        'slug_en',
         'name_mm',
-        'slug_mm',
         'description_en',
         'description_mm',
-        'image',
         'commission_rate',
+        'parent_id',
         'is_active',
+        'image',
+        'slug_en'
     ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'commission_rate' => 'float',
+    ];
+
+    public function parent()
+    {
+        return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    public function children()
+    {
+        return $this->hasMany(Category::class, 'parent_id');
+    }
 
     // Relations
     public function products()

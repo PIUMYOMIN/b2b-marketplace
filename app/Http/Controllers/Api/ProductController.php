@@ -382,9 +382,9 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name_en' => 'required|string|max:255',
             'name_mm' => 'nullable|string|max:255',
-            'description' => 'required|string',
+            'description_en' => 'required|string',
             'description_mm' => 'nullable|string',
             'price' => 'required|numeric|min:0',
             'quantity' => 'required|integer|min:0',
@@ -631,9 +631,9 @@ class ProductController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|string|max:255',
+            'name_en' => 'sometimes|string|max:255',
             'name_mm' => 'nullable|string|max:255',
-            'description' => 'sometimes|string',
+            'description_en' => 'sometimes|string',
             'description_mm' => 'nullable|string',
             'price' => 'sometimes|numeric|min:0',
             'quantity' => 'sometimes|integer|min:0',
@@ -695,12 +695,12 @@ class ProductController extends Controller
             ]);
 
             // Handle language-specific fields
-            if ($request->has('name')) {
-                $updateData['name_en'] = $request->name;
+            if ($request->has('name_en') && $request->name_en !== null) {
+                $updateData['name_en'] = $request->name_en;
 
                 // Generate new slug if name changed
-                if ($product->name_en !== $request->name) {
-                    $newSlug = Str::slug($request->name);
+                if ($product->name_en !== $request->name_en) {
+                    $newSlug = Str::slug($request->name_en);
                     $count = Product::where('slug_en', 'LIKE', $newSlug . '%')
                         ->where('id', '!=', $product->id)
                         ->count();
@@ -727,7 +727,7 @@ class ProductController extends Controller
                 }
             }
 
-            if ($request->has('description')) {
+            if ($request->has('description_en') && $request->description_en !== null) {
                 $updateData['description_en'] = $request->description;
             }
 
