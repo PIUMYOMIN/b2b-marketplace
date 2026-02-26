@@ -44,7 +44,7 @@ class ProductController extends Controller
 
         $perPage = $request->input('per_page', 15);
 
-        $query = Product::with(['category', 'seller'])
+        $query = Product::with(['category', 'seller.sellerProfile'])
             ->withCount([
                 'reviews as reviews_count' => function ($query) {
                     $query->where('status', 'approved');
