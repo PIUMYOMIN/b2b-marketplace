@@ -23,7 +23,6 @@ class CategoryController extends Controller
         // Get only root categories (parent_id null) that are active
         $categories = Category::whereNull('parent_id')
             ->with('children')
-            ->where('is_active', true)
             ->get();
 
         // Calculate product count including all descendants for each root category
