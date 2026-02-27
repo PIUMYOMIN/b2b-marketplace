@@ -152,39 +152,9 @@ class ProductController extends Controller
 
         $products = $query->paginate($perPage);
 
-        $formattedProducts = $products->getCollection()->map(function ($product) {
-            return [
-                'id' => $product->id,
-                'name_en' => $product->name_en,
-                'slug_en' => $product->slug_en,
-                'name_mm' => $product->name_mm,
-                'slug_mm' => $product->slug_mm,
-                'description_en' => $product->description_en,
-                'description_mm' => $product->description_mm,
-                'price' => (float) $product->price,
-                'quantity' => $product->quantity,
-                'category_id' => $product->category_id,
-                'seller_id' => $product->seller_id,
-                'average_rating' => (float) ($product->average_rating ?? 0),
-                'review_count' => $product->reviews_count,
-                'specifications' => $product->specifications,
-                'images' => $this->formatImages($product->images),
-                'is_active' => $product->is_active,
-                'status' => $product->status,
-                'category' => $product->category,
-                'seller' => $product->seller,
-                'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
-                'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
-                'is_on_sale' => (bool) $product->is_on_sale,
-                'discount_start' => $product->discount_start,
-                'discount_end' => $product->discount_end,
-                'compare_at_price' => $product->compare_at_price ? (float) $product->compare_at_price : null,
-            ];
-        });
-
         return response()->json([
             'success' => true,
-            'data' => $formattedProducts,
+            'data' => ProductResource::collection($products),
             'meta' => [
                 'current_xpage' => $products->currentPage(),
                 'per_page' => $products->perPage(),
