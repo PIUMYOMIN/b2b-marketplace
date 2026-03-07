@@ -1,4 +1,5 @@
 <IfModule mod_rewrite.c>
+    Options +FollowSymLinks   # 👈 ADD THIS LINE
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
     </IfModule>
