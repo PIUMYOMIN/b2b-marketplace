@@ -12,6 +12,8 @@ use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
+use Carbon\Carbon;
+use App\Rules\Recaptcha;
 
 class AuthController extends Controller
 {
@@ -29,7 +31,8 @@ class AuthController extends Controller
             'type' => 'required|in:buyer,seller',
             'address' => 'nullable|string',
             'city' => 'nullable|string',
-            'state' => 'nullable|string'
+            'state' => 'nullable|string',
+            'recaptcha_token' => ['required', new Recaptcha],
         ]);
 
         return DB::transaction(function () use ($validated) {
@@ -167,13 +170,13 @@ class AuthController extends Controller
     {
         $request->validate([
             'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
-            'password' => 'required'
+            'password' => 'required',
+            'remember' => 'nullable|boolean',
+            'recaptcha_token' => ['required', new Recaptcha],
         ]);
 
-        // Normalize Myanmar phone number to +959 format
         $phone = $this->normalizeMyanmarPhone($request->phone);
 
-        // Validate normalized phone
         if (!$this->isValidMyanmarPhone($phone)) {
             return response()->json([
                 'success' => false,
@@ -181,7 +184,6 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Find user by normalized phone
         $user = User::where('phone', $phone)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
@@ -191,7 +193,6 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Check if user is active
         if (!$user->is_active || $user->status !== 'active') {
             return response()->json([
                 'success' => false,
@@ -199,15 +200,19 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Create API token
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Set token expiration based on remember me
+        $expiration = $request->boolean('remember')
+            ? Carbon::now()->addDays(30)   // 30 days for "remember me"
+            : Carbon::now()->addHours(2);  // 2 hours for normal session
+
+        $token = $user->createToken('auth_token', ['*'], $expiration);
 
         return response()->json([
             'success' => true,
             'message' => 'Login successful',
             'data' => [
                 'user' => $user->load('roles'),
-                'token' => $token
+                'token' => $token->plainTextToken
             ]
         ]);
     }

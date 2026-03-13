@@ -6,7 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\VerificationController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\ContactController;
+use App\Http\Controllers\Api\ContactMessageController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
@@ -55,7 +55,7 @@ Route::group([
     });
 
     //Contact
-    Route::post('/contact', [ContactController::class, 'submit']);
+    Route::post('/contact', [ContactMessageController::class, 'submit']);
 
     // --------------------
     // Public Routes
@@ -164,6 +164,13 @@ Route::group([
                 Route::get('/', [ProductController::class, 'adminIndex']);
                 Route::post('/{product}/approve', [ProductController::class, 'approve']);
                 Route::post('/{product}/reject', [ProductController::class, 'reject']);
+            });
+
+            Route::prefix('contact-messages')->group(function () {
+                Route::get('/', [ContactMessageController::class, 'index']);
+                Route::get('/{id}', [ContactMessageController::class, 'show']);
+                Route::put('/{id}/read', [ContactMessageController::class, 'markAsRead']);
+                Route::delete('/{id}', [ContactMessageController::class, 'destroy']);
             });
 
         });

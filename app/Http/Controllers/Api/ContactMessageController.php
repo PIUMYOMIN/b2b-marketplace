@@ -8,9 +8,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use App\Mail\ContactFormMail;
 use App\Models\ContactMessage;
-use App\Rules\Recaptcha;
 
-class ContactController extends Controller
+class ContactMessageController extends Controller
 {
     /**
      * Display a listing of contact messages.
@@ -61,7 +60,6 @@ class ContactController extends Controller
             'phone' => 'nullable|string|max:20',
             'subject' => 'required|string|max:255',
             'message' => 'required|string',
-            'g-recaptcha-response' => ['required', new Recaptcha],
         ]);
 
         if ($validator->fails()) {
