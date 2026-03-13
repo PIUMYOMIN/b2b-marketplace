@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\VerificationController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ProductController;
@@ -54,16 +55,16 @@ Route::group([
         Route::post('/resend', [VerificationController::class, 'resend'])->middleware('auth:sanctum');
     });
 
+    // Password Reset
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink']);
+    Route::post('/reset-password', [PasswordResetController::class, 'reset']);
+
     //Contact
     Route::post('/contact', [ContactMessageController::class, 'submit']);
 
     // --------------------
     // Public Routes
     // --------------------
-
-    // Business Type (Public)
-    Route::get('/business-types', [BusinessTypeController::class, 'index']);
-    Route::get('/business-types/{slug}', [BusinessTypeController::class, 'show']);
 
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
@@ -290,6 +291,12 @@ Route::group([
 
             // Store policies
             Route::put('/policies', [SellerController::class, 'updatePolicies']);
+        });
+
+        // Business Types
+        Route::group(['prefix' => 'business-types'], function () {
+            Route::get('/', [BusinessTypeController::class, 'index']);
+            Route::get('/{slug}', [BusinessTypeController::class, 'show']);
         });
 
         // Delivery Management
