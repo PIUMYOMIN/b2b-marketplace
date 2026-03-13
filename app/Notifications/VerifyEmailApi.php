@@ -36,12 +36,15 @@ class VerifyEmailApi extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $frontendUrl = config('app.frontend_url'); // e.g., http://localhost:5173
+        $frontendUrl = config('app.frontend_url');
         $verificationUrl = $this->frontendVerificationUrl($notifiable);
 
         return (new MailMessage)
             ->subject('Verify Your Email Address')
-            ->markdown('emails.verify-email', ['url' => $verificationUrl]);
+            ->view('emails.verify-email', [
+                'url' => $verificationUrl,
+                'user' => $notifiable,
+            ]);
     }
 
     /**

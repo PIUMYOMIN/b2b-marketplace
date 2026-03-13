@@ -56,7 +56,7 @@ Route::group([
     });
 
     // Password Reset
-    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink']);
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->name('password.reset');
     Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 
     //Contact
