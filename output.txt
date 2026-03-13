@@ -427,6 +427,7 @@
 - `user_id` (varchar)
 - `email` (varchar)
 - `phone` (varchar)
+- `date_of_birth` (date)
 - `password` (varchar)
 - `type` (enum)
 - `address` (text)

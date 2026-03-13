@@ -39,6 +39,8 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             'seller.onboarding' => \App\Http\Middleware\CheckSellerOnboarding::class,
             'seller.verification' => \App\Http\Middleware\CheckSellerVerification::class,
+            'seller.active' => \App\Http\Middleware\CheckSellerActive::class,
+            'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         ],
     ];
 }

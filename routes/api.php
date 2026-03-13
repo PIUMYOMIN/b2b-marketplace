@@ -3,8 +3,10 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\VerificationController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
@@ -44,6 +46,16 @@ Route::group([
             Route::post('/logout', [AuthController::class, 'logout']);
         });
     });
+
+    Route::prefix('email')->group(function () {
+        Route::get('/verify/{id}/{hash}', [VerificationController::class, 'verify'])
+            ->name('verification.verify')
+            ->withoutMiddleware(['auth', 'auth:sanctum', 'verified']);
+        Route::post('/resend', [VerificationController::class, 'resend'])->middleware('auth:sanctum');
+    });
+
+    //Contact
+    Route::post('/contact', [ContactController::class, 'submit']);
 
     // --------------------
     // Public Routes

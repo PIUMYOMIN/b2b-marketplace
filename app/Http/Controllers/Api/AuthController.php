@@ -3,16 +3,15 @@
 namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 
+use Illuminate\Auth\Events\Registered;
 use App\Models\User;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
 use App\Models\BusinessType;
 use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\DB;
-use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -25,7 +24,7 @@ class AuthController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'nullable|string|email|max:255|unique:users',
-            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/',   'unique:users'],
+            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/', 'unique:users'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'type' => 'required|in:buyer,seller',
             'address' => 'nullable|string',
@@ -46,7 +45,7 @@ class AuthController extends Controller
 
             // Generate sequential user_id
             $lastUser = User::withTrashed()->orderBy('id', 'desc')->first();
-            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0',    STR_PAD_LEFT) : '000001';
+            $nextUserId = $lastUser ? str_pad($lastUser->id + 1, 6, '0', STR_PAD_LEFT) : '000001';
 
             // Create user
             $user = User::create([
@@ -108,6 +107,9 @@ class AuthController extends Controller
                 ]);
             }
 
+            // 🔔 Send email verification notification
+            event(new Registered($user));
+
             // Generate API token
             $token = $user->createToken('auth_token')->plainTextToken;
 
@@ -116,11 +118,12 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'User registered successfully',
+                'message' => 'User registered successfully. Please verify your email.',
                 'data' => [
                     'user' => $user,
                     'token' => $token,
-                    'requires_onboarding' => $validated['type'] === 'seller'
+                    'requires_onboarding' => $validated['type'] === 'seller',
+                    'email_verification_required' => true
                 ]
             ], 201);
         });
