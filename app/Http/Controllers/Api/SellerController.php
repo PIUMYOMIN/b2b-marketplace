@@ -2259,8 +2259,8 @@ class SellerController extends Controller
             $sellerProfile->update([
                 'documents_submitted' => true,
                 'documents_submitted_at' => now(),
-                'document_status' => 'pending', // Use string directly
-                'verification_status' => 'under_review', // Use string directly
+                'document_status' => 'pending',
+                'verification_status' => 'under_review',
                 'status' => $sellerProfile->status === 'setup_pending' ? 'pending' : $sellerProfile->status
             ]);
 
