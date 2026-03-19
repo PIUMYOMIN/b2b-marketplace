@@ -172,7 +172,7 @@ class AuthController extends Controller
             'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
             'password' => 'required',
             'remember' => 'nullable|boolean',
-            'recaptcha_token' => ['required', new Recaptcha],
+            // 'recaptcha_token' => ['required', new Recaptcha],
         ]);
 
         $phone = $this->normalizeMyanmarPhone($request->phone);

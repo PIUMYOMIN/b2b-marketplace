@@ -3860,17 +3860,14 @@ class SellerController extends Controller
 
             // Get sellers who need verification review
             $query = SellerProfile::where(function ($q) {
-                // Sellers with uploaded identity documents
                 $q->whereNotNull('identity_document_front')
                     ->orWhereNotNull('business_registration_document');
             })
-                ->where(function ($q) {
-                    // And haven't been fully verified/rejected yet
-                    $q->where('document_status', '!=', 'approved')
-                        ->orWhereNull('document_status')
-                        ->orWhere('verification_status', '!=', 'verified');
-                })
                 ->where('documents_submitted', true)
+                ->where(function ($q) {
+                    $q->whereIn('document_status', ['pending', 'under_review'])
+                        ->orWhereNull('document_status');
+                })
                 ->with(['user:id,name,email,phone'])
                 ->orderBy('documents_submitted_at', 'desc');
 
