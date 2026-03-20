@@ -1,14 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\FrontendController;
 
-// Serve React app for all non-API routes
-Route::get('/{any}', function () {
-    $path = public_path('index.html');
-
-    if (!File::exists($path)) {
-        abort(404, 'Frontend not built yet');
-    }
-
-    return file_get_contents($path);
-})->where('any', '^(?!api/).*$');
+// All non‑API routes go to the frontend controller
+Route::get('/{any?}', [FrontendController::class, 'index'])
+    ->where('any', '^(?!api/).*$');
