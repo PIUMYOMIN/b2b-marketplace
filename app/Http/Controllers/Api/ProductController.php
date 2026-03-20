@@ -347,7 +347,7 @@ class ProductController extends Controller
     }
 
     /**
-     * Store a newly created product
+     * Store a newly created product (seller only)
      */
     public function store(Request $request)
     {
@@ -362,7 +362,7 @@ class ProductController extends Controller
             'specifications' => 'nullable|array',
             'images' => 'nullable|array',
             'images.*.url' => 'required|string',
-            'images.*.angle' => 'sometimes|string',
+            'images.*.angle' => 'sometimes|string|in:front,back,side,top,default',
             'images.*.is_primary' => 'sometimes|boolean',
             'moq' => 'required|integer|min:1',
             'min_order_unit' => 'required|string|in:piece,kg,gram,meter,set,pack,box,pallet',
@@ -392,9 +392,9 @@ class ProductController extends Controller
         }
 
         try {
-            // Check for duplicate submission within last 30 seconds
+            // Check for duplicate submission
             $recentProduct = Product::where('seller_id', Auth::id())
-                ->where('name_en', $request->name)
+                ->where('name_en', $request->name_en)
                 ->where('created_at', '>=', now()->subSeconds(30))
                 ->first();
 
@@ -431,13 +431,13 @@ class ProductController extends Controller
             ]);
 
             // Add language-specific fields
-            $productData['name_en'] = $request->name;
+            $productData['name_en'] = $request->name_en;
             $productData['name_mm'] = $request->name_mm;
-            $productData['description_en'] = $request->description;
+            $productData['description_en'] = $request->description_en;
             $productData['description_mm'] = $request->description_mm;
 
             // Generate slugs
-            $productData['slug_en'] = Str::slug($request->name);
+            $productData['slug_en'] = Str::slug($request->name_en);
             $productData['slug_mm'] = $request->name_mm ? Str::slug($request->name_mm) : null;
 
             // Ensure unique slugs
@@ -456,24 +456,28 @@ class ProductController extends Controller
             $productData['seller_id'] = Auth::id();
             $productData['is_active'] = $request->get('is_active', true);
 
+            // Process images: move from temp to permanent storage
+            $permanentImages = [];
             if ($request->has('images') && is_array($request->images)) {
-                $permanentImages = [];
-
                 foreach ($request->images as $image) {
                     $tempPath = $image['url'];
 
-                    $filename = basename($tempPath);
-                    $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' . $filename;
+                    // Security: ensure the path belongs to the current user
+                    $expectedPrefix = 'products/' . Auth::id() . '/';
+                    if (Str::startsWith($tempPath, $expectedPrefix)) {
+                        $filename = basename($tempPath);
+                        $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' . $filename;
 
-                    if (Storage::disk('public')->exists($tempPath)) {
-                        Storage::disk('public')->move($tempPath, $newPath);
-
-                        $permanentImages[] = [
-                            'url' => $newPath,
-                            'angle' => $image['angle'] ?? 'default',
-                            'is_primary' => $image['is_primary'] ?? false
-                        ];
+                        if (Storage::disk('public')->exists($tempPath)) {
+                            Storage::disk('public')->move($tempPath, $newPath);
+                            $permanentImages[] = [
+                                'url' => $newPath,
+                                'angle' => $image['angle'] ?? 'default',
+                                'is_primary' => $image['is_primary'] ?? false
+                            ];
+                        }
                     } else {
+                        // If path is not a temp path (maybe external URL), store as is (not recommended)
                         $permanentImages[] = [
                             'url' => $tempPath,
                             'angle' => $image['angle'] ?? 'default',
@@ -481,7 +485,6 @@ class ProductController extends Controller
                         ];
                     }
                 }
-
                 $productData['images'] = $permanentImages;
             }
 
@@ -529,12 +532,9 @@ class ProductController extends Controller
                 'public'
             );
 
-            // Generate full URL for the image
-            $fullUrl = Storage::disk('public')->url($path);
-
+            // Return the relative path (no full URL)
             $imageData = [
-                'url' => $path, // Store the path for later use when moving to permanent location
-                'full_url' => $fullUrl, // Provide full URL for immediate frontend use
+                'url' => $path,
                 'angle' => $angle,
                 'is_primary' => false,
                 'uploaded_at' => now()->toISOString()
@@ -579,26 +579,29 @@ class ProductController extends Controller
     }
 
     /**
-     * Update the specified product
+     * Get product data for editing (seller only)
+     * Returns raw data including relative image paths.
      */
-    public function update($slugOrId, Request $request)
+    public function getProductForEdit($id)
     {
-        $product = Product::where('slug_en', $slugOrId)->first() ?? Product::find($slugOrId);
+        $product = Product::where('seller_id', Auth::id())->findOrFail($id);
 
-        if (!$product) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Product not found'
-            ], 404);
-        }
+        // Return raw data including images as stored (relative paths)
+        $data = $product->toArray();
+        $data['images'] = $product->images; // Already array of objects with 'url', 'angle', 'is_primary'
 
-        // Authorization check - only seller or admin can update
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('seller')) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized to update this product'
-            ], 403);
-        }
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ]);
+    }
+
+    /**
+     * Update the specified product (seller only)
+     */
+    public function update($id, Request $request)
+    {
+        $product = Product::where('seller_id', Auth::id())->findOrFail($id);
 
         $validator = Validator::make($request->all(), [
             'name_en' => 'sometimes|string|max:255',
@@ -610,11 +613,13 @@ class ProductController extends Controller
             'category_id' => 'sometimes|exists:categories,id',
             'specifications' => 'nullable|array',
             'images' => 'nullable|array',
+            'images.*.url' => 'required|string',
+            'images.*.angle' => 'sometimes|string|in:front,back,side,top,default',
+            'images.*.is_primary' => 'sometimes|boolean',
             'moq' => 'sometimes|integer|min:1',
             'min_order_unit' => 'sometimes|string|in:piece,kg,gram,meter,set,pack,box,pallet',
             'lead_time' => 'nullable|string|max:255',
             'is_active' => 'sometimes|boolean',
-            // New fields
             'brand' => 'nullable|string|max:255',
             'model' => 'nullable|string|max:255',
             'color' => 'nullable|string|max:255',
@@ -664,11 +669,9 @@ class ProductController extends Controller
                 'additional_info'
             ]);
 
-            // Handle language-specific fields
+            // Handle name/description updates and slugs
             if ($request->has('name_en') && $request->name_en !== null) {
                 $updateData['name_en'] = $request->name_en;
-
-                // Generate new slug if name changed
                 if ($product->name_en !== $request->name_en) {
                     $newSlug = Str::slug($request->name_en);
                     $count = Product::where('slug_en', 'LIKE', $newSlug . '%')
@@ -683,8 +686,6 @@ class ProductController extends Controller
 
             if ($request->has('name_mm') && $request->name_mm !== null) {
                 $updateData['name_mm'] = $request->name_mm;
-
-                // Generate new slug if Myanmar name changed
                 if ($product->name_mm !== $request->name_mm) {
                     $newSlugMm = Str::slug($request->name_mm);
                     $count = Product::where('slug_mm', 'LIKE', $newSlugMm . '%')
@@ -697,18 +698,68 @@ class ProductController extends Controller
                 }
             }
 
-            if ($request->has('description_en') && $request->description_en !== null) {
-                $updateData['description_en'] = $request->description;
+            if ($request->has('description_en')) {
+                $updateData['description_en'] = $request->description_en;
             }
-
-            if ($request->has('description_mm') && $request->description_mm !== null) {
+            if ($request->has('description_mm')) {
                 $updateData['description_mm'] = $request->description_mm;
             }
 
-            // If images are provided in the update, handle them
-            if ($request->has('images')) {
-                $updateData['images'] = $request->images;
+            // Process images
+            $oldImages = $product->images ?? [];
+            $newImages = $request->images ?? [];
+
+            $finalImages = [];
+
+            // 1. Process new uploaded images (temp paths)
+            foreach ($newImages as $image) {
+                $tempPath = $image['url'];
+                $expectedPrefix = 'products/' . Auth::id() . '/';
+
+                if (Str::startsWith($tempPath, $expectedPrefix)) {
+                    // This is a temp image from uploadImage endpoint, move it
+                    $filename = basename($tempPath);
+                    $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' . $filename;
+                    if (Storage::disk('public')->exists($tempPath)) {
+                        Storage::disk('public')->move($tempPath, $newPath);
+                        $finalImages[] = [
+                            'url' => $newPath,
+                            'angle' => $image['angle'] ?? 'default',
+                            'is_primary' => $image['is_primary'] ?? false
+                        ];
+                    }
+                } else {
+                    // This is an existing image (relative path already in permanent location)
+                    // Check if it belongs to the product to avoid security issues
+                    $isValid = false;
+                    foreach ($oldImages as $oldImage) {
+                        if ($oldImage['url'] === $tempPath) {
+                            $isValid = true;
+                            break;
+                        }
+                    }
+                    if ($isValid) {
+                        $finalImages[] = [
+                            'url' => $tempPath,
+                            'angle' => $image['angle'] ?? 'default',
+                            'is_primary' => $image['is_primary'] ?? false
+                        ];
+                    }
+                }
             }
+
+            // 2. Delete images that are no longer in the final array
+            $oldPaths = collect($oldImages)->pluck('url')->toArray();
+            $newPaths = collect($finalImages)->pluck('url')->toArray();
+            $pathsToDelete = array_diff($oldPaths, $newPaths);
+
+            foreach ($pathsToDelete as $path) {
+                if (Storage::disk('public')->exists($path)) {
+                    Storage::disk('public')->delete($path);
+                }
+            }
+
+            $updateData['images'] = $finalImages;
 
             $product->update($updateData);
 
@@ -719,6 +770,7 @@ class ProductController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            \Log::error('Product update error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update product: ' . $e->getMessage()

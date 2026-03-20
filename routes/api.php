@@ -235,16 +235,26 @@ Route::group([
             Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
             Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
 
-            // Seller Product Management
-            Route::get('/products/my-products', [ProductController::class, 'myProducts']);
-
             Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
             Route::get('/my-store', [SellerController::class, 'myStore']);
 
             //Product
             Route::prefix('products')->group(function () {
+                // Seller Product Management
+                Route::post('/', [ProductController::class, 'store']);
+                Route::get('/', [ProductController::class, 'myProducts']);
+                Route::get('/{id}/edit', [ProductController::class, 'getProductForEdit']);
                 Route::put('/{slugOrId}', [ProductController::class, 'update']);
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
+
+                Route::get('/search', [ProductController::class, 'search']);
+                Route::post('/{product}/reviews', [ReviewController::class, 'store'])->middleware('role:buyer');
+
+                // Image Management
+                Route::post('/upload-image', [ProductController::class, 'uploadImage']);
+                Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct']);
+                Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
+                Route::post('/{product}/set-primary-image/{imageIndex}', [ProductController::class, 'setPrimaryImage']);
 
                 Route::post('/{id}/apply-discount', [ProductController::class, 'applyProductDiscount']);
                 Route::post('/{id}/remove-discount', [ProductController::class, 'removeDiscount']);
@@ -350,26 +360,6 @@ Route::group([
             Route::prefix('profile')->group(function () {
                 Route::put('/', [UserController::class, 'updateProfile']);
                 Route::put('/password', [UserController::class, 'changePassword']);
-            });
-        });
-
-        // Products
-        Route::prefix('products')->group(function () {
-            Route::get('/search', [ProductController::class, 'search']);
-            Route::post('/{product}/reviews', [ReviewController::class, 'store'])->middleware('role:buyer');
-
-            // Image Management
-            Route::post('/upload-image', [ProductController::class, 'uploadImage']);
-            Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct']);
-            Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
-            Route::post('/{product}/set-primary-image/{imageIndex}', [ProductController::class, 'setPrimaryImage']);
-
-            // Seller/Admin management
-            Route::middleware('role:seller|admin')->group(function () {
-                Route::post('/', [ProductController::class, 'store']);
-
-                Route::delete('/{product}', [ProductController::class, 'destroy']);
-                Route::get('/my-products', [ProductController::class, 'myProducts']);
             });
         });
 
