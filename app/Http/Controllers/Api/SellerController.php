@@ -449,116 +449,64 @@ class SellerController extends Controller
         }
     }
 
-    /**
-     * Upload store logo (public endpoint or internal usage)
-     */
-    public function uploadStoreLogo($requestOrFile, $sellerProfileId = null)
+    public function uploadStoreLogo(Request $request)
     {
-        try {
-            // Handle both Request object and UploadedFile object
-            if ($requestOrFile instanceof Request) {
-                $user = $requestOrFile->user();
-                $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+        $validator = Validator::make($request->all(), [
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+        ]);
 
-                if (!$sellerProfile) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Seller profile not found'
-                    ], 404);
-                }
-
-                $validator = Validator::make($requestOrFile->all(), [
-                    'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
-                ]);
-
-                if ($validator->fails()) {
-                    return response()->json([
-                        'success' => false,
-                        'errors' => $validator->errors()
-                    ], 422);
-                }
-
-                $file = $requestOrFile->file('image');
-                $profileId = $sellerProfile->id;
-            } else {
-                // Direct file upload (internal usage)
-                $file = $requestOrFile;
-                $profileId = $sellerProfileId;
-            }
-
-            $path = $this->saveStoreLogo($file, $profileId);
-
-            if (!$path) {
-                if ($requestOrFile instanceof Request) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Failed to upload logo'
-                    ], 500);
-                }
-                return null;
-            }
-
-            // Update seller profile with logo path if Request object
-            if ($requestOrFile instanceof Request) {
-                $sellerProfile->update(['store_logo' => $path]);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Store logo uploaded successfully',
-                    'data' => [
-                        'url' => url('storage/' . $path),
-                        'path' => $path
-                    ]
-                ]);
-            }
-
-            // Return path if called internally
-            return $path;
-
-        } catch (\Exception $e) {
-            Log::error('Failed to upload store logo: ' . $e->getMessage());
-            if ($requestOrFile instanceof Request) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to upload store logo'
-                ], 500);
-            }
-            return null;
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
+
+        $user = $request->user();
+        $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+        if (!$sellerProfile) {
+            return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+        }
+
+        $path = $this->saveStoreLogo($request->file('image'), $sellerProfile->id);
+
+        if ($path) {
+            // Update the profile with the new path
+            $sellerProfile->update(['store_logo' => $path]);
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'url' => url('storage/' . $path),
+                    'path' => $path
+                ]
+            ]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Failed to upload logo'], 500);
     }
 
     /**
-     * Save store logo file
-     */
-    private function saveStoreLogo($file, $storeId)
+ * Save store logo file and return the storage path.
+ *
+ * @param \Illuminate\Http\UploadedFile $file
+ * @param int $sellerProfileId
+ * @return string|null
+ */
+    private function saveStoreLogo($file, $sellerProfileId)
     {
-        $sellerProfile = SellerProfile::find($storeId);
         try {
-            // Create organized path structure
-            // $basePath = "stores/{$storeId}/logo";
+            $sellerProfile = SellerProfile::find($sellerProfileId);
             $basePath = "sellers/{$sellerProfile->id}/logo";
-
-            // Ensure directory exists
             Storage::disk('public')->makeDirectory($basePath);
 
-            // Generate unique filename
             $timestamp = time();
             $random = Str::random(8);
             $extension = $file->getClientOriginalExtension();
             $filename = "logo_{$timestamp}_{$random}.{$extension}";
 
-            // Store the file - use $basePath, not $path
-            $filePath = $file->storeAs($basePath, $filename, 'public'); // Change to $filePath
-
-            Log::info('Store logo uploaded successfully', [
-                'store_id' => $storeId,
-                'path' => $filePath, // Use $filePath
-                'filename' => $filename
-            ]);
-
-            return $filePath; // Return $filePath
+            $storedPath = $file->storeAs($basePath, $filename, 'public');
+            \Log::info('Logo saved', ['path' => $storedPath]);
+            return $storedPath; // returns string like "sellers/11/logo/logo_xxx.jpg"
         } catch (\Exception $e) {
-            Log::error('Failed to upload store logo: ' . $e->getMessage());
+            \Log::error('Failed to save logo: ' . $e->getMessage());
             return null;
         }
     }
@@ -657,8 +605,8 @@ class SellerController extends Controller
     }
 
     /**
-     * Get my store details (authenticated seller)
-     */
+ * Get my store details (authenticated seller)
+ */
     public function myStore(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
@@ -673,22 +621,21 @@ class SellerController extends Controller
         $sellerProfileData = $sellerProfile->toArray();
 
         // Convert store logo/banner to full URLs
-        $sellerProfileData['store_logo'] = !empty($sellerProfileData['store_logo'])
-            ? url('storage/' . ltrim($sellerProfileData['store_logo'], '/'))
-            : null;
+        $sellerProfileData['store_logo'] = $this->formatMediaUrl($sellerProfileData['store_logo'] ?? null);
+        $sellerProfileData['store_banner'] = $this->formatMediaUrl($sellerProfileData['store_banner'] ?? null);
 
-        $sellerProfileData['store_banner'] = !empty($sellerProfileData['store_banner'])
-            ? url('storage/' . ltrim($sellerProfileData['store_banner'], '/'))
-            : null;
-
-        // Convert product images to full URLs
+        // Convert product images to full URLs (if products are loaded)
         if (isset($sellerProfileData['products']['data'])) {
             foreach ($sellerProfileData['products']['data'] as &$product) {
                 if (isset($product['images'])) {
-                    foreach ($product['images'] as &$image) {
-                        if (!str_starts_with($image['url'], 'http')) {
-                            $image['url'] = url('storage/' . ltrim($image['url'], '/'));
+                    $images = is_string($product['images']) ? json_decode($product['images'], true) : $product['images'];
+                    if (is_array($images)) {
+                        foreach ($images as &$image) {
+                            if (isset($image['url'])) {
+                                $image['url'] = $this->formatMediaUrl($image['url']);
                         }
+                        }
+                        $product['images'] = $images;
                     }
                 }
             }
@@ -700,6 +647,26 @@ class SellerController extends Controller
         ]);
     }
 
+    /**
+     * Format a media path to a full URL.
+     * 
+     * @param string|null $path
+     * @return string|null
+     */
+    private function formatMediaUrl($path)
+    {
+        if (empty($path)) {
+            return null;
+        }
+
+        // Already an absolute URL
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+
+        // Assume it's a relative storage path
+        return url('storage/' . ltrim($path, '/'));
+    }
 
     /**
      * Get seller details (public endpoint)
@@ -906,6 +873,9 @@ class SellerController extends Controller
         }
     }
 
+    /**
+     * Update my store profile (authenticated seller)
+     */
     public function updateMyStore(Request $request)
     {
         try {
@@ -913,11 +883,16 @@ class SellerController extends Controller
             $seller = SellerProfile::where('user_id', $user->id)->first();
 
             if (!$seller) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
             }
+
+            // Log raw request data
+            \Log::info('updateMyStore raw input', [
+                'all' => $request->all(),
+                'has_file_logo' => $request->hasFile('store_logo'),
+                'has_file_banner' => $request->hasFile('store_banner'),
+                'content_type' => $request->header('Content-Type'),
+            ]);
 
             $validator = Validator::make($request->all(), [
                 'store_name' => 'sometimes|string|max:255|unique:seller_profiles,store_name,' . $seller->id,
@@ -936,9 +911,9 @@ class SellerController extends Controller
                 'city' => 'sometimes|string|max:100',
                 'state' => 'sometimes|string|max:100',
                 'country' => 'sometimes|string|max:100',
-                'postal_code' => 'nullable|string|max:20',
-                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
+                'postal_code' => 'nullable',
+                'store_logo' => 'nullable',
+                'store_banner' => 'nullable|string|max:500',
                 'account_number' => 'nullable|string|max:255',
                 'location' => 'nullable|string|max:255',
                 'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
@@ -947,63 +922,60 @@ class SellerController extends Controller
             ]);
 
             if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'errors' => $validator->errors()
-                ], 422);
+                \Log::error('Validation failed', $validator->errors()->toArray());
+                return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
             }
 
             $validated = $validator->validated();
+            \Log::info('Validated data', $validated);
 
-            \Log::info('Updating store profile', [
-                'user_id' => $user->id,
-                'seller_id' => $seller->id,
-                'has_logo_file' => $request->hasFile('store_logo'),
-                'has_banner_file' => $request->hasFile('store_banner')
-            ]);
-
-            // Handle store logo upload
+            // --- File handling (unchanged, but with logs) ---
             if ($request->hasFile('store_logo')) {
-                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $seller->id);
-                if ($logoPath) {
+                $logoPath = $this->saveStoreLogo($request->file('store_logo'), $seller->id);
+                if ($logoPath && is_string($logoPath)) {
                     // Delete old logo if exists
                     if ($seller->store_logo && Storage::disk('public')->exists($seller->store_logo)) {
                         Storage::disk('public')->delete($seller->store_logo);
                     }
                     $validated['store_logo'] = $logoPath;
-                    \Log::info('Logo uploaded successfully', ['path' => $logoPath]);
+                } else {
+                    // Upload failed – keep existing logo
+                    \Log::error('Logo upload failed in updateMyStore');
+                    unset($validated['store_logo']);
                 }
-            } elseif ($request->has('store_logo') && is_string($request->store_logo)) {
-                // Keep existing logo path if provided as string
-                $validated['store_logo'] = $request->store_logo;
             }
 
-            // Handle store banner upload
             if ($request->hasFile('store_banner')) {
                 $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $seller->id);
                 if ($bannerPath) {
-                    // Delete old banner if exists
-                    if ($seller->store_banner && Storage::disk('public')->exists($seller->store_banner)) {
+                    if ($seller->store_banner)
                         Storage::disk('public')->delete($seller->store_banner);
-                    }
                     $validated['store_banner'] = $bannerPath;
-                    \Log::info('Banner uploaded successfully', ['path' => $bannerPath]);
+                    \Log::info('Banner uploaded', ['path' => $bannerPath]);
                 }
             } elseif ($request->has('store_banner') && is_string($request->store_banner)) {
-                // Keep existing banner path if provided as string
-                $validated['store_banner'] = $request->store_banner;
+                if ($request->store_banner === '') {
+                    if ($seller->store_banner)
+                        Storage::disk('public')->delete($seller->store_banner);
+                    $validated['store_banner'] = null;
+                    \Log::info('Banner removed');
+                } else {
+                    $validated['store_banner'] = $seller->store_banner;
+                }
             }
 
-            // Regenerate slug if store name changes
+            // Regenerate slug if name changes
             if (isset($validated['store_name']) && $validated['store_name'] !== $seller->store_name) {
-                $validated['store_slug'] = \App\Models\SellerProfile::generateUniqueSlug($validated['store_name']);
+                $validated['store_slug'] = SellerProfile::generateUniqueSlug($validated['store_name']);
+                \Log::info('Slug regenerated', ['new_slug' => $validated['store_slug']]);
             }
 
-            $seller->update($validated);
-
-            \Log::info('Store profile updated successfully', [
-                'seller_id' => $seller->id,
-                'updated_fields' => array_keys($validated)
+            // Perform update
+            $updated = $seller->update($validated);
+            \Log::info('Update result', [
+                'updated' => $updated,
+                'new_store_name' => $seller->fresh()->store_name,
+                'validated_name' => $validated['store_name'] ?? null
             ]);
 
             return response()->json([
@@ -1013,13 +985,8 @@ class SellerController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Failed to update store profile: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update store profile: ' . $e->getMessage()
-            ], 500);
+            \Log::error('updateMyStore exception', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json(['success' => false, 'message' => 'Update failed: ' . $e->getMessage()], 500);
         }
     }
 
