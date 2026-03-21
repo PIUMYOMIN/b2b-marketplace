@@ -3,13 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Review;
+use App\Models\ProductReview;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
-class ReviewController extends Controller
+
+class ProductReviewController extends Controller
 {
+
     /**
      * Get reviews for a specific product
      */
@@ -17,7 +19,7 @@ class ReviewController extends Controller
     {
         try {
             \Log::info('Fetching reviews for product:', ['product_id' => $productId]);
-            
+
             // First, check if product exists
             $product = Product::find($productId);
             if (!$product) {
@@ -27,7 +29,7 @@ class ReviewController extends Controller
                 ], 404);
             }
 
-            $reviews = Review::where('product_id', $productId)
+            $reviews = ProductReview::where('product_id', $productId)
                 ->with('user') // Eager load user relationship
                 ->where('status', 'approved')
                 ->orderBy('created_at', 'desc')
@@ -45,7 +47,7 @@ class ReviewController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch reviews',
@@ -59,10 +61,17 @@ class ReviewController extends Controller
      */
     public function index(Request $request)
     {
-        try {
-            $query = Review::with(['user', 'product']);
+        $query = ProductReview::with(['user', 'product']);
 
-            // Apply filters
+        // If user is seller, only show reviews for their own products
+        if (auth()->user()->hasRole('seller') && !auth()->user()->hasRole('admin')) {
+            $query->whereHas('product', function ($q) {
+                $q->where('seller_id', auth()->id());
+            });
+        }
+
+        try {
+            // Apply filters (status, product_id, user_id)
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             }
@@ -81,15 +90,16 @@ class ReviewController extends Controller
                 'success' => true,
                 'data' => $reviews
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Failed to fetch reviews:', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch reviews'
+                'message' => 'Failed to fetch reviews',
+                'error' => env('APP_DEBUG') ? $e->getMessage() : null
             ], 500);
         }
     }
@@ -100,7 +110,7 @@ class ReviewController extends Controller
     public function myReviews()
     {
         try {
-            $reviews = Review::where('user_id', auth()->id())
+            $reviews = ProductReview::where('user_id', auth()->id())
                 ->with('product')
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -143,7 +153,7 @@ class ReviewController extends Controller
 
         try {
             // Check if user already reviewed this product
-            $existingReview = Review::where('user_id', auth()->id())
+            $existingReview = ProductReview::where('user_id', auth()->id())
                 ->where('product_id', $request->product_id)
                 ->first();
 
@@ -154,7 +164,7 @@ class ReviewController extends Controller
                 ], 400);
             }
 
-            $review = Review::create([
+            $review = ProductReview::create([
                 'user_id' => auth()->id(),
                 'product_id' => $request->product_id,
                 'rating' => $request->rating,
@@ -189,8 +199,8 @@ class ReviewController extends Controller
     public function approve($id)
     {
         try {
-            $review = Review::findOrFail($id);
-            
+            $review = ProductReview::findOrFail($id);
+
             // Check if review is already approved
             if ($review->status === 'approved') {
                 return response()->json([
@@ -198,7 +208,7 @@ class ReviewController extends Controller
                     'message' => 'Review is already approved'
                 ], 400);
             }
-            
+
             $review->update(['status' => 'approved']);
 
             // Update product rating
@@ -228,8 +238,8 @@ class ReviewController extends Controller
     public function reject($id)
     {
         try {
-            $review = Review::findOrFail($id);
-            
+            $review = ProductReview::findOrFail($id);
+
             // Check if review is already rejected
             if ($review->status === 'rejected') {
                 return response()->json([
@@ -237,7 +247,7 @@ class ReviewController extends Controller
                     'message' => 'Review is already rejected'
                 ], 400);
             }
-            
+
             $review->update(['status' => 'rejected']);
 
             // Update product rating (in case this was previously approved)
@@ -279,7 +289,7 @@ class ReviewController extends Controller
         }
 
         try {
-            $review = Review::findOrFail($id);
+            $review = ProductReview::findOrFail($id);
             $oldStatus = $review->status;
             $review->update(['status' => $request->status]);
 
@@ -312,9 +322,9 @@ class ReviewController extends Controller
     public function destroy($id)
     {
         try {
-            $review = Review::findOrFail($id);
+            $review = ProductReview::findOrFail($id);
             $productId = $review->product_id;
-            
+
             $review->delete();
 
             // Update product rating
@@ -343,7 +353,7 @@ class ReviewController extends Controller
     private function updateProductRating($productId)
     {
         try {
-            $approvedReviews = Review::where('product_id', $productId)
+            $approvedReviews = ProductReview::where('product_id', $productId)
                 ->where('status', 'approved')
                 ->get();
 
@@ -377,9 +387,9 @@ class ReviewController extends Controller
     {
         try {
             $sellerId = Auth::id();
-            $reviews = Review::whereHas('product', function ($query) use ($sellerId) {
-                    $query->where('seller_id', $sellerId);
-                })
+            $reviews = ProductReview::whereHas('product', function ($query) use ($sellerId) {
+                $query->where('seller_id', $sellerId);
+            })
                 ->with(['user:id,name', 'product']) // Include only 'id' and 'name' from the User table
                 ->orderBy('created_at', 'desc')
                 ->paginate($request->per_page ?? 20);
@@ -401,7 +411,7 @@ class ReviewController extends Controller
         }
     }
 
-        public function seller(Request $request)
+    public function seller(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'product_id' => 'required|exists:products,id',
@@ -419,7 +429,7 @@ class ReviewController extends Controller
 
         try {
             // Check if user already reviewed this product
-            $existingReview = Review::where('user_id', auth()->id())
+            $existingReview = ProductReview::where('user_id', auth()->id())
                 ->where('product_id', $request->product_id)
                 ->first();
 
@@ -430,12 +440,12 @@ class ReviewController extends Controller
                 ], 400);
             }
 
-            $review = Review::create([
+            $review = ProductReview::create([
                 'user_id' => auth()->id(),
                 'product_id' => $request->product_id,
                 'rating' => $request->rating,
                 'comment' => $request->comment,
-                'status' => 'pending' // Requires admin approval
+                'status' => 'pending'
             ]);
 
             // Update product rating statistics

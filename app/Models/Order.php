@@ -132,7 +132,7 @@ class Order extends Model
     {
         $prefix = 'ORD';
         $date = now()->format('Ymd');
-        
+
         do {
             $random = strtoupper(substr(uniqid(), -6));
             $orderNumber = "{$prefix}{$date}{$random}";
@@ -193,7 +193,7 @@ class Order extends Model
     public function resolveRouteBinding($value, $field = null)
     {
         $user = auth()->user();
-        
+
         if (!$user) {
             return $this->where('id', $value)->firstOrFail();
         }
@@ -229,7 +229,7 @@ class Order extends Model
      */
     public function reviews()
     {
-        return $this->hasMany(Review::class);
+        return $this->hasMany(ProductReview::class);
     }
 
     /**
@@ -465,7 +465,7 @@ class Order extends Model
      */
     public function getCanBeReviewedAttribute()
     {
-        return $this->status === self::STATUS_DELIVERED && 
+        return $this->status === self::STATUS_DELIVERED &&
                !$this->reviews()->exists();
     }
 
@@ -492,11 +492,11 @@ class Order extends Model
     {
         // Get commission rate from product category or use default
         $commissionRate = 0.10; // 10% default commission
-        
+
         // Calculate commission amount
         $this->commission_rate = $commissionRate;
         $this->commission_amount = $this->subtotal_amount * $commissionRate;
-        
+
         return $this->commission_amount;
     }
 
@@ -512,7 +512,7 @@ class Order extends Model
         $this->subtotal_amount = $subtotal;
         $this->tax_amount = $subtotal * $this->tax_rate;
         $this->total_amount = $subtotal + $this->shipping_fee + $this->tax_amount;
-        
+
         // Recalculate commission if needed
         if ($this->commission_rate > 0) {
             $this->commission_amount = $this->subtotal_amount * $this->commission_rate;
@@ -544,11 +544,11 @@ class Order extends Model
         }
 
         $this->status = self::STATUS_SHIPPED;
-        
+
         if ($trackingNumber) {
             $this->tracking_number = $trackingNumber;
         }
-        
+
         if ($carrier) {
             $this->shipping_carrier = $carrier;
         }
@@ -581,7 +581,7 @@ class Order extends Model
 
         $this->status = self::STATUS_CANCELLED;
         $this->cancelled_at = now();
-        
+
         if ($reason) {
             $this->refund_reason = $reason;
         }
@@ -594,7 +594,7 @@ class Order extends Model
      */
     public function requiresPayment()
     {
-        return $this->payment_method !== self::PAYMENT_CASH_ON_DELIVERY && 
+        return $this->payment_method !== self::PAYMENT_CASH_ON_DELIVERY &&
                $this->payment_status === self::PAYMENT_STATUS_PENDING;
     }
 
@@ -615,7 +615,7 @@ class Order extends Model
     {
         return $this->hasOne(Delivery::class);
     }
-    
+
     public function getDeliveryStatusAttribute()
     {
         return $this->delivery ? $this->delivery->status : 'pending';

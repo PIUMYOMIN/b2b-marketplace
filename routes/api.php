@@ -11,7 +11,7 @@ use App\Http\Controllers\Api\ContactMessageController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
-use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\ProductReviewController;
 use App\Http\Controllers\Api\SellerReviewController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
@@ -92,7 +92,7 @@ Route::group([
 
     // Reviews
     Route::prefix('reviews')->group(function () {
-        Route::get('/products/{product}', [ReviewController::class, 'productReviews']);
+        Route::get('/products/{product}', [ProductReviewController::class, 'productReviews']);
     });
 
     // --------------------
@@ -163,6 +163,26 @@ Route::group([
                 Route::post('/', [BusinessTypeController::class, 'store']);
                 Route::put('/{id}', [BusinessTypeController::class, 'update']);
                 Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
+            });
+
+
+            //Review management by admin
+            Route::prefix('reviews')->group(function () {
+                Route::get('/', [ProductReviewController::class, 'index']);
+                Route::get('/pending', [ProductReviewController::class, 'pendingReviews']);
+                Route::post('/{review}/approve', [ProductReviewController::class, 'approve']);
+                Route::post('/{review}/reject', [ProductReviewController::class, 'reject']);
+                Route::put('/{review}/status', [ProductReviewController::class, 'updateStatus']);
+                Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
+            });
+
+            Route::prefix('seller-reviews')->group(function () {
+                Route::get('/', [SellerReviewController::class, 'adminIndex']);
+                Route::get('/pending', [SellerReviewController::class, 'pendingReviews']);
+                Route::post('/{review}/approve', [SellerReviewController::class, 'approve']);
+                Route::post('/{review}/reject', [SellerReviewController::class, 'reject']);
+                Route::put('/{review}/status', [SellerReviewController::class, 'updateStatus']);
+                Route::delete('/{review}', [SellerReviewController::class, 'destroy']);
             });
 
 
@@ -240,29 +260,24 @@ Route::group([
 
             //Product
             Route::prefix('products')->group(function () {
+
                 // Seller Product Management
                 Route::post('/', [ProductController::class, 'store']);
                 Route::get('/', [ProductController::class, 'myProducts']);
                 Route::get('/{id}/edit', [ProductController::class, 'getProductForEdit']);
                 Route::put('/{slugOrId}', [ProductController::class, 'update']);
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
-
                 Route::get('/search', [ProductController::class, 'search']);
-                Route::post('/{product}/reviews', [ReviewController::class, 'store'])->middleware('role:buyer');
 
                 // Image Management
                 Route::post('/upload-image', [ProductController::class, 'uploadImage']);
                 Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct']);
                 Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
                 Route::post('/{product}/set-primary-image/{imageIndex}', [ProductController::class, 'setPrimaryImage']);
-
                 Route::post('/{id}/apply-discount', [ProductController::class, 'applyProductDiscount']);
                 Route::post('/{id}/remove-discount', [ProductController::class, 'removeDiscount']);
                 Route::get('/{id}/discounts', [ProductController::class, 'productDiscounts']);
             });
-
-            // Seller Product Reviews
-            Route::get('/products/reviews', [ReviewController::class, 'sellerReviews']);
 
             Route::prefix('discounts')->group(function () {
                 Route::get('/', [DiscountController::class, 'index']);
@@ -275,7 +290,7 @@ Route::group([
                 Route::put('/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
             });
 
-            // In routes/api.php, within seller prefix
+            // Delivery Areas
             Route::prefix('delivery-areas')->group(function () {
                 Route::get('/', [DeliveryAreaController::class, 'index']);
                 Route::post('/', [DeliveryAreaController::class, 'store']);
@@ -309,6 +324,9 @@ Route::group([
             Route::put('/policies', [SellerController::class, 'updatePolicies']);
         });
 
+        // ✅ Product reviews – buyers can submit
+        Route::post('/products/{product}/reviews', [ProductReviewController::class, 'store'])->middleware('role:buyer');
+
         // Business Types
         Route::group(['prefix' => 'business-types'], function () {
             Route::get('/', [BusinessTypeController::class, 'index']);
@@ -326,9 +344,6 @@ Route::group([
 
         // Order delivery method selection
         Route::post('/orders/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
-
-        // Admin/Seller review management
-        Route::get('/reviews', [ReviewController::class, 'index'])->middleware('role:admin|seller');
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
@@ -375,13 +390,13 @@ Route::group([
 
         // Reviews
         Route::prefix('reviews')->group(function () {
-            Route::get('/my-reviews', [ReviewController::class, 'myReviews']);
+            Route::get('/my-reviews', [ProductReviewController::class, 'myReviews']);
 
             Route::middleware('role:admin')->group(function () {
-                Route::post('/{review}/approve', [ReviewController::class, 'approve']);
-                Route::post('/{review}/reject', [ReviewController::class, 'reject']);
-                Route::put('/{review}/status', [ReviewController::class, 'updateStatus']);
-                Route::delete('/{review}', [ReviewController::class, 'destroy']);
+                Route::post('/{review}/approve', [ProductReviewController::class, 'approve']);
+                Route::post('/{review}/reject', [ProductReviewController::class, 'reject']);
+                Route::put('/{review}/status', [ProductReviewController::class, 'updateStatus']);
+                Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
             });
         });
 
