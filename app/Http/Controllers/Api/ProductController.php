@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Category;
-use App\Models\Review;
+use App\Models\ProductReview;
 use App\Models\Discount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -324,7 +324,7 @@ class ProductController extends Controller
             ->get();
 
         // Calculate rating distribution
-        $ratingDistribution = Review::where('product_id', $product->id)
+        $ratingDistribution = ProductReview::where('product_id', $product->id)
             ->where('status', 'approved')
             ->selectRaw('rating, count(*) as count')
             ->groupBy('rating')

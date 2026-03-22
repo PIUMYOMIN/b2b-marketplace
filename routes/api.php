@@ -264,7 +264,6 @@ Route::group([
             Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
 
             Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
-            Route::get('/my-store', [SellerController::class, 'myStore']);
 
             //Product
             Route::prefix('products')->group(function () {
