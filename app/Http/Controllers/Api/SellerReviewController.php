@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SellerReview;
+use App\Models\SellerProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
