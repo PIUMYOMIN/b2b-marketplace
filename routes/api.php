@@ -205,6 +205,12 @@ Route::group([
 
         Route::prefix('seller')->middleware('role:seller')->group(function () {
 
+            // Logo & Banner endpoints (outside onboarding)
+            Route::post('/logo', [SellerController::class, 'updateLogo']);
+            Route::delete('/logo', [SellerController::class, 'removeLogo']);
+            Route::post('/banner', [SellerController::class, 'updateBanner']);
+            Route::delete('/banner', [SellerController::class, 'removeBanner']);
+
             Route::prefix('onboarding')->group(function () {
                 // Onboarding Status
                 Route::get('/status', [SellerController::class, 'getOnboardingStatus']);
@@ -214,6 +220,7 @@ Route::group([
                 // Store logo and banner upload endpoints
                 Route::post('/storeLogo', [SellerController::class, 'uploadStoreLogo']);
                 Route::post('/storeBanner', [SellerController::class, 'uploadStoreBanner']);
+
                 // Basic store info save endpoint
                 Route::post('/store-basic', [SellerController::class, 'updateStoreBasic']);
                 //Business save endpoint

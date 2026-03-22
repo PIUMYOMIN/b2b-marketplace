@@ -878,6 +878,153 @@ class SellerController extends Controller
     }
 
     /**
+     * Update store logo
+     */
+    public function updateLogo(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $seller = SellerProfile::where('user_id', $user->id)->first();
+            if (!$seller) {
+                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'logo' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+            }
+
+            $file = $request->file('logo');
+            $path = $this->saveStoreLogo($file, $seller->id);
+            if (!$path) {
+                return response()->json(['success' => false, 'message' => 'Failed to upload logo'], 500);
+            }
+
+            // Delete old logo if exists
+            if ($seller->store_logo && Storage::disk('public')->exists($seller->store_logo)) {
+                Storage::disk('public')->delete($seller->store_logo);
+            }
+
+            $seller->store_logo = $path;
+            $seller->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store logo updated successfully',
+                'data' => ['url' => url('storage/' . $path), 'path' => $path]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Update logo failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to update logo'], 500);
+        }
+    }
+
+    /**
+     * Remove store logo
+     */
+    public function removeLogo(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $seller = SellerProfile::where('user_id', $user->id)->first();
+            if (!$seller) {
+                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+            }
+
+            if ($seller->store_logo && Storage::disk('public')->exists($seller->store_logo)) {
+                Storage::disk('public')->delete($seller->store_logo);
+            }
+
+            $seller->store_logo = null;
+            $seller->save();
+
+            return response()->json(['success' => true, 'message' => 'Store logo removed successfully']);
+
+        } catch (\Exception $e) {
+            Log::error('Remove logo failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to remove logo'], 500);
+        }
+    }
+
+
+    /**
+     * Update store banner
+     */
+    public function updateBanner(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $seller = SellerProfile::where('user_id', $user->id)->first();
+            if (!$seller) {
+                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'banner' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+            }
+
+            $file = $request->file('banner');
+            $path = $this->saveStoreBanner($file, $seller->id);
+            if (!$path) {
+                return response()->json(['success' => false, 'message' => 'Failed to upload banner'], 500);
+            }
+
+            // Delete old banner if exists
+            if ($seller->store_banner && Storage::disk('public')->exists($seller->store_banner)) {
+                Storage::disk('public')->delete($seller->store_banner);
+            }
+
+            $seller->store_banner = $path;
+            $seller->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Store banner updated successfully',
+                'data' => ['url' => url('storage/' . $path), 'path' => $path]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Update banner failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to update banner'], 500);
+        }
+    }
+
+    /**
+     * Remove store banner
+     */
+    public function removeBanner(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $seller = SellerProfile::where('user_id', $user->id)->first();
+            if (!$seller) {
+                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+            }
+
+            if ($seller->store_banner && Storage::disk('public')->exists($seller->store_banner)) {
+                Storage::disk('public')->delete($seller->store_banner);
+            }
+
+            $seller->store_banner = null;
+            $seller->save();
+
+            return response()->json(['success' => true, 'message' => 'Store banner removed successfully']);
+
+        } catch (\Exception $e) {
+            Log::error('Remove banner failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to remove banner'], 500);
+        }
+    }
+
+    /**
      * Update my store profile (authenticated seller)
      */
     public function updateMyStore(Request $request)
