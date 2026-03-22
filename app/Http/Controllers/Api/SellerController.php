@@ -649,7 +649,7 @@ class SellerController extends Controller
 
     /**
      * Format a media path to a full URL.
-     * 
+     *
      * @param string|null $path
      * @return string|null
      */
@@ -740,8 +740,8 @@ class SellerController extends Controller
             'total_products' => Product::where('seller_id', $seller->user_id)->count(),
             'active_products' => Product::where('seller_id', $seller->user_id)
                 ->where('is_active', true)->count(),
-            'total_orders' => \App\Models\Order::where('seller_id', $seller->user_id)->count(),
-            'total_sales' => \App\Models\Order::where('seller_id', $seller->user_id)
+            'total_orders' => Order::where('seller_id', $seller->user_id)->count(),
+            'total_sales' => Order::where('seller_id', $seller->user_id)
                 ->where('status', 'delivered')->count(),
             'member_since' => $seller->created_at->format('M Y'),
             'followers_count' => $followersCount
