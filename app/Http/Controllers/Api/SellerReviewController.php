@@ -74,6 +74,20 @@ class SellerReviewController extends Controller
         }
     }
 
+    // Get reviews for a specific seller
+    public function sellerReviews($seller)
+    {
+        $reviews = SellerReview::with('user')
+            ->where('seller_id', $seller)
+            ->where('status', 'approved')
+            ->orderBy('created_at', 'desc');
+
+        return response()->json([
+            'success' => true,
+            'data' => $reviews
+        ]);
+    }
+
     public function myReviews()
     {
         $user = auth()->user();
