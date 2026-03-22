@@ -285,6 +285,7 @@ Route::group([
                 Route::post('/{id}/apply-discount', [ProductController::class, 'applyProductDiscount']);
                 Route::post('/{id}/remove-discount', [ProductController::class, 'removeDiscount']);
                 Route::get('/{id}/discounts', [ProductController::class, 'productDiscounts']);
+                Route::get('/reviews', [ProductReviewController::class, 'sellerReviews']);
             });
 
             Route::prefix('discounts')->group(function () {
