@@ -81,11 +81,11 @@ class SellerReviewController extends Controller
      * @param string $identifier Seller ID or store slug
      * @return \Illuminate\Http\JsonResponse
      */
-    public function sellerReviews($identifier)
+    public function sellerReviews($slug)
     {
         // Find the seller profile by ID or store slug
-        $seller = SellerProfile::where('id', $identifier)
-            ->orWhere('store_slug', $identifier)
+        $seller = SellerProfile::where('id', $slug)
+            ->orWhere('store_slug', $slug)
             ->first();
 
         if (!$seller) {
