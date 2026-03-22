@@ -681,6 +681,10 @@ class SellerController extends Controller
             ], 404);
         }
 
+        // ✅ Load review statistics
+        $seller->loadAvg('reviews', 'rating');
+        $seller->loadCount('reviews');
+
         // Get seller's products (only active ones)
         $products = Product::where('seller_id', $seller->user_id)
             ->where('is_active', true)
