@@ -74,14 +74,32 @@ class SellerReviewController extends Controller
         }
     }
 
-    // Get reviews for a specific seller
-    public function sellerReviews($seller)
+    /**
+     * Get approved reviews for a specific seller.
+     *
+     * @param string $identifier Seller ID or store slug
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function sellerReviews($identifier)
     {
-        $seller = SellerReview::where('seller_id', $seller)->firstOrFail()->seller;
+        // Find the seller profile by ID or store slug
+        $seller = SellerProfile::where('id', $identifier)
+            ->orWhere('store_slug', $identifier)
+            ->first();
+
+        if (!$seller) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seller not found'
+            ], 404);
+        }
+
+        // Retrieve approved reviews with user details
         $reviews = SellerReview::with('user')
-            ->where('seller_id', $seller)
+            ->where('seller_id', $seller->id)
             ->where('status', 'approved')
-            ->orderBy('created_at', 'desc');
+            ->orderBy('created_at', 'desc')
+            ->paginate(15);
 
         return response()->json([
             'success' => true,
