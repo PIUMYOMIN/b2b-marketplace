@@ -77,6 +77,7 @@ class SellerReviewController extends Controller
     // Get reviews for a specific seller
     public function sellerReviews($seller)
     {
+        $seller = SellerReview::where('seller_id', $seller)->firstOrFail()->seller;
         $reviews = SellerReview::with('user')
             ->where('seller_id', $seller)
             ->where('status', 'approved')
