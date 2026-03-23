@@ -13,16 +13,16 @@ use Illuminate\Validation\ValidationException;
 class CartController extends Controller
 {
     /**
-     * Check if user is allowed to access cart buyers
+     * Check if user is allowed to access cart (buyer only)
      */
     private function isAllowed()
     {
         $user = Auth::user();
-        return $user && ($user->hasRole('buyer'));
+        return $user && $user->hasRole('buyer');
     }
 
     /**
-     * Get user's cart items
+     * Get user's cart items with current product data
      */
     public function index()
     {
@@ -30,60 +30,49 @@ class CartController extends Controller
             Log::info('Cart index called for user: ' . Auth::id());
 
             $user = Auth::user();
-
             if (!$this->isAllowed()) {
-                Log::warning('User not allowed to access cart', ['user_id' => $user->id]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Only buyers can access cart'
                 ], 403);
             }
 
-            $cartItems = Cart::with(['product.category'])
+            // Load product with category, exclude soft‑deleted products
+            $cartItems = Cart::with([
+                'product' => function ($q) {
+                    $q->whereNull('deleted_at');
+                },
+                'product.category'
+            ])
                 ->where('user_id', Auth::id())
                 ->get()
+                ->filter(function ($item) {
+                    // Remove items whose product no longer exists (soft‑deleted)
+                    return $item->product !== null;
+                })
                 ->map(function ($item) {
                     $product = $item->product;
+
+                    // Update stored price if product price changed
+                    if ($item->price != $product->price) {
+                        $item->price = $product->price;
+                        $item->save();
+                    }
 
                     $isAvailable = $product->is_active && $product->quantity > 0;
                     $isQuantityValid = $item->quantity <= $product->quantity;
 
-                    // Image handling (same as before)
-                    $image = '/placeholder-product.jpg';
-                    if ($product->images) {
-                        $images = $product->images;
-                        if (is_string($images)) {
-                            $images = json_decode($images, true) ?? [];
-                        }
-                        if (is_array($images) && count($images) > 0) {
-                            $firstImage = $images[0];
-                            if (is_array($firstImage)) {
-                                $image = $firstImage['full_url'] ?? $firstImage['url'] ?? $firstImage['path'] ?? null;
-                                if (!$image && isset($firstImage[0]) && is_string($firstImage[0])) {
-                                    $image = $firstImage[0];
-                                }
-                            } elseif (is_string($firstImage)) {
-                                $image = $firstImage;
-                            }
-                            if (!$image) {
-                                $image = '/placeholder-product.jpg';
-                            }
-                        }
-                    }
-
-                    // Convert relative path to full URL if needed
-                    if ($image && !filter_var($image, FILTER_VALIDATE_URL)) {
-                        $image = url('storage/' . ltrim($image, '/'));
-                    }
+                    // Get the primary image URL (safe)
+                    $image = $this->getProductImageUrl($product);
 
                     return [
                         'id' => $item->id,
                         'product_id' => $product->id,
                         'name' => $product->name,
-                        'price' => (float) $item->price,
+                        'price' => (float) $product->price, // current price
                         'quantity' => (int) $item->quantity,
                         'image' => $image,
-                        'category' => $product->category->name ?? 'Uncategorized',
+                        'category' => $product->category?->name ?? 'Uncategorized',
                         'stock' => (int) $product->quantity,
                         'min_order' => $product->min_order ?? 1,
                         'is_available' => $isAvailable,
@@ -98,7 +87,7 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'cart_items' => $cartItems,
+                    'cart_items' => $cartItems->values(),
                     'subtotal' => $subtotal,
                     'total_items' => $totalItems,
                     'summary' => [
@@ -132,7 +121,6 @@ class CartController extends Controller
     {
         try {
             $user = Auth::user();
-
             if (!$this->isAllowed()) {
                 return response()->json([
                     'success' => false,
@@ -162,7 +150,6 @@ class CartController extends Controller
                 ], 400);
             }
 
-            // Check minimum order quantity
             $minOrder = $product->min_order ?? 1;
             if ($request->quantity < $minOrder) {
                 return response()->json([
@@ -177,36 +164,23 @@ class CartController extends Controller
                 ->first();
 
             if ($existingCartItem) {
-                // Update quantity if exists
                 $newQuantity = $existingCartItem->quantity + $request->quantity;
-
                 if ($product->quantity < $newQuantity) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Cannot add more items. Only ' . $product->quantity . ' items available in stock'
+                        'message' => 'Cannot add more items. Only ' . $product->quantity . ' items available'
                     ], 400);
                 }
-
                 $existingCartItem->update([
-                    'quantity' => $newQuantity
+                    'quantity' => $newQuantity,
+                    'price' => $product->price // update price in case it changed
                 ]);
-
                 $cartItem = $existingCartItem;
             } else {
-                // Handle product image for product_data
-                $image = '/placeholder-product.jpg';
-                if ($product->images) {
-                    if (is_array($product->images)) {
-                        $image = $product->images[0]['url'] ?? $product->images[0] ?? $image;
-                    } else if (is_string($product->images)) {
-                        $imagesArray = json_decode($product->images, true);
-                        if (is_array($imagesArray)) {
-                            $image = $imagesArray[0]['url'] ?? $imagesArray[0] ?? $image;
-                        }
-                    }
-                }
+                // Build product_data safely
+                $categoryName = $product->category?->name ?? 'Uncategorized';
+                $image = $this->getProductImageUrl($product);
 
-                // Create new cart item
                 $cartItem = Cart::create([
                     'user_id' => Auth::id(),
                     'product_id' => $request->product_id,
@@ -215,7 +189,7 @@ class CartController extends Controller
                     'product_data' => [
                         'name' => $product->name,
                         'image' => $image,
-                        'category' => $product->category->name ?? 'Uncategorized'
+                        'category' => $categoryName,
                     ]
                 ]);
             }
@@ -249,8 +223,7 @@ class CartController extends Controller
         try {
             $cart = Cart::findOrFail($id);
 
-            // Check ownership
-            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('buyer')) {
+            if ($cart->user_id !== Auth::id()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized'
@@ -261,23 +234,23 @@ class CartController extends Controller
                 'quantity' => 'required|integer|min:1'
             ]);
 
-            // Check product availability
-            if (!$cart->product->is_active) {
+            $product = $cart->product;
+
+            if (!$product || !$product->is_active) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Product is no longer available'
                 ], 400);
             }
 
-            if ($cart->product->quantity < $request->quantity) {
+            if ($product->quantity < $request->quantity) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only ' . $cart->product->quantity . ' items available in stock'
+                    'message' => 'Only ' . $product->quantity . ' items available in stock'
                 ], 400);
             }
 
-            // Check minimum order
-            $minOrder = $cart->product->min_order ?? 1;
+            $minOrder = $product->min_order ?? 1;
             if ($request->quantity < $minOrder) {
                 return response()->json([
                     'success' => false,
@@ -286,7 +259,8 @@ class CartController extends Controller
             }
 
             $cart->update([
-                'quantity' => $request->quantity
+                'quantity' => $request->quantity,
+                'price' => $product->price // sync price
             ]);
 
             return response()->json([
@@ -317,8 +291,7 @@ class CartController extends Controller
         try {
             $cart = Cart::findOrFail($id);
 
-            // Check ownership
-            if ($cart->user_id !== Auth::id() && !Auth::user()->hasRole('buyer')) {
+            if ($cart->user_id !== Auth::id()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized'
@@ -349,7 +322,6 @@ class CartController extends Controller
         try {
             $user = Auth::user();
 
-            // Only allow buyer to clear their own cart
             if (!$this->isAllowed()) {
                 return response()->json([
                     'success' => false,
@@ -404,5 +376,44 @@ class CartController extends Controller
                 'message' => 'Failed to get cart count'
             ], 500);
         }
+    }
+
+    /**
+     * Helper to get safe product image URL
+     */
+    private function getProductImageUrl($product)
+    {
+        $default = '/placeholder-product.jpg';
+        if (!$product->images) {
+            return $default;
+        }
+
+        $images = $product->images;
+        if (is_string($images)) {
+            $images = json_decode($images, true);
+        }
+        if (!is_array($images) || empty($images)) {
+            return $default;
+        }
+
+        $firstImage = $images[0];
+        $url = null;
+
+        if (is_array($firstImage)) {
+            $url = $firstImage['full_url'] ?? $firstImage['url'] ?? $firstImage['path'] ?? null;
+        } elseif (is_string($firstImage)) {
+            $url = $firstImage;
+        }
+
+        if (!$url) {
+            return $default;
+        }
+
+        // Convert relative path to absolute URL if needed
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            $url = url('storage/' . ltrim($url, '/'));
+        }
+
+        return $url;
     }
 }
