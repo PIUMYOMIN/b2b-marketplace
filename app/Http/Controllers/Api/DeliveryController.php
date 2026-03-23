@@ -1,13 +1,14 @@
 <?php
 
 namespace App\Http\Controllers\Api;
-use App\Http\Controllers\Controller;
 
+use App\Http\Controllers\Controller;
 use App\Models\Delivery;
 use App\Models\Order;
 use App\Models\DeliveryUpdate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class DeliveryController extends Controller
 {
@@ -51,6 +52,29 @@ class DeliveryController extends Controller
         }
 
         $deliveries = $query->latest()->paginate(20);
+
+        // ✅ Transform images in delivery data
+        if ($deliveries->count() > 0) {
+            $deliveries->getCollection()->transform(function ($delivery) {
+                // Transform order items images
+                if ($delivery->order && $delivery->order->items) {
+                    foreach ($delivery->order->items as $item) {
+                        // Transform product_data images
+                        $productData = $item->product_data;
+                        if (isset($productData['images']) && is_array($productData['images'])) {
+                            $productData['images'] = $this->formatImages($productData['images']);
+                            $item->product_data = $productData;
+                        }
+
+                        // Transform product images if product is loaded
+                        if ($item->product && $item->product->images) {
+                            $item->product->images = $this->formatImages($item->product->images);
+                        }
+                    }
+                }
+                return $delivery;
+            });
+        }
 
         return response()->json([
             'success' => true,
@@ -117,10 +141,28 @@ class DeliveryController extends Controller
 
             DB::commit();
 
+            // Reload with formatted images
+            $delivery->load(['order.items.product', 'deliveryUpdates']);
+
+            // Transform images in the response
+            if ($delivery->order && $delivery->order->items) {
+                foreach ($delivery->order->items as $item) {
+                    $productData = $item->product_data;
+                    if (isset($productData['images']) && is_array($productData['images'])) {
+                        $productData['images'] = $this->formatImages($productData['images']);
+                        $item->product_data = $productData;
+                    }
+
+                    if ($item->product && $item->product->images) {
+                        $item->product->images = $this->formatImages($item->product->images);
+                    }
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Delivery method set successfully',
-                'data' => $delivery->load(['order', 'deliveryUpdates'])
+                'data' => $delivery
             ]);
 
         } catch (\Exception $e) {
@@ -242,6 +284,11 @@ class DeliveryController extends Controller
 
             DB::commit();
 
+            // Format delivery proof image URL
+            if ($delivery->delivery_proof_image) {
+                $delivery->delivery_proof_image = url('storage/' . ltrim($delivery->delivery_proof_image, '/'));
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Delivery proof uploaded successfully',
@@ -308,11 +355,62 @@ class DeliveryController extends Controller
         ]);
     }
 
+    /**
+     * Format images to full URLs
+     *
+     * @param array $images
+     * @return array
+     */
+    protected function formatImages($images)
+    {
+        if (empty($images)) {
+            return [];
+        }
+
+        $formattedImages = [];
+
+        foreach ($images as $index => $image) {
+            if (is_string($image)) {
+                // If it's a string URL
+                if (!str_starts_with($image, 'http')) {
+                    $image = url('storage/' . ltrim($image, '/'));
+                }
+                $formattedImages[] = [
+                    'url' => $image,
+                    'angle' => 'default',
+                    'is_primary' => $index === 0
+                ];
+            } else {
+                // If it's an object with url/path property
+                $url = $image['url'] ?? $image['path'] ?? '';
+                if (!str_starts_with($url, 'http')) {
+                    $url = url('storage/' . ltrim($url, '/'));
+                }
+                $formattedImages[] = [
+                    'url' => $url,
+                    'angle' => $image['angle'] ?? 'default',
+                    'is_primary' => $image['is_primary'] ?? ($index === 0)
+                ];
+            }
+        }
+
+        return $formattedImages;
+    }
+
     // Calculate order weight (helper method)
     private function calculateOrderWeight(Order $order)
     {
-        // This would typically calculate based on order items
-        // For now, return a default or calculate from product weights
-        return 5.0; // Default 5kg
+        // Calculate total weight from order items
+        $totalWeight = 0;
+        if ($order->items) {
+            foreach ($order->items as $item) {
+                if ($item->product && $item->product->weight_kg) {
+                    $totalWeight += $item->product->weight_kg * $item->quantity;
+                } else {
+                    $totalWeight += 1 * $item->quantity; // Default 1kg per item
+                }
+            }
+        }
+        return $totalWeight > 0 ? $totalWeight : 5.0; // Default 5kg if no items
     }
 }

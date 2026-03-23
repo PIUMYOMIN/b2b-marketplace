@@ -259,32 +259,28 @@ class OrderController extends Controller
             ], 403);
         }
 
-        // Load relations
+        // Load relations with delivery
         $order->load(['items.product', 'buyer', 'seller', 'delivery']);
 
-        // Modify images URLs in product_data and product
+        // ✅ Transform images in order items
         foreach ($order->items as $item) {
             // Update product_data images
             $productData = $item->product_data;
-
             if (!empty($productData['images']) && is_array($productData['images'])) {
-                $productData['images'] = array_map(function ($img) {
-                    $img['url'] = url('storage/' . ltrim($img['url'], '/'));
-                    return $img;
-                }, $productData['images']);
+                $productData['images'] = $this->formatImages($productData['images']);
+                $item->product_data = $productData;
             }
 
-            $item->product_data = $productData;
-
             // Update product images
-            if ($item->product) {
-                $productImages = $item->product->images;
-                if (!empty($productImages) && is_array($productImages)) {
-                    $item->product->images = array_map(function ($img) {
-                        $img['url'] = url('storage/' . ltrim($img['url'], '/'));
-                        return $img;
-                    }, $productImages);
-                }
+            if ($item->product && !empty($item->product->images)) {
+                $item->product->images = $this->formatImages($item->product->images);
+            }
+        }
+
+        // ✅ Transform delivery proof image if exists
+        if ($order->delivery && $order->delivery->delivery_proof_image) {
+            if (!str_starts_with($order->delivery->delivery_proof_image, 'http')) {
+                $order->delivery->delivery_proof_image = url('storage/' . ltrim($order->delivery->delivery_proof_image, '/'));
             }
         }
 
@@ -292,6 +288,45 @@ class OrderController extends Controller
             'success' => true,
             'data' => $order
         ]);
+    }
+
+    /**
+     * Format images to full URLs (add this helper method to OrderController)
+     */
+    protected function formatImages($images)
+    {
+        if (empty($images)) {
+            return [];
+        }
+
+        $formattedImages = [];
+
+        foreach ($images as $index => $image) {
+            if (is_string($image)) {
+                // If it's a string URL
+                if (!str_starts_with($image, 'http')) {
+                    $image = url('storage/' . ltrim($image, '/'));
+                }
+                $formattedImages[] = [
+                    'url' => $image,
+                    'angle' => 'default',
+                    'is_primary' => $index === 0
+                ];
+            } else {
+                // If it's an object with url/path property
+                $url = $image['url'] ?? $image['path'] ?? '';
+                if (!str_starts_with($url, 'http')) {
+                    $url = url('storage/' . ltrim($url, '/'));
+                }
+                $formattedImages[] = [
+                    'url' => $url,
+                    'angle' => $image['angle'] ?? 'default',
+                    'is_primary' => $image['is_primary'] ?? ($index === 0)
+                ];
+            }
+        }
+
+        return $formattedImages;
     }
 
     // Add payment update method
