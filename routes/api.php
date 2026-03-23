@@ -332,8 +332,25 @@ Route::group([
             Route::put('/policies', [SellerController::class, 'updatePolicies']);
         });
 
-        // ✅ Product reviews – buyers can submit
-        Route::post('/products/{product}/reviews', [ProductReviewController::class, 'store'])->middleware('role:buyer');
+        Route::prefix('buyer')->middleware('role:buyer')->group(function () {
+
+            // ✅ Product reviews – buyers can submit
+            Route::prefix('reviews')->group(function () {
+                Route::post('/products/{product}', [ProductReviewController::class, 'store']);
+                Route::put('/{review}', [ProductReviewController::class, 'update']);
+                Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
+            });
+
+            // Buyer Cart Management
+            Route::prefix('cart')->group(function () {
+                Route::get('/', [CartController::class, 'index']);
+                Route::post('/', [CartController::class, 'store']);
+                Route::put('/{cart}', [CartController::class, 'update']);
+                Route::delete('/{id}', [CartController::class, 'destroy']);
+                Route::post('/clear', [CartController::class, 'clear']);
+                Route::get('/count', [CartController::class, 'count']);
+            });
+        });
 
         // Business Types
         Route::group(['prefix' => 'business-types'], function () {
@@ -384,16 +401,6 @@ Route::group([
                 Route::put('/', [UserController::class, 'updateProfile']);
                 Route::put('/password', [UserController::class, 'changePassword']);
             });
-        });
-
-        // Buyer Cart Management
-        Route::prefix('cart')->group(function () {
-            Route::get('/', [CartController::class, 'index']);
-            Route::post('/', [CartController::class, 'store']);
-            Route::put('/{cart}', [CartController::class, 'update']);
-            Route::delete('/{id}', [CartController::class, 'destroy']);
-            Route::post('/clear', [CartController::class, 'clear']);
-            Route::get('/count', [CartController::class, 'count']);
         });
 
         // Reviews
