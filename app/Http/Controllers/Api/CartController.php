@@ -291,10 +291,19 @@ class CartController extends Controller
         try {
             $cart = Cart::findOrFail($id);
 
+            // Log for debugging
+            Log::info('Attempting to delete cart item', [
+                'cart_id' => $cart->id,
+                'cart_user_id' => $cart->user_id,
+                'auth_user_id' => Auth::id(),
+            ]);
+
             if ($cart->user_id !== Auth::id()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized'
+                    'message' => 'You do not own this cart item',
+                    'cart_user_id' => $cart->user_id,
+                    'current_user_id' => Auth::id(),
                 ], 403);
             }
 
@@ -304,7 +313,6 @@ class CartController extends Controller
                 'success' => true,
                 'message' => 'Item removed from cart'
             ]);
-
         } catch (\Exception $e) {
             Log::error('Cart destroy error: ' . $e->getMessage());
             return response()->json([
