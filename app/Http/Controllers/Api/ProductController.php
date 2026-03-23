@@ -152,6 +152,13 @@ class ProductController extends Controller
 
         $products = $query->paginate($perPage);
 
+        // ✅ Transform images for all products
+        if ($products->count() > 0) {
+            $products->getCollection()->transform(function ($product) {
+                return $this->transformProductImages($product);
+            });
+        }
+
         return response()->json([
             'success' => true,
             'data' => ProductResource::collection($products),
@@ -276,7 +283,6 @@ class ProductController extends Controller
             'status' => 'rejected',
             'approved_at' => null,
             'listed_at' => null,
-            // optionally store reason in a new column
         ]);
 
         return response()->json([
@@ -506,6 +512,26 @@ class ProductController extends Controller
     }
 
     /**
+     * Transform product images to full URLs.
+     *
+     * @param Product $product
+     * @return Product
+     */
+    protected function transformProductImages($product)
+    {
+        if (isset($product->images)) {
+            $images = is_string($product->images)
+                ? json_decode($product->images, true)
+                : $product->images;
+
+            if (is_array($images)) {
+                $product->images = $this->formatImages($images);
+            }
+        }
+        return $product;
+    }
+
+    /**
      * Upload image for a new product (temporary storage)
      */
     public function uploadImage(Request $request)
@@ -588,7 +614,7 @@ class ProductController extends Controller
 
         // Return raw data including images as stored (relative paths)
         $data = $product->toArray();
-        $data['images'] = $product->images; // Already array of objects with 'url', 'angle', 'is_primary'
+        $data['images'] = $product->images;
 
         return response()->json([
             'success' => true,
@@ -1013,6 +1039,13 @@ class ProductController extends Controller
             ->latest()
             ->paginate(10);
 
+        // ✅ Transform images for all products
+        if ($products->count() > 0) {
+            $products->getCollection()->transform(function ($product) {
+                return $this->transformProductImages($product);
+            });
+        }
+
         return response()->json([
             'success' => true,
             'data' => ProductResource::collection($products),
@@ -1036,24 +1069,10 @@ class ProductController extends Controller
             ->latest()
             ->paginate(10);
 
-        // ✅ Convert product images to full URLs (same logic as show() method)
+        // ✅ Transform images for all products
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
-                if (isset($product->images)) {
-                    $images = is_string($product->images)
-                        ? json_decode($product->images, true)
-                        : $product->images;
-
-                    if (is_array($images)) {
-                        foreach ($images as &$image) {
-                            if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
-                                $image['url'] = url('storage/' . ltrim($image['url'], '/'));
-                            }
-                        }
-                        $product->images = $images;
-                    }
-                }
-                return $product;
+                return $this->transformProductImages($product);
             });
         }
 
