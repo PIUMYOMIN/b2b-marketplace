@@ -336,7 +336,7 @@ Route::group([
 
             // ✅ Product reviews – buyers can submit
             Route::prefix('reviews')->group(function () {
-                Route::post('/products/{product}', [ProductReviewController::class, 'store']);
+                Route::post('/products/{product}/reviews', [ProductReviewController::class, 'store']);
                 Route::put('/{review}', [ProductReviewController::class, 'update']);
                 Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
             });
