@@ -285,30 +285,43 @@ class CartController extends Controller
     /**
      * Remove item from cart
      */
-    public function destroy($id)
+    public function destroy($cart)
     {
         try {
-            $cart = Cart::findOrFail($id);
+            // Find the cart item by ID
+            $cartItem = Cart::findOrFail($cart);
 
-            if ($cart->user_id !== Auth::id()) {
+            // Check ownership - user must be the owner
+            if ($cartItem->user_id !== Auth::id()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized'
+                    'message' => 'You are not authorized to remove this item'
                 ], 403);
             }
 
-            $cart->delete();
+            $cartItem->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Item removed from cart'
+                'message' => 'Item removed from cart successfully'
             ]);
 
-        } catch (\Exception $e) {
-            Log::error('Cart destroy error: ' . $e->getMessage());
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to remove item'
+                'message' => 'Cart item not found'
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Cart destroy error: ' . $e->getMessage(), [
+                'cart_id' => $cart,
+                'user_id' => Auth::id(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to remove item from cart',
+                'error' => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
     }
