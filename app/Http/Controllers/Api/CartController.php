@@ -88,7 +88,7 @@ class CartController extends Controller
                         'min_order' => $product->min_order ?? 1,
                         'is_available' => $isAvailable,
                         'is_quantity_valid' => $isQuantityValid,
-                        'subtotal' => (float) ($item->price * $item->quantity)
+                        'subtotal' => (float) ($product->price * $item->quantity)
                     ];
                 });
 
