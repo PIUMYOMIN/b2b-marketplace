@@ -321,22 +321,79 @@ class ProductReviewController extends Controller
     }
 
     /**
-     * Delete a review (admin only)
+     * Update a review (only the owner)
+     */
+    public function update(Request $request, $id)
+    {
+        $review = ProductReview::where('user_id', auth()->id())->findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'rating' => 'sometimes|integer|min:1|max:5',
+            'comment' => 'sometimes|string|max:1000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            if ($request->has('rating')) {
+                $review->rating = $request->rating;
+            }
+            if ($request->has('comment')) {
+                $review->comment = $request->comment;
+            }
+            $review->save();
+
+            // Recalculate product rating
+            $this->updateProductRating($review->product_id);
+
+            $updatedProduct = Product::find($review->product_id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Review updated successfully',
+                'data' => $review->load('user'),
+                'product_rating' => $updatedProduct->average_rating,
+                'product_review_count' => $updatedProduct->review_count,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to update review:', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update review'
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a review (owner only)
      */
     public function destroy($id)
     {
         try {
-            $review = ProductReview::findOrFail($id);
+            $review = ProductReview::where('user_id', auth()->id())->findOrFail($id);
             $productId = $review->product_id;
-
             $review->delete();
 
-            // Update product rating
+            // Recalculate product rating
             $this->updateProductRating($productId);
+
+            $updatedProduct = Product::find($productId);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Review deleted successfully'
+                'message' => 'Review deleted successfully',
+                'product_rating' => $updatedProduct->average_rating,
+                'product_review_count' => $updatedProduct->review_count,
             ]);
 
         } catch (\Exception $e) {
