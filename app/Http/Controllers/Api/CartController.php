@@ -217,12 +217,12 @@ class CartController extends Controller
     /**
      * Update cart item quantity
      */
-    public function update(Request $request, $id)
+    public function update(Request $request, $cart)
     {
         try {
-            $cart = Cart::findOrFail($id);
+            $cartItem = Cart::findOrFail($cart);
 
-            if ($cart->user_id !== Auth::id()) {
+            if ($cartItem->user_id !== Auth::id()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized'
@@ -233,7 +233,7 @@ class CartController extends Controller
                 'quantity' => 'required|integer|min:1'
             ]);
 
-            $product = $cart->product;
+            $product = $cartItem->product;
 
             if (!$product || !$product->is_active) {
                 return response()->json([
@@ -257,7 +257,7 @@ class CartController extends Controller
                 ], 400);
             }
 
-            $cart->update([
+            $cartItem->update([
                 'quantity' => $request->quantity,
                 'price' => $product->price
             ]);
@@ -265,7 +265,7 @@ class CartController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Cart updated successfully',
-                'data' => $cart
+                'data' => $cartItem
             ]);
 
         } catch (ValidationException $e) {
