@@ -1036,6 +1036,27 @@ class ProductController extends Controller
             ->latest()
             ->paginate(10);
 
+        // ✅ Convert product images to full URLs (same logic as show() method)
+        if ($products->count() > 0) {
+            $products->getCollection()->transform(function ($product) {
+                if (isset($product->images)) {
+                    $images = is_string($product->images)
+                        ? json_decode($product->images, true)
+                        : $product->images;
+
+                    if (is_array($images)) {
+                        foreach ($images as &$image) {
+                            if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
+                                $image['url'] = url('storage/' . ltrim($image['url'], '/'));
+                            }
+                        }
+                        $product->images = $images;
+                    }
+                }
+                return $product;
+            });
+        }
+
         return response()->json([
             'success' => true,
             'data' => ProductResource::collection($products),
