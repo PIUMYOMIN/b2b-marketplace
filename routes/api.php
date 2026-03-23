@@ -336,9 +336,11 @@ Route::group([
 
             // ✅ Product reviews – buyers can submit
             Route::prefix('reviews')->group(function () {
-                Route::post('/products/{product}/reviews', [ProductReviewController::class, 'store']);
-                Route::put('/{review}', [ProductReviewController::class, 'update']);
-                Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
+                Route::prefix('product')->group(function () {
+                    Route::post('/{product}', [ProductReviewController::class, 'store']);
+                    Route::put('/{review}', [ProductReviewController::class, 'update']);
+                    Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
+                });
             });
 
             // ✅ Seller reviews – buyers can submit
@@ -346,11 +348,6 @@ Route::group([
                 Route::post('/{seller}', [SellerReviewController::class, 'store']);
                 Route::put('/{review}', [SellerReviewController::class, 'update']);
                 Route::delete('/{review}', [SellerReviewController::class, 'destroy']);
-            });
-
-            //Product management review by buyer
-            Route::prefix('products')->group(function () {
-                Route::get('/{$id}/reviews', [ProductController::class, 'store']);
             });
 
             // ✅ Wishlist management

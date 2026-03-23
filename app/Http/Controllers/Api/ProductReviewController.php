@@ -135,7 +135,7 @@ class ProductReviewController extends Controller
     /**
      * Submit a new review
      */
-    public function store(Request $request)
+    public function store(Request $request, $product)
     {
         $validator = Validator::make($request->all(), [
             'product_id' => 'required|exists:products,id',
@@ -169,16 +169,20 @@ class ProductReviewController extends Controller
                 'product_id' => $request->product_id,
                 'rating' => $request->rating,
                 'comment' => $request->comment,
-                'status' => 'pending' // Requires admin approval
+                'status' => 'approved'
             ]);
 
             // Update product rating statistics
             $this->updateProductRating($request->product_id);
 
+            $updatedProduct = Product::find($request->product_id);
+
             return response()->json([
                 'success' => true,
-                'message' => 'Review submitted successfully. It will be visible after approval.',
-                'data' => $review->load('user')
+                'message' => 'Review submitted successfully.',
+                'data' => $review->load('user'),
+                'product_rating' => $updatedProduct->average_rating,
+                'product_review_count' => $updatedProduct->review_count,
             ]);
 
         } catch (\Exception $e) {
