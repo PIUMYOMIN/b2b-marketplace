@@ -27,8 +27,6 @@ class CartController extends Controller
     public function index()
     {
         try {
-            Log::info('Cart index called for user: ' . Auth::id());
-
             $user = Auth::user();
             if (!$this->isAllowed()) {
                 return response()->json([
@@ -37,7 +35,6 @@ class CartController extends Controller
                 ], 403);
             }
 
-            // Load product with category, exclude soft‑deleted products
             $cartItems = Cart::with([
                 'product' => function ($q) {
                     $q->whereNull('deleted_at');
@@ -47,14 +44,13 @@ class CartController extends Controller
                 ->where('user_id', Auth::id())
                 ->get()
                 ->filter(function ($item) {
-                    // Remove items whose product no longer exists (soft‑deleted)
                     return $item->product !== null;
                 })
                 ->map(function ($item) {
                     $product = $item->product;
 
                     // Update stored price if product price changed
-                    if ($item->price != $product->price) {
+                    if ((float) $item->price != (float) $product->price) {
                         $item->price = $product->price;
                         $item->save();
                     }
@@ -62,14 +58,13 @@ class CartController extends Controller
                     $isAvailable = $product->is_active && $product->quantity > 0;
                     $isQuantityValid = $item->quantity <= $product->quantity;
 
-                    // Get the primary image URL (safe)
                     $image = $this->getProductImageUrl($product);
 
                     return [
                         'id' => $item->id,
                         'product_id' => $product->id,
                         'name' => $product->name,
-                        'price' => (float) $product->price, // current price
+                        'price' => (float) $product->price,
                         'quantity' => (int) $item->quantity,
                         'image' => $image,
                         'category' => $product->category?->name ?? 'Uncategorized',
@@ -171,13 +166,15 @@ class CartController extends Controller
                         'message' => 'Cannot add more items. Only ' . $product->quantity . ' items available'
                     ], 400);
                 }
+
                 $existingCartItem->update([
                     'quantity' => $newQuantity,
-                    'price' => $product->price // update price in case it changed
+                    'price' => $product->price
                 ]);
+
                 $cartItem = $existingCartItem;
+                $message = 'Cart updated successfully';
             } else {
-                // Build product_data safely
                 $categoryName = $product->category?->name ?? 'Uncategorized';
                 $image = $this->getProductImageUrl($product);
 
@@ -192,11 +189,13 @@ class CartController extends Controller
                         'category' => $categoryName,
                     ]
                 ]);
+
+                $message = 'Product added to cart successfully';
             }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Product added to cart successfully',
+                'message' => $message,
                 'data' => $cartItem
             ]);
 
@@ -260,7 +259,7 @@ class CartController extends Controller
 
             $cart->update([
                 'quantity' => $request->quantity,
-                'price' => $product->price // sync price
+                'price' => $product->price
             ]);
 
             return response()->json([
@@ -289,28 +288,12 @@ class CartController extends Controller
     public function destroy($id)
     {
         try {
-            \Log::info('Cart destroy called', [
-                'id' => $id,
-                'auth_user_id' => Auth::id(),
-            ]);
-
             $cart = Cart::findOrFail($id);
 
-            \Log::info('Cart found', [
-                'cart_id' => $cart->id,
-                'cart_user_id' => $cart->user_id,
-            ]);
-
             if ($cart->user_id !== Auth::id()) {
-                \Log::warning('Cart owner mismatch', [
-                    'cart_user_id' => $cart->user_id,
-                    'auth_user_id' => Auth::id(),
-                ]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized',
-                    'cart_user_id' => $cart->user_id,
-                    'current_user_id' => Auth::id(),
+                    'message' => 'Unauthorized'
                 ], 403);
             }
 
@@ -320,8 +303,9 @@ class CartController extends Controller
                 'success' => true,
                 'message' => 'Item removed from cart'
             ]);
+
         } catch (\Exception $e) {
-            \Log::error('Cart destroy error: ' . $e->getMessage());
+            Log::error('Cart destroy error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to remove item'
@@ -424,7 +408,6 @@ class CartController extends Controller
             return $default;
         }
 
-        // Convert relative path to absolute URL if needed
         if (!filter_var($url, FILTER_VALIDATE_URL)) {
             $url = url('storage/' . ltrim($url, '/'));
         }

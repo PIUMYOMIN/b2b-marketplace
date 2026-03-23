@@ -341,6 +341,27 @@ Route::group([
                 Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
             });
 
+            // ✅ Seller reviews – buyers can submit
+            Route::prefix('seller-reviews')->group(function () {
+                Route::post('/{seller}', [SellerReviewController::class, 'store']);
+                Route::put('/{review}', [SellerReviewController::class, 'update']);
+                Route::delete('/{review}', [SellerReviewController::class, 'destroy']);
+            });
+
+            //Product management review by buyer
+            Route::prefix('products')->group(function () {
+                Route::get('/{$id}/reviews', [ProductController::class, 'store']);
+            });
+
+            // ✅ Wishlist management
+            Route::prefix('wishlist')->group(function () {
+                Route::get('/', [WishlistController::class, 'index']);
+                Route::post('/', [WishlistController::class, 'store']);
+                Route::get('/count', [WishlistController::class, 'count']);
+                Route::get('/check/{productId}', [WishlistController::class, 'check']);
+                Route::delete('/{productId}', [WishlistController::class, 'destroy']);
+            });
+
             // Buyer Cart Management
             Route::prefix('cart')->group(function () {
                 Route::get('/', [CartController::class, 'index']);
