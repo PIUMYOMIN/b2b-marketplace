@@ -25,7 +25,7 @@ class DeliveryController extends Controller
             'deliveryUpdates'
         ]);
 
-        if ($user->hasRole('seller' || $user->hasRole('seller'))) {
+        if ($user->hasRole('seller')) {
             $query->where('supplier_id', $user->id);
         } elseif ($user->hasRole('courier')) {
             $query->where('platform_courier_id', $user->id);
