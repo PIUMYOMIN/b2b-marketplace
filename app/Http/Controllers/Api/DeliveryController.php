@@ -102,12 +102,21 @@ class DeliveryController extends Controller
             'pickup_address' => 'required|string',
         ]);
 
-        // Check if user is the order supplier
-        if ($request->user()->id !== $order->seller_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized to set delivery method for this order'
-            ], 403);
+        // 🔧 FIX: Use delivery's supplier_id if available, otherwise order's seller_id
+        if ($order->delivery) {
+            if ($request->user()->id !== $order->delivery->supplier_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to set delivery method for this order'
+                ], 403);
+            }
+        } else {
+            if ($request->user()->id !== $order->seller_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to set delivery method for this order'
+                ], 403);
+            }
         }
 
         DB::beginTransaction();
