@@ -1,27 +1,26 @@
 <?php
 
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\BusinessTypeController;
-use App\Http\Controllers\Api\CartController;
-use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\ContactMessageController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\DeliveryAreaController;
-use App\Http\Controllers\Api\DeliveryController;
-use App\Http\Controllers\Api\DiscountController;
-use App\Http\Controllers\Api\FollowController;
-use App\Http\Controllers\Api\OrderController;
-use App\Http\Controllers\Api\PasswordResetController;
-use App\Http\Controllers\Api\PaymentController;
-use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\ProductReviewController;
-use App\Http\Controllers\Api\SellerController;
-use App\Http\Controllers\Api\SellerReviewController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\VerificationController;
-use App\Http\Controllers\Api\WishlistController;
-use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\Api\VerificationController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ContactMessageController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\ProductReviewController;
+use App\Http\Controllers\Api\SellerReviewController;
+use App\Http\Controllers\Api\WishlistController;
+use App\Http\Controllers\Api\SellerController;
+use App\Http\Controllers\Api\DeliveryController;
+use App\Http\Controllers\Api\CartController;
+use App\Http\Controllers\Api\FollowController;
+use App\Http\Controllers\Api\BusinessTypeController;
+use App\Http\Controllers\Api\DiscountController;
+use App\Http\Controllers\Api\DeliveryAreaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -505,14 +504,5 @@ Route::group([
             'success' => false,
             'message' => 'API endpoint not found'
         ], 404);
-    });
-
-    Route::get('/debug/whoami', function (Request $request) {
-        return response()->json([
-            'user_id' => $request->user()->id,
-            'user_email' => $request->user()->email,
-            'user_type' => $request->user()->type,
-            'roles' => $request->user()->getRoleNames(),
-        ]);
     });
 });
