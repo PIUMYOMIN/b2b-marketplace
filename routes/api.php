@@ -308,22 +308,20 @@ Route::group([
                 Route::delete('/{id}', [DeliveryAreaController::class, 'destroy']);
             });
 
+            // Shipping settings (separate from general settings)
             Route::prefix('shipping')->group(function () {
                 Route::get('/settings', [SellerController::class, 'getShippingSettings']);
                 Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
                 Route::post('/calculate', [SellerController::class, 'calculateShipping']);
             });
 
+            // Order delivery method selection
+            Route::post('/orders/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
+
             // Settings routes
             Route::get('/settings', [SellerController::class, 'getSettings']);
             Route::put('/settings', [SellerController::class, 'updateSettings']);
             Route::get('/store-stats', [SellerController::class, 'getStoreStats']);
-
-            // Shipping settings (separate from general settings)
-            Route::prefix('shipping')->group(function () {
-                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
-                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
-            });
 
             // Business hours
             Route::put('/business-hours', [SellerController::class, 'updateBusinessHours']);
@@ -384,9 +382,6 @@ Route::group([
             Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
             Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
         });
-
-        // Order delivery method selection
-        Route::post('/orders/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
         Route::prefix('sellers')->group(function () {
