@@ -25,12 +25,12 @@ class DeliveryController extends Controller
             'deliveryUpdates'
         ]);
 
-        if ($user->type === 'seller') {
+        // Get deliveries for the authenticated user – check both role and type for safety
+        if ($user->hasRole('seller') || $user->type === 'seller') {
             $query->where('supplier_id', $user->id);
-        } elseif ($user->type === 'courier') {
+        } elseif ($user->hasRole('courier') || $user->type === 'courier') {
             $query->where('platform_courier_id', $user->id);
-        } elseif ($user->type === 'buyer') {
-            // Allow buyers to see deliveries for their orders
+        } elseif ($user->hasRole('buyer') || $user->type === 'buyer') {
             $query->whereHas('order', function ($q) use ($user) {
                 $q->where('buyer_id', $user->id);
             });
@@ -53,20 +53,18 @@ class DeliveryController extends Controller
 
         $deliveries = $query->latest()->paginate(20);
 
-        // ✅ Transform images in delivery data
+        // Transform images in delivery data (keep existing code)
         if ($deliveries->count() > 0) {
             $deliveries->getCollection()->transform(function ($delivery) {
                 // Transform order items images
                 if ($delivery->order && $delivery->order->items) {
                     foreach ($delivery->order->items as $item) {
-                        // Transform product_data images
                         $productData = $item->product_data;
                         if (isset($productData['images']) && is_array($productData['images'])) {
                             $productData['images'] = $this->formatImages($productData['images']);
                             $item->product_data = $productData;
                         }
 
-                        // Transform product images if product is loaded
                         if ($item->product && $item->product->images) {
                             $item->product->images = $this->formatImages($item->product->images);
                         }
