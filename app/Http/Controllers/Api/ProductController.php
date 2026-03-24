@@ -612,9 +612,9 @@ class ProductController extends Controller
     {
         $product = Product::where('seller_id', Auth::id())->findOrFail($id);
 
-        // Return raw data including images as stored (relative paths)
+        // Return raw data with formatted image URLs
         $data = $product->toArray();
-        $data['images'] = $product->images;
+        $data['images'] = $this->formatImages($product->images); // ✅ absolute URLs
 
         return response()->json([
             'success' => true,
