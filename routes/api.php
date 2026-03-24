@@ -298,6 +298,12 @@ Route::group([
                 Route::put('/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
             });
 
+            //Delivery management
+            Route::prefix('delivery')->group(function () {
+                // Order delivery method selection
+                Route::post('/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
+            });
+
             // Delivery Areas
             Route::prefix('delivery-areas')->group(function () {
                 Route::get('/', [DeliveryAreaController::class, 'index']);
@@ -315,13 +321,12 @@ Route::group([
                 Route::post('/calculate', [SellerController::class, 'calculateShipping']);
             });
 
-            // Order delivery method selection
-            Route::post('/orders/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
-
             // Settings routes
-            Route::get('/settings', [SellerController::class, 'getSettings']);
-            Route::put('/settings', [SellerController::class, 'updateSettings']);
-            Route::get('/store-stats', [SellerController::class, 'getStoreStats']);
+            Route::prefix('settings')->group(function () {
+                Route::get('/', [SellerController::class, 'getSettings']);
+                Route::put('/', [SellerController::class, 'updateSettings']);
+                Route::get('/store-stats', [SellerController::class, 'getStoreStats']);
+            });
 
             // Business hours
             Route::put('/business-hours', [SellerController::class, 'updateBusinessHours']);
