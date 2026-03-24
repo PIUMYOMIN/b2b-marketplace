@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Delivery extends Model
 {
@@ -24,8 +25,11 @@ class Delivery extends Model
         'delivery_address',
         'pickup_scheduled_at',
         'picked_up_at',
+        'in_transit_at',
+        'out_for_delivery_at',
         'estimated_delivery_date',
         'delivered_at',
+        'failed_at',
         'tracking_number',
         'carrier_name',
         'status',
@@ -46,8 +50,11 @@ class Delivery extends Model
     protected $casts = [
         'pickup_scheduled_at' => 'datetime',
         'picked_up_at' => 'datetime',
+        'in_transit_at' => 'datetime',
+        'out_for_delivery_at' => 'datetime',
         'estimated_delivery_date' => 'datetime',
         'delivered_at' => 'datetime',
+        'failed_at' => 'datetime',
         'delivery_cost_paid_at' => 'datetime',
         'package_dimensions' => 'array',
         'package_weight' => 'decimal:2',
@@ -57,6 +64,7 @@ class Delivery extends Model
     ];
 
     // Relationships
+
     public function order()
     {
         return $this->belongsTo(Order::class);
@@ -78,6 +86,7 @@ class Delivery extends Model
     }
 
     // Scopes
+
     public function scopePending($query)
     {
         return $query->where('status', 'pending');
@@ -104,46 +113,68 @@ class Delivery extends Model
     }
 
     // Methods
-    public function isPlatformDelivery()
+
+    public function isPlatformDelivery(): bool
     {
         return $this->delivery_method === 'platform';
     }
 
-    public function isSupplierDelivery()
+    public function isSupplierDelivery(): bool
     {
         return $this->delivery_method === 'supplier';
     }
 
-    public function canBeUpdatedBy(User $user)
+    /**
+     * Check whether a given user is authorised to update this delivery.
+     *
+     * FIX: was checking type === 'supplier', but users are registered as type === 'seller'.
+     */
+    public function canBeUpdatedBy(User $user): bool
     {
-        if ($user->type === 'admin') {
+        if ($user->hasRole('admin') || $user->type === 'admin') {
             return true;
         }
 
-        if ($user->type === 'supplier' && $this->supplier_id === $user->id) {
+        // Seller who owns the order's delivery
+        if (($user->hasRole('seller') || $user->type === 'seller') && $this->supplier_id === $user->id) {
             return true;
         }
 
-        if ($user->type === 'courier' && $this->platform_courier_id === $user->id) {
+        // Platform courier assigned to this delivery
+        if (($user->hasRole('courier') || $user->type === 'courier') && $this->platform_courier_id === $user->id) {
             return true;
         }
 
         return false;
     }
 
-    public function generateTrackingNumber()
+    /**
+     * Generate a unique tracking number.
+     *
+     * FIX: replaced uniqid() (time-based, collision-prone) with a UUID-backed string
+     * that is guaranteed unique. A unique DB constraint on tracking_number is also
+     * recommended as a safety net.
+     */
+    public function generateTrackingNumber(): string
     {
         if (!$this->tracking_number) {
-            $this->tracking_number = 'TRK' . strtoupper(uniqid());
+            $this->tracking_number = 'TRK' . strtoupper(Str::random(12));
         }
         return $this->tracking_number;
     }
 
-    public function calculatePlatformFee($weight = null, $distance = null)
+    /**
+     * Calculate the platform delivery fee.
+     *
+     * Note: $distance is accepted but distance-based pricing is not yet wired up
+     * in the rest of the system. Remove it or integrate a real distance source
+     * before enabling distance-based fees.
+     */
+    public function calculatePlatformFee(float $weight = null, float $distance = null): float
     {
-        $baseFee = 5000; // 5000 MMK base fee
-        $weightFee = ($weight ?? $this->package_weight ?? 0) * 100; // 100 MMK per kg
-        $distanceFee = $distance ? ($distance * 200) : 0; // 200 MMK per km
+        $baseFee = 5000;
+        $weightFee = ($weight ?? (float) $this->package_weight ?? 0) * 100;
+        $distanceFee = $distance ? ($distance * 200) : 0;
 
         return $baseFee + $weightFee + $distanceFee;
     }

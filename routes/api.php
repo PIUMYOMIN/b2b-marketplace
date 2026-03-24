@@ -102,7 +102,7 @@ Route::group([
     Route::middleware(['auth:sanctum'])->group(function () {
 
         // Dashboard
-        Route::prefix('admin')->group(function () {
+        Route::prefix('admin')->middleware('role:admin')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
             Route::post('/{seller}/reject', [DashboardController::class, 'adminReject']);
             Route::get('/sellers', [DashboardController::class, 'getSellers']);

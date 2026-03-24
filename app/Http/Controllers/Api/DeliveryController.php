@@ -8,10 +8,11 @@ use App\Models\Order;
 use App\Models\DeliveryUpdate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DeliveryController extends Controller
 {
-    // Get deliveries for a supplier
+    // Get deliveries for the authenticated user
     public function index(Request $request)
     {
         $user = $request->user();
@@ -21,10 +22,9 @@ class DeliveryController extends Controller
                 $q->with('items.product');
             },
             'platformCourier',
-            'deliveryUpdates'
+            'deliveryUpdates',
         ]);
 
-        // Filter by order’s seller, not delivery’s supplier_id
         if ($user->hasRole('seller') || $user->type === 'seller') {
             $query->whereHas('order', function ($q) use ($user) {
                 $q->where('seller_id', $user->id);
@@ -37,49 +37,27 @@ class DeliveryController extends Controller
             });
         }
 
-        // Filter by order_id if provided
         if ($request->has('order_id')) {
             $query->where('order_id', $request->order_id);
         }
 
-        // Filter by status
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
 
-        // Filter by delivery method
         if ($request->has('delivery_method')) {
             $query->where('delivery_method', $request->delivery_method);
         }
 
         $deliveries = $query->latest()->paginate(20);
 
-        // ✅ Transform images in delivery data
-        if ($deliveries->count() > 0) {
-            $deliveries->getCollection()->transform(function ($delivery) {
-                // Transform order items images
-                if ($delivery->order && $delivery->order->items) {
-                    foreach ($delivery->order->items as $item) {
-                        // Transform product_data images
-                        $productData = $item->product_data;
-                        if (isset($productData['images']) && is_array($productData['images'])) {
-                            $productData['images'] = $this->formatImages($productData['images']);
-                            $item->product_data = $productData;
-                        }
-
-                        // Transform product images if product is loaded
-                        if ($item->product && $item->product->images) {
-                            $item->product->images = $this->formatImages($item->product->images);
-                        }
-                    }
-                }
-                return $delivery;
-            });
-        }
+        $deliveries->getCollection()->transform(function ($delivery) {
+            return $this->formatDeliveryImages($delivery);
+        });
 
         return response()->json([
             'success' => true,
-            'data' => $deliveries
+            'data' => $deliveries,
         ]);
     }
 
@@ -91,7 +69,7 @@ class DeliveryController extends Controller
         if (!$order) {
             return response()->json([
                 'success' => false,
-                'message' => 'Order not found'
+                'message' => 'Order not found',
             ], 404);
         }
 
@@ -103,16 +81,14 @@ class DeliveryController extends Controller
             'pickup_address' => 'required|string',
         ]);
 
-        // Log the mismatch if it occurs (for debugging)
         $userId = $request->user()->id;
         $orderSellerId = $order->seller_id;
-        $deliverySupplierId = $order->delivery ? $order->delivery->supplier_id : null;
+        $deliverySupplierId = $order->delivery?->supplier_id;
 
-        // 🔥 Critical: allow if the user is the order's seller
+        // Allow if user is the order's seller, or (for legacy data) the delivery's supplier
         if ($userId !== $orderSellerId) {
-            // If a delivery exists, also allow if the user is the delivery's supplier (for consistency)
             if (!$order->delivery || $userId !== $deliverySupplierId) {
-                \Log::warning('Unauthorized delivery method attempt', [
+                Log::warning('Unauthorized delivery method attempt', [
                     'user_id' => $userId,
                     'order_seller_id' => $orderSellerId,
                     'delivery_supplier_id' => $deliverySupplierId,
@@ -120,14 +96,13 @@ class DeliveryController extends Controller
                 ]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized to set delivery method for this order'
+                    'message' => 'Unauthorized to set delivery method for this order',
                 ], 403);
             }
         }
 
         DB::beginTransaction();
         try {
-            // Create or update delivery record
             $delivery = Delivery::updateOrCreate(
                 ['order_id' => $order->id],
                 [
@@ -142,49 +117,32 @@ class DeliveryController extends Controller
                 ]
             );
 
-            // Generate tracking number
             $delivery->generateTrackingNumber();
             $delivery->save();
 
-            // Create initial status update
             DeliveryUpdate::create([
                 'delivery_id' => $delivery->id,
                 'user_id' => $request->user()->id,
                 'status' => $delivery->status,
-                'notes' => "Delivery method set to: " . ucfirst($request->delivery_method),
+                'notes' => 'Delivery method set to: ' . ucfirst($request->delivery_method),
             ]);
 
             DB::commit();
 
-            // Reload with formatted images
             $delivery->load(['order.items.product', 'deliveryUpdates']);
-
-            // Transform images in the response
-            if ($delivery->order && $delivery->order->items) {
-                foreach ($delivery->order->items as $item) {
-                    $productData = $item->product_data;
-                    if (isset($productData['images']) && is_array($productData['images'])) {
-                        $productData['images'] = $this->formatImages($productData['images']);
-                        $item->product_data = $productData;
-                    }
-
-                    if ($item->product && $item->product->images) {
-                        $item->product->images = $this->formatImages($item->product->images);
-                    }
-                }
-            }
+            $delivery = $this->formatDeliveryImages($delivery);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Delivery method set successfully',
-                'data' => $delivery
+                'data' => $delivery,
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to set delivery method: ' . $e->getMessage()
+                'message' => 'Failed to set delivery method: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -203,31 +161,36 @@ class DeliveryController extends Controller
         if (!$delivery->canBeUpdatedBy($request->user())) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to update this delivery'
+                'message' => 'Unauthorized to update this delivery',
             ], 403);
         }
 
         DB::beginTransaction();
         try {
-            $oldStatus = $delivery->status;
             $delivery->status = $request->status;
 
-            if ($request->status === 'delivered') {
-                $delivery->delivered_at = now();
-                // Update the associated order status
-                $delivery->order->update(['status' => 'delivered']);
-            }
-
-            // Set timestamps based on status
+            // FIX: set timestamps for all relevant status transitions, not just picked_up
             switch ($request->status) {
                 case 'picked_up':
                     $delivery->picked_up_at = now();
+                    break;
+                case 'in_transit':
+                    $delivery->in_transit_at = now();
+                    break;
+                case 'out_for_delivery':
+                    $delivery->out_for_delivery_at = now();
+                    break;
+                case 'delivered':
+                    $delivery->delivered_at = now();
+                    $delivery->order->update(['status' => 'delivered']);
+                    break;
+                case 'failed':
+                    $delivery->failed_at = now();
                     break;
             }
 
             $delivery->save();
 
-            // Create status update record
             DeliveryUpdate::create([
                 'delivery_id' => $delivery->id,
                 'user_id' => $request->user()->id,
@@ -243,14 +206,14 @@ class DeliveryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Delivery status updated successfully',
-                'data' => $delivery->load(['deliveryUpdates'])
+                'data' => $delivery->load(['deliveryUpdates']),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update delivery status: ' . $e->getMessage()
+                'message' => 'Failed to update delivery status: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -267,13 +230,12 @@ class DeliveryController extends Controller
         if (!$delivery->canBeUpdatedBy($request->user())) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to update this delivery'
+                'message' => 'Unauthorized to update this delivery',
             ], 403);
         }
 
         DB::beginTransaction();
         try {
-            // Upload proof image
             if ($request->hasFile('delivery_proof')) {
                 $path = $request->file('delivery_proof')->store('delivery-proofs', 'public');
                 $delivery->delivery_proof_image = $path;
@@ -284,12 +246,9 @@ class DeliveryController extends Controller
             $delivery->status = 'delivered';
             $delivery->delivered_at = now();
 
-            // Update the associated order status
             $delivery->order->update(['status' => 'delivered']);
-
             $delivery->save();
 
-            // Create status update
             DeliveryUpdate::create([
                 'delivery_id' => $delivery->id,
                 'user_id' => $request->user()->id,
@@ -299,7 +258,6 @@ class DeliveryController extends Controller
 
             DB::commit();
 
-            // Format delivery proof image URL
             if ($delivery->delivery_proof_image) {
                 $delivery->delivery_proof_image = url('storage/' . ltrim($delivery->delivery_proof_image, '/'));
             }
@@ -307,19 +265,19 @@ class DeliveryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Delivery proof uploaded successfully',
-                'data' => $delivery
+                'data' => $delivery,
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to upload delivery proof: ' . $e->getMessage()
+                'message' => 'Failed to upload delivery proof: ' . $e->getMessage(),
             ], 500);
         }
     }
 
-    // Assign platform courier
+    // Assign platform courier (admin only)
     public function assignCourier(Request $request, Delivery $delivery)
     {
         $request->validate([
@@ -330,10 +288,11 @@ class DeliveryController extends Controller
             'vehicle_number' => 'nullable|string',
         ]);
 
-        if ($request->user()->type !== 'admin') {
+        // FIX: use hasRole() consistent with the rest of the codebase, not type check
+        if (!$request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Only admins can assign couriers'
+                'message' => 'Only admins can assign couriers',
             ], 403);
         }
 
@@ -349,13 +308,31 @@ class DeliveryController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Courier assigned successfully',
-            'data' => $delivery->load('platformCourier')
+            'data' => $delivery->load('platformCourier'),
         ]);
     }
 
     // Get delivery tracking updates
-    public function getTrackingUpdates(Delivery $delivery)
+    public function getTrackingUpdates(Request $request, Delivery $delivery)
     {
+        // FIX: added authorisation check — previously any authenticated user could
+        // fetch tracking data for any delivery by guessing the ID
+        $user = $request->user();
+        $order = $delivery->order;
+
+        $canView = $user->hasRole('admin')
+            || $user->type === 'admin'
+            || ($order && $order->seller_id === $user->id)
+            || ($order && $order->buyer_id === $user->id)
+            || $delivery->platform_courier_id === $user->id;
+
+        if (!$canView) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to view this delivery',
+            ], 403);
+        }
+
         $updates = $delivery->deliveryUpdates()
             ->with('user')
             ->orderBy('created_at', 'desc')
@@ -365,67 +342,85 @@ class DeliveryController extends Controller
             'success' => true,
             'data' => [
                 'delivery' => $delivery,
-                'updates' => $updates
-            ]
+                'updates' => $updates,
+            ],
         ]);
     }
 
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
     /**
-     * Format images to full URLs
-     *
-     * @param array $images
-     * @return array
+     * FIX: extracted the duplicated image-formatting loop into one private method
+     * shared by index() and chooseDeliveryMethod().
      */
-    protected function formatImages($images)
+    private function formatDeliveryImages(Delivery $delivery): Delivery
+    {
+        if (!$delivery->order || !$delivery->order->items) {
+            return $delivery;
+        }
+
+        foreach ($delivery->order->items as $item) {
+            $productData = $item->product_data;
+            if (isset($productData['images']) && is_array($productData['images'])) {
+                $productData['images'] = $this->formatImages($productData['images']);
+                $item->product_data = $productData;
+            }
+
+            if ($item->product && $item->product->images) {
+                $item->product->images = $this->formatImages($item->product->images);
+            }
+        }
+
+        return $delivery;
+    }
+
+    /**
+     * Format an array of image values to full URLs.
+     */
+    protected function formatImages(array $images): array
     {
         if (empty($images)) {
             return [];
         }
 
-        $formattedImages = [];
-
-        foreach ($images as $index => $image) {
+        return array_values(array_map(function ($image, $index) {
             if (is_string($image)) {
-                // If it's a string URL
-                if (!str_starts_with($image, 'http')) {
-                    $image = url('storage/' . ltrim($image, '/'));
-                }
-                $formattedImages[] = [
-                    'url' => $image,
-                    'angle' => 'default',
-                    'is_primary' => $index === 0
-                ];
-            } else {
-                // If it's an object with url/path property
-                $url = $image['url'] ?? $image['path'] ?? '';
-                if (!str_starts_with($url, 'http')) {
-                    $url = url('storage/' . ltrim($url, '/'));
-                }
-                $formattedImages[] = [
-                    'url' => $url,
-                    'angle' => $image['angle'] ?? 'default',
-                    'is_primary' => $image['is_primary'] ?? ($index === 0)
-                ];
-            }
-        }
+                $url = str_starts_with($image, 'http')
+                    ? $image
+                    : url('storage/' . ltrim($image, '/'));
 
-        return $formattedImages;
+                return ['url' => $url, 'angle' => 'default', 'is_primary' => $index === 0];
+            }
+
+            $url = $image['url'] ?? $image['path'] ?? '';
+            if (!str_starts_with($url, 'http')) {
+                $url = url('storage/' . ltrim($url, '/'));
+            }
+
+            return [
+                'url' => $url,
+                'angle' => $image['angle'] ?? 'default',
+                'is_primary' => $image['is_primary'] ?? ($index === 0),
+            ];
+        }, $images, array_keys($images)));
     }
 
-    // Calculate order weight (helper method)
-    private function calculateOrderWeight(Order $order)
+    /**
+     * Calculate total package weight from order items.
+     */
+    private function calculateOrderWeight(Order $order): float
     {
-        // Calculate total weight from order items
-        $totalWeight = 0;
+        $total = 0;
+
         if ($order->items) {
             foreach ($order->items as $item) {
-                if ($item->product && $item->product->weight_kg) {
-                    $totalWeight += $item->product->weight_kg * $item->quantity;
-                } else {
-                    $totalWeight += 1 * $item->quantity; // Default 1kg per item
-                }
+                $weight = $item->product?->weight_kg ?? 1;
+                $total += $weight * $item->quantity;
             }
         }
-        return $totalWeight > 0 ? $totalWeight : 5.0; // Default 5kg if no items
+
+        return $total > 0 ? $total : 5.0;
     }
 }
