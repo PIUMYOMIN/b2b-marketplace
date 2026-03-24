@@ -25,12 +25,11 @@ class DeliveryController extends Controller
             'deliveryUpdates'
         ]);
 
-        if ($user->type === 'supplier') {
+        if ($user->hasRole('seller' || $user->hasRole('seller'))) {
             $query->where('supplier_id', $user->id);
-        } elseif ($user->type === 'courier') {
+        } elseif ($user->hasRole('courier')) {
             $query->where('platform_courier_id', $user->id);
-        } elseif ($user->type === 'buyer') {
-            // Allow buyers to see deliveries for their orders
+        } elseif ($user->hasRole('buyer')) {
             $query->whereHas('order', function ($q) use ($user) {
                 $q->where('buyer_id', $user->id);
             });

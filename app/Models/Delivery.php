@@ -62,8 +62,6 @@ class Delivery extends Model
         return $this->belongsTo(Order::class);
     }
 
-     
-
     public function supplier()
     {
         return $this->belongsTo(User::class, 'supplier_id');
