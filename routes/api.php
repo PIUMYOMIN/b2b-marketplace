@@ -505,4 +505,13 @@ Route::group([
             'message' => 'API endpoint not found'
         ], 404);
     });
+
+    Route::get('/debug/whoami', function (Request $request) {
+        return response()->json([
+            'user_id' => $request->user()->id,
+            'user_email' => $request->user()->email,
+            'user_type' => $request->user()->type,
+            'roles' => $request->user()->getRoleNames(),
+        ]);
+    });
 });
