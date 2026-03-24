@@ -120,7 +120,7 @@ class Delivery extends Model
             return true;
         }
 
-        if (in_array($user->type, ['seller', 'supplier']) && $this->supplier_id === $user->id) {
+        if ($user->type === 'supplier' && $this->supplier_id === $user->id) {
             return true;
         }
 

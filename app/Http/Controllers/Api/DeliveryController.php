@@ -8,7 +8,6 @@ use App\Models\Order;
 use App\Models\DeliveryUpdate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class DeliveryController extends Controller
 {
@@ -25,9 +24,11 @@ class DeliveryController extends Controller
             'deliveryUpdates'
         ]);
 
-        // Get deliveries for the authenticated user – check both role and type for safety
+        // Filter by order’s seller, not delivery’s supplier_id
         if ($user->hasRole('seller') || $user->type === 'seller') {
-            $query->where('supplier_id', $user->id);
+            $query->whereHas('order', function ($q) use ($user) {
+                $q->where('seller_id', $user->id);
+            });
         } elseif ($user->hasRole('courier') || $user->type === 'courier') {
             $query->where('platform_courier_id', $user->id);
         } elseif ($user->hasRole('buyer') || $user->type === 'buyer') {
@@ -53,18 +54,20 @@ class DeliveryController extends Controller
 
         $deliveries = $query->latest()->paginate(20);
 
-        // Transform images in delivery data (keep existing code)
+        // ✅ Transform images in delivery data
         if ($deliveries->count() > 0) {
             $deliveries->getCollection()->transform(function ($delivery) {
                 // Transform order items images
                 if ($delivery->order && $delivery->order->items) {
                     foreach ($delivery->order->items as $item) {
+                        // Transform product_data images
                         $productData = $item->product_data;
                         if (isset($productData['images']) && is_array($productData['images'])) {
                             $productData['images'] = $this->formatImages($productData['images']);
                             $item->product_data = $productData;
                         }
 
+                        // Transform product images if product is loaded
                         if ($item->product && $item->product->images) {
                             $item->product->images = $this->formatImages($item->product->images);
                         }
@@ -100,16 +103,21 @@ class DeliveryController extends Controller
             'pickup_address' => 'required|string',
         ]);
 
-        // 🔧 FIX: Use delivery's supplier_id if available, otherwise order's seller_id
-        if ($order->delivery) {
-            if ($request->user()->id !== $order->delivery->supplier_id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthorized to set delivery method for this order'
-                ], 403);
-            }
-        } else {
-            if ($request->user()->id !== $order->seller_id) {
+        // Log the mismatch if it occurs (for debugging)
+        $userId = $request->user()->id;
+        $orderSellerId = $order->seller_id;
+        $deliverySupplierId = $order->delivery ? $order->delivery->supplier_id : null;
+
+        // 🔥 Critical: allow if the user is the order's seller
+        if ($userId !== $orderSellerId) {
+            // If a delivery exists, also allow if the user is the delivery's supplier (for consistency)
+            if (!$order->delivery || $userId !== $deliverySupplierId) {
+                \Log::warning('Unauthorized delivery method attempt', [
+                    'user_id' => $userId,
+                    'order_seller_id' => $orderSellerId,
+                    'delivery_supplier_id' => $deliverySupplierId,
+                    'order_id' => $order->id,
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized to set delivery method for this order'
