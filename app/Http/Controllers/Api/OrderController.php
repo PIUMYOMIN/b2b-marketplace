@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\OrderItem;
 use App\Models\Delivery; // Add this import
+use App\Models\DeliveryUpdate; // FIX: was used in confirm() but never imported → fatal error
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -431,46 +432,80 @@ class OrderController extends Controller
     }
 
 
-    public function cancel(Order $order)
+    public function cancel(Order $order, Request $request)
     {
         $user = Auth::user();
 
-        // Authorization check
-        if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized to cancel this order'
-            ], 403);
+        // Authorization
+        if ($user->hasRole('buyer') && (int) $order->buyer_id !== (int) $user->id) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized to cancel this order'], 403);
         }
 
-        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized to cancel this order'
-            ], 403);
+        if ($user->hasRole('seller') && (int) $order->seller_id !== (int) $user->id) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized to cancel this order'], 403);
         }
 
         if (!in_array($order->status, [self::STATUS_PENDING, self::STATUS_CONFIRMED])) {
+            return response()->json(['success' => false, 'message' => 'Order cannot be cancelled at this stage'], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            $order->update([
+                'status' => self::STATUS_CANCELLED,
+                'cancelled_at' => now(),
+            ]);
+
+            // FIX: eager-load items with their products before iterating.
+            // Without this, $item->product is null if the product has been
+            // soft-deleted, causing a fatal "Call to member function on null".
+            $order->load('items.product');
+
+            foreach ($order->items as $item) {
+                if ($item->product) {
+                    $item->product->increment('quantity', $item->quantity);
+                }
+            }
+
+            // FIX: reverse coupon usage so the buyer can use the code again
+            // and the used_count goes back down.
+            if ($order->coupon_id) {
+                $usage = \App\Models\CouponUsage::where('coupon_id', $order->coupon_id)
+                    ->where('user_id', $order->buyer_id)
+                    ->where('order_id', $order->id)
+                    ->first();
+
+                if ($usage) {
+                    $usage->delete();
+                    \App\Models\Coupon::where('id', $order->coupon_id)
+                        ->where('used_count', '>', 0)
+                        ->decrement('used_count');
+                }
+            }
+
+            // FIX: cancel the associated delivery record so it doesn't remain
+            // in-progress while the order itself is cancelled.
+            $delivery = \App\Models\Delivery::where('order_id', $order->id)->first();
+            if ($delivery && !in_array($delivery->status, ['delivered', 'failed'])) {
+                $delivery->update(['status' => 'cancelled']);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order cancelled successfully',
+                'data' => $order->fresh(),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Order cancellation failed: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Order cannot be canceled at this stage'
-            ], 400);
+                'message' => 'Failed to cancel order: ' . $e->getMessage(),
+            ], 500);
         }
-
-        $order->update([
-            'status' => self::STATUS_CANCELLED,
-            'cancelled_at' => now()
-        ]);
-
-        // Restore product quantities
-        foreach ($order->items as $item) {
-            $item->product->increment('quantity', $item->quantity);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Order cancelled successfully'
-        ]);
     }
 
     /**
@@ -480,33 +515,39 @@ class OrderController extends Controller
     {
         $order = Order::findOrFail($id);
 
-        // Update order status
+        $user = Auth::user();
+        if ($user->hasRole('seller') && (int) $order->seller_id !== (int) $user->id) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        if ($order->status !== self::STATUS_PENDING) {
+            return response()->json(['success' => false, 'message' => 'Only pending orders can be confirmed'], 400);
+        }
+
         $order->status = 'confirmed';
         $order->save();
 
-        // Create delivery record
-        $delivery = new Delivery();
-        $delivery->order_id = $order->id;
-        $delivery->supplier_id = $order->seller_id;
-        $delivery->delivery_method = 'supplier';
-        $delivery->pickup_address = '';
-        $delivery->delivery_address = $order->shipping_address;
-        $delivery->status = 'pending';
-        $delivery->estimated_delivery_date = now()->addDays(5);
-        $delivery->save();
+        // FIX: store() already creates a Delivery record when the order is placed.
+        // Creating a second one here caused duplicate delivery rows and confusing
+        // tracking state. We just update the existing one to 'awaiting_pickup'.
+        $delivery = Delivery::where('order_id', $order->id)->first();
+        if ($delivery) {
+            $delivery->update(['status' => 'awaiting_pickup']);
 
-        // Create initial delivery update
-        DeliveryUpdate::create([
-            'delivery_id' => $delivery->id,
-            'user_id' => Auth::id(),
-            'status' => 'pending',
-            'notes' => 'Delivery record created. Waiting for seller to choose delivery method.',
-        ]);
+            // FIX: DeliveryUpdate was used here without being imported — fatal error.
+            // Import added at the top of this file.
+            DeliveryUpdate::create([
+                'delivery_id' => $delivery->id,
+                'user_id' => Auth::id(),
+                'status' => 'awaiting_pickup',
+                'notes' => 'Order confirmed by seller. Awaiting pickup.',
+            ]);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Order confirmed successfully',
-            'data' => $order->load(['items', 'delivery'])
+            'data' => $order->load(['items', 'delivery']),
         ]);
     }
 

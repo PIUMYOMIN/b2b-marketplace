@@ -236,13 +236,9 @@ class CouponController extends Controller
         $request->validate([
             'code' => 'required|string',
             'subtotal' => 'required|numeric|min:0',
-            // Accept items as [{product_id, quantity}] so we can calculate the
-            // correct applicable subtotal (price × quantity per product).
-            // Also accept legacy product_ids array for backward compatibility.
             'items' => 'nullable|array',
             'items.*.product_id' => 'required_with:items|integer|exists:products,id',
             'items.*.quantity' => 'required_with:items|integer|min:1',
-            // Legacy field — still accepted but quantities will default to 1
             'product_ids' => 'nullable|array',
             'product_ids.*' => 'integer|exists:products,id',
         ]);
@@ -277,8 +273,6 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Build a quantity map: product_id → quantity
-        // Prefer the new 'items' field; fall back to legacy 'product_ids' (qty=1 each).
         $quantityMap = [];
         if ($request->has('items') && is_array($request->items)) {
             foreach ($request->items as $item) {
