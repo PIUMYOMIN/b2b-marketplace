@@ -249,8 +249,9 @@ class CartController extends Controller
 
             $cartItem = Cart::findOrFail($id);
 
-            // Check ownership
-            if ($cartItem->user_id !== $user->id) {
+            // Check ownership — cast both sides to int to avoid strict type mismatch
+            // (PDO can return user_id as string depending on DB driver)
+            if ((int) $cartItem->user_id !== (int) $user->id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized - This item does not belong to you'
@@ -341,8 +342,9 @@ class CartController extends Controller
 
             $cartItem = Cart::findOrFail($id);
 
-            // Check ownership
-            if ($cartItem->user_id !== $user->id) {
+            // Check ownership — cast both sides to int to avoid strict type mismatch
+            // (PDO can return user_id as string depending on DB driver)
+            if ((int) $cartItem->user_id !== (int) $user->id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized - This item does not belong to you'

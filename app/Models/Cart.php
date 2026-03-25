@@ -19,7 +19,10 @@ class Cart extends Model
 
     protected $casts = [
         'product_data' => 'array',
-        'price' => 'decimal:2'
+        'price' => 'decimal:2',
+        'user_id' => 'integer',
+        'product_id' => 'integer',
+        'quantity' => 'integer',
     ];
 
     // Relationships
