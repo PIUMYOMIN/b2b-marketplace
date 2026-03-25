@@ -37,17 +37,17 @@ class Coupon extends Model
     ];
 
     protected $casts = [
-        'value'                  => 'decimal:2',
-        'min_order_amount'       => 'decimal:2',
+        'value' => 'decimal:2',
+        'min_order_amount' => 'decimal:2',
         'applicable_product_ids' => 'array',
-        'is_active'              => 'boolean',
-        'is_one_time_use'        => 'boolean',
-        'starts_at'              => 'datetime',
-        'expires_at'             => 'datetime',
-        'seller_id'              => 'integer',
-        'max_uses'               => 'integer',
-        'used_count'             => 'integer',
-        'max_uses_per_user'      => 'integer',
+        'is_active' => 'boolean',
+        'is_one_time_use' => 'boolean',
+        'starts_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'seller_id' => 'integer',
+        'max_uses' => 'integer',
+        'used_count' => 'integer',
+        'max_uses_per_user' => 'integer',
     ];
 
     // -------------------------------------------------------------------------
@@ -94,27 +94,42 @@ class Coupon extends Model
     // -------------------------------------------------------------------------
 
     /**
-     * Check whether this coupon is currently valid (dates, usage limits).
+     * Return a human-readable validation error string, or null if the coupon is valid.
+     *
+     * Replaces the old boolean isValid() which caused the controller to emit
+     * "This coupon is no longer valid" for every failure — including "not started yet",
+     * which is a completely different situation from "expired".
      */
-    public function isValid(): bool
+    public function getValidationError(): ?string
     {
         if (!$this->is_active) {
-            return false;
+            return 'This coupon is inactive.';
         }
 
         if ($this->starts_at && now()->lt($this->starts_at)) {
-            return false;
+            // Format in the server timezone so the message is meaningful to the user
+            $startsFormatted = $this->starts_at->format('M j, Y');
+            return "This coupon is not active yet. It becomes available on {$startsFormatted}.";
         }
 
         if ($this->expires_at && now()->gt($this->expires_at)) {
-            return false;
+            return 'This coupon has expired.';
         }
 
         if ($this->max_uses && $this->used_count >= $this->max_uses) {
-            return false;
+            return 'This coupon has reached its usage limit.';
         }
 
-        return true;
+        return null; // valid
+    }
+
+    /**
+     * @deprecated Use getValidationError() === null instead.
+     * Kept for any callers outside the validate endpoint.
+     */
+    public function isValid(): bool
+    {
+        return $this->getValidationError() === null;
     }
 
     /**
@@ -124,7 +139,7 @@ class Coupon extends Model
     {
         if ($this->is_one_time_use || $this->max_uses_per_user) {
             $limit = $this->is_one_time_use ? 1 : $this->max_uses_per_user;
-            $used  = $this->usages()->where('user_id', $userId)->count();
+            $used = $this->usages()->where('user_id', $userId)->count();
             return $used >= $limit;
         }
         return false;
@@ -170,8 +185,8 @@ class Coupon extends Model
     public function recordUsage(int $userId, int $orderId, float $discountAmount): void
     {
         $this->usages()->create([
-            'user_id'         => $userId,
-            'order_id'        => $orderId,
+            'user_id' => $userId,
+            'order_id' => $orderId,
             'discount_amount' => $discountAmount,
         ]);
 

@@ -235,12 +235,9 @@ class CouponController extends Controller
     {
         $request->validate([
             'code' => 'required|string',
-            'subtotal' => 'required|numeric|min:0',
-            'items' => 'nullable|array',
-            'items.*.product_id' => 'required_with:items|integer|exists:products,id',
-            'items.*.quantity' => 'required_with:items|integer|min:1',
-            'product_ids' => 'nullable|array',
+            'product_ids' => 'required|array|min:1',
             'product_ids.*' => 'integer|exists:products,id',
+            'subtotal' => 'required|numeric|min:0',
         ]);
 
         $coupon = Coupon::where('code', strtoupper($request->code))->first();
@@ -252,13 +249,18 @@ class CouponController extends Controller
             ], 404);
         }
 
-        if (!$coupon->isValid()) {
+        // FIX: use getValidationError() instead of isValid() so the buyer
+        // gets a specific message: "not started yet", "expired", "limit reached"
+        // rather than the generic "no longer valid" for all cases.
+        $validationError = $coupon->getValidationError();
+        if ($validationError) {
             return response()->json([
                 'success' => false,
-                'message' => 'This coupon is no longer valid',
+                'message' => $validationError,
             ], 422);
         }
 
+        // Per-user limit check
         if (Auth::check() && $coupon->hasUserExhausted((int) Auth::id())) {
             return response()->json([
                 'success' => false,
@@ -266,6 +268,7 @@ class CouponController extends Controller
             ], 422);
         }
 
+        // Minimum order check
         if ($coupon->min_order_amount && $request->subtotal < $coupon->min_order_amount) {
             return response()->json([
                 'success' => false,
@@ -273,25 +276,8 @@ class CouponController extends Controller
             ], 422);
         }
 
-        $quantityMap = [];
-        if ($request->has('items') && is_array($request->items)) {
-            foreach ($request->items as $item) {
-                $quantityMap[(int) $item['product_id']] = (int) $item['quantity'];
-            }
-        } elseif ($request->has('product_ids')) {
-            foreach ($request->product_ids as $id) {
-                $quantityMap[(int) $id] = 1;
-            }
-        }
-
-        if (empty($quantityMap)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No products provided',
-            ], 422);
-        }
-
-        $products = Product::whereIn('id', array_keys($quantityMap))->get();
+        // Find which of the requested products this coupon applies to
+        $products = Product::whereIn('id', $request->product_ids)->get();
         $applicableProducts = $products->filter(fn($p) => $coupon->appliesToProduct($p));
 
         if ($applicableProducts->isEmpty()) {
@@ -301,13 +287,9 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // FIX: multiply each product's price by its cart quantity so the
-        // applicable subtotal is correct (old code did sum('price') = qty×1 always).
-        $applicableSubtotal = $applicableProducts->sum(
-            fn($p) => $p->price * ($quantityMap[$p->id] ?? 1)
-        );
-
-        $discountAmount = $coupon->calculateDiscount($applicableSubtotal);
+        // Calculate discount based on the applicable subtotal
+        $applicableSubtotal = $applicableProducts->sum('price');
+        $discountAmount = $coupon->calculateDiscount(min($applicableSubtotal, $request->subtotal));
 
         return response()->json([
             'success' => true,
@@ -320,7 +302,6 @@ class CouponController extends Controller
                     'value' => (float) $coupon->value,
                 ],
                 'applicable_product_ids' => $applicableProducts->pluck('id')->values(),
-                'applicable_subtotal' => $applicableSubtotal,
                 'discount_amount' => $discountAmount,
                 'final_amount' => max(0, $request->subtotal - $discountAmount),
             ],

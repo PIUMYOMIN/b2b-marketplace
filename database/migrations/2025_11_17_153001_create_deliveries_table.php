@@ -35,8 +35,11 @@ return new class extends Migration
             // Delivery timeline
             $table->timestamp('pickup_scheduled_at')->nullable();
             $table->timestamp('picked_up_at')->nullable();
+            $table->timestamp('in_transit_at')->nullable();
+            $table->timestamp('out_for_delivery_at')->nullable();
             $table->timestamp('estimated_delivery_date')->nullable();
             $table->timestamp('delivered_at')->nullable();
+            $table->timestamp('failed_at')->nullable();
 
             // Tracking information
             $table->string('tracking_number')->unique()->nullable();

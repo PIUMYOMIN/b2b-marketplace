@@ -121,10 +121,18 @@ class OrderController extends Controller
             if ($request->filled('coupon_code')) {
                 $coupon = Coupon::where('code', strtoupper($request->coupon_code))->first();
 
-                if (!$coupon || !$coupon->isValid()) {
+                if (!$coupon) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Coupon code is invalid or has expired',
+                        'message' => 'Coupon code not found',
+                    ], 422);
+                }
+
+                $validationError = $coupon->getValidationError();
+                if ($validationError) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $validationError,
                     ], 422);
                 }
 
