@@ -45,6 +45,11 @@ class Order extends Model
      * @var array<string, string>
      */
     protected $casts = [
+        // FIX: cast all FK/ID columns to int so strict comparisons (===, !==)
+        // work correctly. Without this, MySQL returns them as strings and
+        // comparisons like $user->id !== $order->seller_id silently fail.
+        'buyer_id' => 'integer',
+        'seller_id' => 'integer',
         'shipping_address' => 'array',
         'billing_address' => 'array',
         'total_amount' => 'decimal:2',
