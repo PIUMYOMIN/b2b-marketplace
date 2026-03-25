@@ -7,7 +7,7 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\OrderItem;
-use App\Models\Delivery; // Add this import
+use App\Models\Delivery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -111,7 +111,8 @@ class OrderController extends Controller
             $subtotal = 0;
 
             foreach ($cartItems as $item) {
-                $product = Product::find($item['product_id']);
+                // Use lockForUpdate to prevent race conditions on concurrent orders
+                $product = Product::lockForUpdate()->find($item['product_id']);
 
                 if (!$product) {
                     throw new \Exception("Product not found: " . $item['product_id']);
@@ -123,6 +124,14 @@ class OrderController extends Controller
 
                 if ($product->quantity < $item['quantity']) {
                     throw new \Exception("Insufficient stock for: " . $product->name);
+                }
+
+                // Enforce minimum order quantity (same rule as CartController)
+                $minOrder = $product->min_order ?? 1;
+                if ($item['quantity'] < $minOrder) {
+                    throw new \Exception(
+                        "Minimum order quantity for {$product->name} is {$minOrder}"
+                    );
                 }
 
                 $sellerId = $product->seller_id;
@@ -151,12 +160,11 @@ class OrderController extends Controller
                 $sellerTax = $sellerSubtotal * 0.05;
                 $sellerTotal = $sellerSubtotal + $sellerShippingFee + $sellerTax;
 
-                // Generate order number
-                $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(Order::count() + 1, 5, '0', STR_PAD_LEFT);
-
-                // Create order
+                // Order number is generated automatically by Order::boot() using a
+                // collision-safe do..while loop — do NOT set it manually here.
+                // Setting it manually with Order::count()+1 causes race conditions
+                // when two orders are placed concurrently.
                 $order = Order::create([
-                    'order_number' => $orderNumber,
                     'buyer_id' => $user->id,
                     'seller_id' => $sellerId,
                     'total_amount' => $sellerTotal,
