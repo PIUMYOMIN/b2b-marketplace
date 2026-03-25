@@ -214,6 +214,8 @@ Route::group([
             Route::post('/banner', [SellerController::class, 'updateBanner']);
             Route::delete('/banner', [SellerController::class, 'removeBanner']);
 
+            Route::post('/init-profile', [SellerController::class, 'initProfile']);
+
             Route::prefix('onboarding')->group(function () {
                 // Onboarding Status
                 Route::get('/status', [SellerController::class, 'getOnboardingStatus']);

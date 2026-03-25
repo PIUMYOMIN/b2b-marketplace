@@ -81,9 +81,6 @@ class DeliveryController extends Controller
             'pickup_address' => 'required|string',
         ]);
 
-        // FIX: cast to int before comparing — Order.seller_id is not cast in the model,
-        // so it comes back from MySQL as a string. Strict !== would fail even when
-        // the values are logically equal (e.g. 11 !== "11").
         $userId = (int) $request->user()->id;
         $orderSellerId = (int) $order->seller_id;
         $deliverySupplierId = $order->delivery ? (int) $order->delivery->supplier_id : null;

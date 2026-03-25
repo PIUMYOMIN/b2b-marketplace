@@ -330,8 +330,71 @@ class SellerController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    /**
+     * Initialise an empty seller profile for the multi-step onboarding flow.
+     *
+     */
+    public function initProfile(Request $request)
     {
+        try {
+            $user = $request->user();
+
+            if ($user->type !== 'seller' && !$user->hasRole('seller')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only sellers can access this endpoint',
+                ], 403);
+            }
+
+            // Idempotent — return existing profile if already created
+            $existing = SellerProfile::where('user_id', $user->id)->first();
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Profile already exists',
+                    'data' => [
+                        'seller_profile' => $existing,
+                        'current_step'   => $this->getCurrentStep($existing),
+                    ],
+                ]);
+            }
+
+            $profile = SellerProfile::create([
+                'user_id'    => $user->id,
+                'store_id'   => SellerProfile::generateStoreId(),
+                'store_slug' => 'pending-' . $user->id . '-' . time(),
+                'store_name' => '',           // filled in step 1
+                'contact_email' => '',        // filled in step 1
+                'contact_phone' => '',        // filled in step 1
+                'address'    => '',           // filled in step 3
+                'city'       => '',           // filled in step 3
+                'state'      => '',           // filled in step 3
+                'country'    => 'Myanmar',    // filled in step 3
+                'status'     => SellerProfile::STATUS_SETUP_PENDING,
+            ]);
+
+            Log::info('Seller profile initialised', [
+                'user_id'           => $user->id,
+                'seller_profile_id' => $profile->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller profile initialised',
+                'data'    => [
+                    'seller_profile' => $profile,
+                    'current_step'   => 'store-basic',
+                ],
+            ], 201);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to initialise seller profile: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to initialise profile: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
         $user = $request->user();
 
         // Check if user is seller
@@ -1412,15 +1475,25 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'is_seller' => true,
-                    'has_profile' => true,
+                    'is_seller'          => true,
+                    'has_profile'        => true,
                     'onboarding_complete' => $sellerProfile->onboarding_completed_at !== null,
-                    'needs_onboarding' => $sellerProfile->onboarding_completed_at === null,
-                    'current_step' => $currentStep,
-                    'completed_steps' => $stepsCompleted,
-                    'progress' => $progress,
-                    'profile_status' => $sellerProfile->status
-                ]
+                    'needs_onboarding'   => $sellerProfile->onboarding_completed_at === null,
+                    'current_step'       => $currentStep,
+                    'completed_steps'    => $stepsCompleted,
+                    'progress'           => $progress,
+                    'progress_percentage' => $progress,    // FIX: hook reads progress_percentage
+                    'profile_status'     => $sellerProfile->status,
+                    // FIX: hook reads business_type_info but it was never returned here
+                    'business_type_info' => $sellerProfile->businessType ? [
+                        'id'                    => $sellerProfile->businessType->id,
+                        'name_en'               => $sellerProfile->businessType->name_en,
+                        'slug_en'               => $sellerProfile->businessType->slug_en,
+                        'is_individual'         => $sellerProfile->businessType->isIndividualType(),
+                        'requires_registration' => $sellerProfile->businessType->requires_registration,
+                        'requires_tax_document' => $sellerProfile->businessType->requires_tax_document,
+                    ] : null,
+                ],
             ]);
 
         } catch (\Exception $e) {
@@ -1587,11 +1660,23 @@ class SellerController extends Controller
             $user = $request->user();
             $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
 
+            // FIX: auto-create an empty profile rather than returning 404.
+            // This handles the case where the seller navigates directly to step 1
+            // without having called initProfile() first.
             if (!$sellerProfile) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Seller profile not found'
-                ], 404);
+                $sellerProfile = SellerProfile::create([
+                    'user_id'    => $user->id,
+                    'store_id'   => SellerProfile::generateStoreId(),
+                    'store_slug' => 'pending-' . $user->id . '-' . time(),
+                    'store_name' => '',
+                    'contact_email' => '',
+                    'contact_phone' => '',
+                    'address'    => '',
+                    'city'       => '',
+                    'state'      => '',
+                    'country'    => 'Myanmar',
+                    'status'     => SellerProfile::STATUS_SETUP_PENDING,
+                ]);
             }
 
             $validator = Validator::make($request->all(), [
@@ -1721,23 +1806,26 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Store basic information updated successfully',
-                'data' => [
+                'data'    => [
                     'seller_profile' => $sellerProfile,
-                    'business_type' => [
-                        'id' => $businessType->id,
-                        'slug_en' => $businessType->slug_en,
-                        'name' => $businessType->name,
-                        'description_en' => $businessType->description_en,
-                        'is_individual' => $businessType->isIndividualType(),
-                        'requires_registration' => $businessType->requires_registration,
-                        'requires_tax_document' => $businessType->requires_tax_document,
-                        'document_requirements' => $businessType->getDocumentRequirements()
+                    'next_step'      => 'business-details',   // FIX: was missing — frontend hardcoded it
+                    'business_type'  => [
+                        'id'                  => $businessType->id,
+                        'slug_en'             => $businessType->slug_en,
+                        'name'                => $businessType->name,
+                        'description_en'      => $businessType->description_en,
+                        'is_individual'       => $businessType->isIndividualType(),
+                        'requires_registration'  => $businessType->requires_registration,
+                        'requires_tax_document'  => $businessType->requires_tax_document,
+                        'document_requirements'  => $businessType->getDocumentRequirements(),
                     ],
                     'media_urls' => [
-                        'store_logo' => $sellerProfile->store_logo ? url('storage/' . $sellerProfile->store_logo) : null,
-                        'store_banner' => $sellerProfile->store_banner ? url('storage/' . $sellerProfile->store_banner) : null
-                    ]
-                ]
+                        'store_logo'   => $sellerProfile->store_logo
+                            ? url('storage/' . $sellerProfile->store_logo) : null,
+                        'store_banner' => $sellerProfile->store_banner
+                            ? url('storage/' . $sellerProfile->store_banner) : null,
+                    ],
+                ],
             ]);
 
         } catch (\Exception $e) {
@@ -1901,9 +1989,10 @@ class SellerController extends Controller
             }
 
             return response()->json([
-                'success' => true,
-                'message' => 'Address information updated successfully',
-                'data' => $sellerProfile->fresh()
+                'success'   => true,
+                'message'   => 'Address information updated successfully',
+                'next_step' => 'documents',   // FIX: was missing
+                'data'      => $sellerProfile->fresh(),
             ]);
 
         } catch (\Exception $e) {
@@ -3336,16 +3425,21 @@ class SellerController extends Controller
 
     private function updateOnboardingProgress($sellerProfile, $step)
     {
-        $steps = ['store-basic', 'business-details', 'address', 'documents', 'review'];
-        $currentStepIndex = array_search($step, $steps);
-
-        $progress = [
-            'current_step' => $step,
-            'completed_steps' => $steps,
-            'progress_percentage' => (($currentStepIndex + 1) / count($steps)) * 100
+        // FIX: the original wrote to an 'onboarding_progress' JSON column that doesn't
+        // exist in the migration — this caused a silent DB error on every saveStep() call.
+        // Progress is derived on the fly by getOnboardingStatus() from the actual column
+        // values, so no separate tracking column is needed.
+        $stepToColumn = [
+            'store-basic'      => 'current_step',
+            'business-details' => 'current_step',
+            'address'          => 'current_step',
+            'documents'        => 'current_step',
+            'review'           => 'current_step',
         ];
 
-        $sellerProfile->update(['onboarding_progress' => json_encode($progress)]);
+        if (array_key_exists($step, $stepToColumn)) {
+            $sellerProfile->update(['current_step' => $step]);
+        }
     }
 
     /**

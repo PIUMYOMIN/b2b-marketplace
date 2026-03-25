@@ -131,8 +131,11 @@ class SellerProfile extends Model
         'business_hours'
     ];
 
+    // FIX: was STATUS_PENDING ('pending') but the migration default is 'setup_pending'.
+    // Using the wrong default means newly created profiles bypassed the setup flow and
+    // appeared in admin pending queues before onboarding was complete.
     protected $attributes = [
-        'status' => self::STATUS_PENDING,
+        'status' => self::STATUS_SETUP_PENDING,
     ];
 
     protected $casts = [
