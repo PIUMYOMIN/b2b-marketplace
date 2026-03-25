@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Coupon;
+use App\Models\CouponUsage;
 use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\OrderItem;
-use App\Models\Delivery;
+use App\Models\Delivery; // Add this import
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -100,19 +102,63 @@ class OrderController extends Controller
                 'shipping_address.full_name' => 'required|string',
                 'shipping_address.phone' => 'required|string',
                 'shipping_address.address' => 'required|string',
-                'payment_method' => 'required|in:kbz_pay,wave_pay,cb_pay,aya_pay,mmqr,cash_on_delivery', // UPDATED
+                'payment_method' => 'required|in:kbz_pay,wave_pay,cb_pay,aya_pay,mmqr,cash_on_delivery',
+                // Coupon fields (all optional — coupon is not required at checkout)
+                'coupon_code' => 'nullable|string|max:50',
+                'coupon_id' => 'nullable|integer|exists:coupons,id',
+                'coupon_discount_amount' => 'nullable|numeric|min:0',
             ]);
 
             // Get cart items or use provided items
             $cartItems = $request->items;
+
+            // Resolve and re-validate coupon server-side so the discount
+            // cannot be spoofed by sending an inflated coupon_discount_amount.
+            $coupon = null;
+            $totalCouponDiscount = 0;
+
+            if ($request->filled('coupon_code')) {
+                $coupon = Coupon::where('code', strtoupper($request->coupon_code))->first();
+
+                if (!$coupon || !$coupon->isValid()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Coupon code is invalid or has expired',
+                    ], 422);
+                }
+
+                if ($coupon->hasUserExhausted($user->id)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You have already used this coupon',
+                    ], 422);
+                }
+
+                // Calculate the real server-side discount (ignore client value)
+                $applicableSubtotal = 0;
+                foreach ($cartItems as $item) {
+                    $product = \App\Models\Product::find($item['product_id']);
+                    if ($product && $coupon->appliesToProduct($product)) {
+                        $applicableSubtotal += $product->price * $item['quantity'];
+                    }
+                }
+
+                if ($applicableSubtotal <= 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This coupon does not apply to any of your selected products',
+                    ], 422);
+                }
+
+                $totalCouponDiscount = $coupon->calculateDiscount($applicableSubtotal);
+            }
 
             // Group items by seller to create separate orders
             $itemsBySeller = [];
             $subtotal = 0;
 
             foreach ($cartItems as $item) {
-                // Use lockForUpdate to prevent race conditions on concurrent orders
-                $product = Product::lockForUpdate()->find($item['product_id']);
+                $product = Product::find($item['product_id']);
 
                 if (!$product) {
                     throw new \Exception("Product not found: " . $item['product_id']);
@@ -124,14 +170,6 @@ class OrderController extends Controller
 
                 if ($product->quantity < $item['quantity']) {
                     throw new \Exception("Insufficient stock for: " . $product->name);
-                }
-
-                // Enforce minimum order quantity (same rule as CartController)
-                $minOrder = $product->min_order ?? 1;
-                if ($item['quantity'] < $minOrder) {
-                    throw new \Exception(
-                        "Minimum order quantity for {$product->name} is {$minOrder}"
-                    );
                 }
 
                 $sellerId = $product->seller_id;
@@ -152,19 +190,28 @@ class OrderController extends Controller
 
             // Create orders for each seller
             $orders = [];
+            $grandSubtotal = collect($itemsBySeller)->flatten(1)->sum('subtotal');
 
             foreach ($itemsBySeller as $sellerId => $sellerItems) {
                 // Calculate seller-specific totals
                 $sellerSubtotal = collect($sellerItems)->sum('subtotal');
-                $sellerShippingFee = 5000; // You can calculate this per seller
+                $sellerShippingFee = 5000;
                 $sellerTax = $sellerSubtotal * 0.05;
-                $sellerTotal = $sellerSubtotal + $sellerShippingFee + $sellerTax;
 
-                // Order number is generated automatically by Order::boot() using a
-                // collision-safe do..while loop — do NOT set it manually here.
-                // Setting it manually with Order::count()+1 causes race conditions
-                // when two orders are placed concurrently.
+                // Distribute coupon discount proportionally across seller orders.
+                // e.g. if this seller's products are 60% of the cart, they absorb 60% of the discount.
+                $sellerCouponDiscount = $grandSubtotal > 0
+                    ? round($totalCouponDiscount * ($sellerSubtotal / $grandSubtotal), 2)
+                    : 0;
+
+                $sellerTotal = max(0, $sellerSubtotal + $sellerShippingFee + $sellerTax - $sellerCouponDiscount);
+
+                // Generate order number
+                $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(Order::count() + 1, 5, '0', STR_PAD_LEFT);
+
+                // Create order
                 $order = Order::create([
+                    'order_number' => $orderNumber,
                     'buyer_id' => $user->id,
                     'seller_id' => $sellerId,
                     'total_amount' => $sellerTotal,
@@ -177,7 +224,11 @@ class OrderController extends Controller
                     'payment_status' => self::PAYMENT_STATUS_PENDING,
                     'shipping_address' => $request->shipping_address,
                     'order_notes' => $request->notes,
-                    'commission_rate' => 0.10, // 10% commission
+                    'commission_rate' => 0.10,
+                    // Coupon columns (populated when a coupon was applied)
+                    'coupon_id' => $coupon?->id,
+                    'coupon_code' => $coupon?->code,
+                    'coupon_discount_amount' => $sellerCouponDiscount,
                 ]);
 
                 // Calculate commission
@@ -221,6 +272,11 @@ class OrderController extends Controller
                 ]);
 
                 $orders[] = $order;
+            }
+
+            // Record coupon usage once, against the first order (usage tracks the buyer, not per-order)
+            if ($coupon && !empty($orders)) {
+                $coupon->recordUsage($user->id, $orders[0]->id, $totalCouponDiscount);
             }
 
             // Clear user's cart

@@ -37,6 +37,10 @@ class Order extends Model
         'commission_amount',
         'delivered_at',
         'cancelled_at',
+        // Coupon fields — populated when a buyer applies a coupon at checkout
+        'coupon_id',
+        'coupon_code',
+        'coupon_discount_amount',
     ];
 
     /**
@@ -45,11 +49,11 @@ class Order extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        // FIX: cast all FK/ID columns to int so strict comparisons (===, !==)
-        // work correctly. Without this, MySQL returns them as strings and
-        // comparisons like $user->id !== $order->seller_id silently fail.
+        // FIX: cast FK columns to int — prevents strict !== comparison failures
+        // when comparing against Auth::id() (always int) throughout the codebase
         'buyer_id' => 'integer',
         'seller_id' => 'integer',
+        'coupon_id' => 'integer',
         'shipping_address' => 'array',
         'billing_address' => 'array',
         'total_amount' => 'decimal:2',
@@ -59,6 +63,7 @@ class Order extends Model
         'tax_rate' => 'decimal:2',
         'commission_amount' => 'decimal:2',
         'commission_rate' => 'decimal:2',
+        'coupon_discount_amount' => 'decimal:2',
         'estimated_delivery' => 'datetime',
         'delivered_at' => 'datetime',
         'cancelled_at' => 'datetime',
@@ -174,6 +179,14 @@ class Order extends Model
     public function seller()
     {
         return $this->belongsTo(User::class, 'seller_id');
+    }
+
+    /**
+     * Get the coupon applied to this order (if any).
+     */
+    public function coupon()
+    {
+        return $this->belongsTo(Coupon::class);
     }
 
     /**
@@ -471,7 +484,7 @@ class Order extends Model
     public function getCanBeReviewedAttribute()
     {
         return $this->status === self::STATUS_DELIVERED &&
-               !$this->reviews()->exists();
+            !$this->reviews()->exists();
     }
 
     /**
@@ -600,7 +613,7 @@ class Order extends Model
     public function requiresPayment()
     {
         return $this->payment_method !== self::PAYMENT_CASH_ON_DELIVERY &&
-               $this->payment_status === self::PAYMENT_STATUS_PENDING;
+            $this->payment_status === self::PAYMENT_STATUS_PENDING;
     }
 
     /**

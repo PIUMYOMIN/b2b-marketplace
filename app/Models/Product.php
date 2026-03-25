@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage; // FIX: was missing — used in three image accessor methods
 
 class Product extends Model
 {
@@ -74,6 +75,10 @@ class Product extends Model
     ];
 
     protected $casts = [
+        // FIX: cast FK/ID columns to int — without this, strict !== comparisons
+        // against $user->id (which is always int) will fail even for the owner.
+        'seller_id' => 'integer',
+        'category_id' => 'integer',
         'specifications' => 'array',
         'images' => 'array',
         'dimensions' => 'array',
@@ -84,14 +89,18 @@ class Product extends Model
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
         'compare_at_price' => 'decimal:2',
-        'discount_percentage' => 'decimal:2',
+        // FIX: removed 'discount_percentage' => 'decimal:2' — the custom
+        // getDiscountPercentageAttribute() accessor below supersedes the cast.
+        // Having both causes Eloquent to apply the cast first, then call the
+        // accessor which reads $this->attributes[] directly, resulting in
+        // unpredictable double-processing. The accessor handles all formatting.
         'weight_kg' => 'decimal:2',
         'shipping_cost' => 'decimal:2',
         'average_rating' => 'decimal:2',
         'discount_start' => 'date',
         'discount_end' => 'date',
         'listed_at' => 'datetime',
-        'approved_at' => 'datetime'
+        'approved_at' => 'datetime',
     ];
 
     /**

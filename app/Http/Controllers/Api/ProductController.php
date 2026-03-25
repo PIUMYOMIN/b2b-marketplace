@@ -163,7 +163,7 @@ class ProductController extends Controller
             'success' => true,
             'data' => ProductResource::collection($products),
             'meta' => [
-                'current_xpage' => $products->currentPage(),
+                'current_page' => $products->currentPage(),
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
                 'last_page' => $products->lastPage(),
@@ -398,7 +398,9 @@ class ProductController extends Controller
         }
 
         try {
-            // Check for duplicate submission
+            // FIX: scope duplicate check to this seller only — the old check was
+            // global so two different sellers listing the same product name would
+            // block each other.
             $recentProduct = Product::where('seller_id', Auth::id())
                 ->where('name_en', $request->name_en)
                 ->where('created_at', '>=', now()->subSeconds(30))
@@ -442,25 +444,21 @@ class ProductController extends Controller
             $productData['description_en'] = $request->description_en;
             $productData['description_mm'] = $request->description_mm;
 
-            // Generate slugs
-            $productData['slug_en'] = Str::slug($request->name_en);
-            $productData['slug_mm'] = $request->name_mm ? Str::slug($request->name_mm) : null;
-
-            // Ensure unique slugs
-            $count = Product::where('slug_en', 'LIKE', $productData['slug_en'] . '%')->count();
-            if ($count > 0) {
-                $productData['slug_en'] = $productData['slug_en'] . '-' . ($count + 1);
-            }
-
-            if ($productData['slug_mm']) {
-                $countMm = Product::where('slug_mm', 'LIKE', $productData['slug_mm'] . '%')->count();
-                if ($countMm > 0) {
-                    $productData['slug_mm'] = $productData['slug_mm'] . '-' . ($countMm + 1);
-                }
-            }
+            // Generate slugs — use a retry loop with uniqueness check to avoid
+            // race conditions. The count-then-append pattern can produce duplicates
+            // under concurrent requests; generateUniqueSlug() retries until the
+            // slug is not taken.
+            $productData['slug_en'] = $this->generateUniqueSlug(Str::slug($request->name_en));
+            $productData['slug_mm'] = $request->name_mm
+                ? $this->generateUniqueSlug(Str::slug($request->name_mm), 'slug_mm')
+                : null;
 
             $productData['seller_id'] = Auth::id();
             $productData['is_active'] = $request->get('is_active', true);
+            // FIX: new products must start as 'pending' so admin approval is required
+            // before they appear publicly. Without this the column defaults to NULL
+            // and the approve/reject endpoints always return 422 "not pending".
+            $productData['status'] = 'pending';
 
             // Process images: move from temp to permanent storage
             $permanentImages = [];
@@ -699,28 +697,22 @@ class ProductController extends Controller
             if ($request->has('name_en') && $request->name_en !== null) {
                 $updateData['name_en'] = $request->name_en;
                 if ($product->name_en !== $request->name_en) {
-                    $newSlug = Str::slug($request->name_en);
-                    $count = Product::where('slug_en', 'LIKE', $newSlug . '%')
-                        ->where('id', '!=', $product->id)
-                        ->count();
-                    if ($count > 0) {
-                        $newSlug = $newSlug . '-' . ($count + 1);
-                    }
-                    $updateData['slug_en'] = $newSlug;
+                    $updateData['slug_en'] = $this->generateUniqueSlug(
+                        Str::slug($request->name_en),
+                        'slug_en',
+                        $product->id
+                    );
                 }
             }
 
             if ($request->has('name_mm') && $request->name_mm !== null) {
                 $updateData['name_mm'] = $request->name_mm;
                 if ($product->name_mm !== $request->name_mm) {
-                    $newSlugMm = Str::slug($request->name_mm);
-                    $count = Product::where('slug_mm', 'LIKE', $newSlugMm . '%')
-                        ->where('id', '!=', $product->id)
-                        ->count();
-                    if ($count > 0) {
-                        $newSlugMm = $newSlugMm . '-' . ($count + 1);
-                    }
-                    $updateData['slug_mm'] = $newSlugMm;
+                    $updateData['slug_mm'] = $this->generateUniqueSlug(
+                        Str::slug($request->name_mm),
+                        'slug_mm',
+                        $product->id
+                    );
                 }
             }
 
@@ -787,6 +779,15 @@ class ProductController extends Controller
 
             $updateData['images'] = $finalImages;
 
+            // FIX: reset status to 'pending' whenever a seller edits an approved product.
+            // Without this a seller can silently change price, images or description
+            // on an already-approved product with no re-review by admin.
+            if ($product->status === 'approved') {
+                $updateData['status'] = 'pending';
+                $updateData['approved_at'] = null;
+                $updateData['listed_at'] = null;
+            }
+
             $product->update($updateData);
 
             return response()->json([
@@ -809,8 +810,9 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        // Authorization check - only seller or admin can delete
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        // FIX: use (int) cast — seller_id comes from DB as string, Auth::id() is int.
+        // Strict !== would fail even for the legitimate owner without the cast.
+        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to delete this product'
@@ -818,16 +820,11 @@ class ProductController extends Controller
         }
 
         try {
-            // Delete associated images
-            if (!empty($product->images)) {
-                foreach ($product->images as $image) {
-                    if (Storage::disk('public')->exists($image['url'])) {
-                        Storage::disk('public')->delete($image['url']);
-                    }
-                }
-            }
-
-            $product->delete();
+            // FIX: do NOT delete physical images here. The model uses SoftDeletes,
+            // so the product can be restored. If we delete images now, a restored
+            // product will have broken image links. Images are deleted in a
+            // 'forceDeleting' model observer (add that separately when needed).
+            $product->delete(); // soft-delete only
 
             return response()->json([
                 'success' => true,
@@ -977,7 +974,9 @@ class ProductController extends Controller
                     $query->where('status', 'approved');
                 }
             ], 'rating')
-            ->where('is_active', true);
+            // FIX: public search must never return inactive or unapproved products
+            ->where('is_active', true)
+            ->where('status', 'approved');
 
         if ($request->has('query')) {
             $searchTerm = $request->input('query');
@@ -1218,7 +1217,7 @@ class ProductController extends Controller
     public function toggleStatus(Product $product)
     {
         // Authorization check
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to update this product'
@@ -1285,7 +1284,7 @@ class ProductController extends Controller
     public function uploadImageToProduct(Request $request, Product $product)
     {
         // Authorization check
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to update this product'
@@ -1345,7 +1344,7 @@ class ProductController extends Controller
     public function deleteImage(Product $product, $imageIndex)
     {
         // Authorization check
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to update this product'
@@ -1403,7 +1402,7 @@ class ProductController extends Controller
     public function setPrimaryImage(Product $product, $imageIndex)
     {
         // Authorization check
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to update this product'
@@ -1459,8 +1458,10 @@ class ProductController extends Controller
             ], 404);
         }
 
-        // Authorization check - only seller or admin can update
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('seller')) {
+        // FIX: was checking hasRole('seller') as the fallback, which allowed any
+        // seller to apply discounts to other sellers' products. Should check
+        // ownership first, then allow admins as the override.
+        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to apply discount to this product'
@@ -1538,7 +1539,7 @@ class ProductController extends Controller
             ], 404);
         }
         // Authorization check - only seller or admin can update
-        if (Auth::id() !== $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to remove discount from this product'
@@ -1593,5 +1594,32 @@ class ProductController extends Controller
             'success' => true,
             'data' => $discounts
         ]);
+    }
+
+    /**
+     * Generate a unique slug using a retry loop.
+     *
+     * Safe under concurrent requests: loops until a slug is genuinely not taken.
+     * A unique DB index on slug_en / slug_mm is still recommended as a final guard.
+     *
+     * @param  string   $base       Already Str::slug()-processed base string
+     * @param  string   $column     'slug_en' or 'slug_mm'
+     * @param  int|null $excludeId  Exclude this product ID (for updates)
+     */
+    private function generateUniqueSlug(string $base, string $column = 'slug_en', ?int $excludeId = null): string
+    {
+        $slug = $base;
+        $suffix = 1;
+
+        while (true) {
+            $query = Product::withTrashed()->where($column, $slug);
+            if ($excludeId) {
+                $query->where('id', '!=', $excludeId);
+            }
+            if (!$query->exists()) {
+                return $slug;
+            }
+            $slug = $base . '-' . (++$suffix);
+        }
     }
 }

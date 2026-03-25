@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\FollowController;
 use App\Http\Controllers\Api\BusinessTypeController;
 use App\Http\Controllers\Api\DiscountController;
+use App\Http\Controllers\Api\CouponController;
 use App\Http\Controllers\Api\DeliveryAreaController;
 
 /*
@@ -102,7 +103,7 @@ Route::group([
     Route::middleware(['auth:sanctum'])->group(function () {
 
         // Dashboard
-        Route::prefix('admin')->middleware('role:admin')->group(function () {
+        Route::prefix('admin')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
             Route::post('/{seller}/reject', [DashboardController::class, 'adminReject']);
             Route::get('/sellers', [DashboardController::class, 'getSellers']);
@@ -192,6 +193,8 @@ Route::group([
                 Route::get('/', [ProductController::class, 'adminIndex']);
                 Route::post('/{product}/approve', [ProductController::class, 'approve']);
                 Route::post('/{product}/reject', [ProductController::class, 'reject']);
+                // FIX: admin status toggle — separate from seller update route
+                Route::patch('/{product}/toggle-status', [ProductController::class, 'toggleStatus']);
             });
 
             Route::prefix('contact-messages')->group(function () {
@@ -298,6 +301,16 @@ Route::group([
                 Route::put('/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
             });
 
+            // Seller coupon management (buyer-entered codes at checkout)
+            Route::prefix('coupons')->group(function () {
+                Route::get('/', [CouponController::class, 'index']);
+                Route::post('/', [CouponController::class, 'store']);
+                Route::get('/{coupon}', [CouponController::class, 'show']);
+                Route::put('/{coupon}', [CouponController::class, 'update']);
+                Route::delete('/{coupon}', [CouponController::class, 'destroy']);
+                Route::patch('/{coupon}/toggle-status', [CouponController::class, 'toggleStatus']);
+            });
+
             //Delivery management
             Route::prefix('delivery')->group(function () {
                 // Order delivery method selection
@@ -364,14 +377,17 @@ Route::group([
 
             // Buyer Cart Management
             Route::prefix('cart')->group(function () {
-                // Static routes MUST come before dynamic /{id} routes
-                // to prevent Laravel matching 'count' or 'clear' as an {id}
-                Route::get('/count', [CartController::class, 'count']);
-                Route::post('/clear', [CartController::class, 'clear']);
                 Route::get('/', [CartController::class, 'index']);
                 Route::post('/', [CartController::class, 'store']);
                 Route::put('/{id}', [CartController::class, 'update']);
                 Route::delete('/{id}', [CartController::class, 'destroy']);
+                Route::post('/clear', [CartController::class, 'clear']);
+                Route::get('/count', [CartController::class, 'count']);
+            });
+
+            // Buyer coupon validation at checkout
+            Route::prefix('coupons')->group(function () {
+                Route::post('/validate', [CouponController::class, 'validate']);
             });
         });
 

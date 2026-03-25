@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use App\Models\Product;
-use App\Models\Seller;
+use App\Models\SellerProfile;
 use App\Models\Category;
 
 class FrontendController extends Controller
@@ -73,7 +73,7 @@ class FrontendController extends Controller
         // Seller profile: /sellers/some-slug
         elseif (preg_match('#^sellers/([^/]+)$#', $trimmed, $matches)) {
             $slug = $matches[1];
-            $seller = Seller::where('slug', $slug)->first();
+            $seller = SellerProfile::where('store_slug', $slug)->first();
 
             if ($seller) {
                 $metadata['pageTitle'] = $seller->store_name . ' | Pyonea';
@@ -109,9 +109,9 @@ class FrontendController extends Controller
     protected function formatProductForJsonLd($product): array
     {
         return [
-            'name' => $product->name,
+            'name' => $product->name_en,
             'images' => $product->images->map(fn($img) => ['url' => $img->url])->toArray(),
-            'description' => $product->description,
+            'description' => $product->description_en,
             'sku' => $product->sku,
             'brand' => $product->seller->store_name,
             'slug' => $product->slug,
@@ -135,7 +135,7 @@ class FrontendController extends Controller
             'slug' => $seller->slug,
             'store_description' => $seller->description,
             'store_logo' => $seller->logo,
-            'hasStorefront' => $seller->has_physical_store, // boolean, adjust accordingly
+            'hasStorefront' => $seller->has_physical_store,
             'address' => $seller->address ? [
                 'city' => $seller->city,
                 'state' => $seller->state,
