@@ -16,8 +16,22 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected string $guard_name = 'sanctum';
 
-   protected $fillable = [
-    'name', 'email', 'password', 'phone', 'type', 'user_id', 'is_active', 'address', 'city', 'state'
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'phone',
+        'type',
+        'user_id',
+        'is_active',
+        'status',
+        'address',
+        'city',
+        'state',
+        'country',
+        'postal_code',
+        'profile_photo',
+        'date_of_birth',
     ];
 
     protected $hidden = [
@@ -29,8 +43,9 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'date_of_birth' => 'date',
             'settings' => 'array',
-            'peferences' => 'array',
+            'preferences' => 'array', // FIX: was 'peferences' (typo)
             'password' => 'hashed',
         ];
     }
@@ -72,7 +87,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function orders()
     {
-        return $this->hasMany(Order::class,'buyer_id');
+        return $this->hasMany(Order::class, 'buyer_id');
     }
 
     public function products()
@@ -101,14 +116,17 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasRole('buyer');
     }
 
+    // FIX: use is_active (boolean column) for active/inactive checks.
+    // The status enum ('active','inactive','suspended') is for admin-level account state.
+    // is_active is the operational on/off flag used throughout the app.
     public function scopeActive($query)
     {
-        return $query->where('status', 'active');
+        return $query->where('is_active', true);
     }
 
     public function scopeInactive($query)
     {
-        return $query->where('status', 'inactive');
+        return $query->where('is_active', false);
     }
 
     public function scopeSuspended($query)
@@ -118,12 +136,12 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isActive()
     {
-        return $this->status === 'active';
+        return $this->is_active === true;
     }
 
     public function isInactive()
     {
-        return $this->status === 'inactive';
+        return $this->is_active === false;
     }
 
     public function isSuspended()
@@ -145,13 +163,13 @@ class User extends Authenticatable implements MustVerifyEmail
     public function followingSellers()
     {
         return $this->belongsToMany(User::class, 'follows', 'user_id', 'seller_id')
-                    ->withTimestamps();
+            ->withTimestamps();
     }
 
     public function followerUsers()
     {
         return $this->belongsToMany(User::class, 'follows', 'seller_id', 'user_id')
-                    ->withTimestamps();
+            ->withTimestamps();
     }
 
     // Helper methods
