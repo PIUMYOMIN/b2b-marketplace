@@ -13,7 +13,7 @@ use Illuminate\Validation\ValidationException;
 class CartController extends Controller
 {
     /**
-     * Get user's cart items with current product data
+     * Get user's cart items
      */
     public function index()
     {
@@ -27,47 +27,53 @@ class CartController extends Controller
                 ], 403);
             }
 
-            // Load product with category, exclude soft‑deleted products
             $cartItems = Cart::with([
-                'product' => function ($q) {
-                    $q->whereNull('deleted_at');
+                'product' => function ($query) {
+                    $query->withTrashed(); // Include soft-deleted products to avoid null
                 },
                 'product.category'
             ])
                 ->where('user_id', $user->id)
                 ->get()
-                ->filter(function ($item) {
-                    return $item->product !== null;
-                })
                 ->map(function ($item) {
                     $product = $item->product;
 
-                    // Update stored price if product price changed
-                    if ((float) $item->price != (float) $product->price) {
+                    // If product is soft-deleted, mark as unavailable
+                    $isAvailable = $product && !$product->trashed() && $product->is_active && $product->quantity > 0;
+
+                    // Update price if product exists and price changed
+                    if ($product && !$product->trashed() && $item->price != $product->price) {
                         $item->price = $product->price;
                         $item->save();
                     }
 
-                    $isAvailable = $product->is_active && $product->quantity > 0;
-                    $isQuantityValid = $item->quantity <= $product->quantity;
+                    // Get product name safely
+                    $productName = $product ? ($product->name ?? 'Product') : 'Product Unavailable';
+                    $productPrice = $product && !$product->trashed() ? (float) $product->price : (float) $item->price;
+                    $stock = $product && !$product->trashed() ? (int) $product->quantity : 0;
+                    $categoryName = $product && $product->category ? $product->category->name_en : 'Uncategorized';
 
-                    // Get the primary image URL
+                    // Get image URL safely
                     $image = $this->getProductImageUrl($product);
 
                     return [
                         'id' => $item->id,
-                        'product_id' => $product->id,
-                        'name' => $product->name,
-                        'price' => (float) $product->price,
+                        'product_id' => $item->product_id,
+                        'name' => $productName,
+                        'price' => $productPrice,
                         'quantity' => (int) $item->quantity,
                         'image' => $image,
-                        'category' => $product->category?->name ?? 'Uncategorized',
-                        'stock' => (int) $product->quantity,
-                        'min_order' => $product->min_order ?? 1,
+                        'category' => $categoryName,
+                        'stock' => $stock,
+                        'min_order' => $product && !$product->trashed() ? ($product->min_order ?? 1) : 1,
                         'is_available' => $isAvailable,
-                        'is_quantity_valid' => $isQuantityValid,
-                        'subtotal' => (float) ($product->price * $item->quantity)
+                        'is_quantity_valid' => $isAvailable && $item->quantity <= $stock,
+                        'subtotal' => $productPrice * $item->quantity
                     ];
+                })
+                ->filter(function ($item) {
+                    // Keep items even if product is deleted (but mark them as unavailable)
+                    return true;
                 });
 
             $subtotal = $cartItems->sum('subtotal');
@@ -90,7 +96,11 @@ class CartController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Cart index error: ' . $e->getMessage());
+            Log::error('Cart index error: ' . $e->getMessage(), [
+                'user_id' => Auth::id(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch cart items'
@@ -119,6 +129,14 @@ class CartController extends Controller
             ]);
 
             $product = Product::findOrFail($request->product_id);
+
+            // Check if product is soft-deleted
+            if ($product->trashed()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product is no longer available'
+                ], 400);
+            }
 
             // Check product availability
             if (!$product->is_active) {
@@ -165,9 +183,6 @@ class CartController extends Controller
                 $cartItem = $existingCartItem;
                 $message = 'Cart updated successfully';
             } else {
-                $categoryName = $product->category?->name ?? 'Uncategorized';
-                $image = $this->getProductImageUrl($product);
-
                 $cartItem = Cart::create([
                     'user_id' => $user->id,
                     'product_id' => $request->product_id,
@@ -175,8 +190,8 @@ class CartController extends Controller
                     'price' => $product->price,
                     'product_data' => [
                         'name' => $product->name,
-                        'image' => $image,
-                        'category' => $categoryName,
+                        'image' => $this->getProductImageUrl($product),
+                        'category' => $product->category?->name ?? 'Uncategorized',
                     ]
                 ]);
 
@@ -224,7 +239,7 @@ class CartController extends Controller
             if ($cartItem->user_id !== $user->id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized'
+                    'message' => 'Unauthorized - This item does not belong to you'
                 ], 403);
             }
 
@@ -234,7 +249,16 @@ class CartController extends Controller
 
             $product = $cartItem->product;
 
-            if (!$product || !$product->is_active) {
+            if (!$product || $product->trashed()) {
+                // Product is deleted, remove from cart
+                $cartItem->delete();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product is no longer available and has been removed from your cart'
+                ], 400);
+            }
+
+            if (!$product->is_active) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Product is no longer available'
@@ -307,7 +331,7 @@ class CartController extends Controller
             if ($cartItem->user_id !== $user->id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized'
+                    'message' => 'Unauthorized - This item does not belong to you'
                 ], 403);
             }
 
@@ -324,10 +348,14 @@ class CartController extends Controller
                 'message' => 'Cart item not found'
             ], 404);
         } catch (\Exception $e) {
-            Log::error('Cart destroy error: ' . $e->getMessage());
+            Log::error('Cart destroy error: ' . $e->getMessage(), [
+                'cart_id' => $id,
+                'user_id' => Auth::id()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to remove item'
+                'message' => 'Failed to remove item from cart'
             ], 500);
         }
     }
@@ -364,7 +392,7 @@ class CartController extends Controller
     }
 
     /**
-     * Get cart count (for header)
+     * Get cart count
      */
     public function count()
     {
@@ -401,6 +429,10 @@ class CartController extends Controller
      */
     private function getProductImageUrl($product)
     {
+        if (!$product || $product->trashed()) {
+            return '/placeholder-product.jpg';
+        }
+
         $default = '/placeholder-product.jpg';
         if (!$product->images) {
             return $default;
