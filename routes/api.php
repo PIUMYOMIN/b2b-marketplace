@@ -364,12 +364,14 @@ Route::group([
 
             // Buyer Cart Management
             Route::prefix('cart')->group(function () {
+                // Static routes MUST come before dynamic /{id} routes
+                // to prevent Laravel matching 'count' or 'clear' as an {id}
+                Route::get('/count', [CartController::class, 'count']);
+                Route::post('/clear', [CartController::class, 'clear']);
                 Route::get('/', [CartController::class, 'index']);
                 Route::post('/', [CartController::class, 'store']);
                 Route::put('/{id}', [CartController::class, 'update']);
                 Route::delete('/{id}', [CartController::class, 'destroy']);
-                Route::post('/clear', [CartController::class, 'clear']);
-                Route::get('/count', [CartController::class, 'count']);
             });
         });
 

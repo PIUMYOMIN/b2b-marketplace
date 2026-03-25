@@ -47,14 +47,28 @@ class CartController extends Controller
                         $item->save();
                     }
 
-                    // Get product name safely
-                    $productName = $product ? ($product->name ?? 'Product') : 'Product Unavailable';
-                    $productPrice = $product && !$product->trashed() ? (float) $product->price : (float) $item->price;
-                    $stock = $product && !$product->trashed() ? (int) $product->quantity : 0;
-                    $categoryName = $product && $product->category ? $product->category->name_en : 'Uncategorized';
+                    // Fall back to cached product_data when product is deleted
+                    $cachedData = $item->product_data ?? [];
 
-                    // Get image URL safely
-                    $image = $this->getProductImageUrl($product);
+                    // Get product name safely — use cached name if product is gone
+                    $productName = ($product && !$product->trashed())
+                        ? ($product->name ?? 'Product')
+                        : ($cachedData['name'] ?? 'Product Unavailable');
+
+                    $productPrice = ($product && !$product->trashed())
+                        ? (float) $product->price
+                        : (float) $item->price;
+
+                    $stock = ($product && !$product->trashed()) ? (int) $product->quantity : 0;
+
+                    $categoryName = ($product && !$product->trashed() && $product->category)
+                        ? $product->category->name_en
+                        : ($cachedData['category'] ?? 'Uncategorized');
+
+                    // Use cached image if product is gone
+                    $image = ($product && !$product->trashed())
+                        ? $this->getProductImageUrl($product)
+                        : ($cachedData['image'] ?? '/placeholder-product.jpg');
 
                     return [
                         'id' => $item->id,
