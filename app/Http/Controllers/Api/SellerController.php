@@ -330,10 +330,6 @@ class SellerController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    /**
-     * Initialise an empty seller profile for the multi-step onboarding flow.
-     *
-     */
     public function initProfile(Request $request)
     {
         try {
@@ -392,122 +388,6 @@ class SellerController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to initialise profile: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-        $user = $request->user();
-
-        // Check if user is seller
-        if (!isset($user->type) || $user->type !== 'seller') {
-            return response()->json([
-                'success' => false,
-                'message' => 'User is not a seller'
-            ], 403);
-        }
-
-        // ✅ Check if seller profile already exists
-        $existingProfile = SellerProfile::where('user_id', $user->id)->first();
-        if ($existingProfile) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Seller profile already exists'
-            ], 409);
-        }
-
-        $validator = Validator::make($request->all(), [
-            // Store Basic Info
-            'store_name' => 'required|string|max:255|unique:seller_profiles,store_name',
-            'business_type' => 'required|in:individual,company,retail,wholesale,manufacturer,service,partnership,   private_limited,public_limited,cooperative',
-            'store_description' => 'nullable|string|max:2000',
-            'contact_email' => 'required|email|max:255',
-            'contact_phone' => 'required|string|max:20',
-            'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
-
-            // Business Details
-            'business_registration_number' => 'nullable|string|max:255',
-            'tax_id' => 'nullable|string|max:255',
-            'website' => 'nullable|url|max:255',
-            'account_number' => 'nullable|string|max:255',
-            'social_facebook' => 'nullable|url|max:255',
-            'social_instagram' => 'nullable|url|max:255',
-            'social_twitter' => 'nullable|url|max:255',
-            'social_linkedin' => 'nullable|url|max:255',
-
-            // Address Info
-            'address' => 'required|string|max:500',
-            'city' => 'required|string|max:255',
-            'state' => 'required|string|max:255',
-            'country' => 'required|string|max:255',
-            'postal_code' => 'nullable|string|max:20',
-            'location' => 'nullable|string|max:255',
-
-            // Additional Info
-            'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
-            'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
-            'production_capacity' => 'nullable|string|max:255',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        try {
-            $validated = $validator->validated();
-
-            // Remove file fields from validated data as we'll handle them separately
-            $fileFields = ['store_logo', 'store_banner'];
-            $createData = array_diff_key($validated, array_flip($fileFields));
-
-            // ✅ Create new seller profile (first time creation)
-            $sellerProfile = SellerProfile::create(array_merge($createData, [
-                'user_id' => $user->id,
-                'store_id' => SellerProfile::generateStoreId(),
-                'store_slug' => SellerProfile::generateStoreSlug($validated['store_name']),
-                'status' => SellerProfile::STATUS_PENDING,
-                'store_logo' => null,
-                'store_banner' => null
-            ]));
-
-            // Handle store logo upload after profile creation
-            if ($request->hasFile('store_logo')) {
-                $logoPath = $this->uploadStoreLogo($request->file('store_logo'), $sellerProfile->id);
-                if ($logoPath) {
-                    $sellerProfile->update(['store_logo' => $logoPath]);
-                }
-            }
-
-            // Handle store banner upload after profile creation
-            if ($request->hasFile('store_banner')) {
-                $bannerPath = $this->uploadStoreBanner($request->file('store_banner'), $sellerProfile->id);
-                if ($bannerPath) {
-                    $sellerProfile->update(['store_banner' => $bannerPath]);
-                }
-            }
-
-            Log::info('Seller profile created for user: ' . $user->id . ', Profile ID: ' . $sellerProfile->id);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Seller profile created successfully and submitted for approval',
-                'data' => $sellerProfile->fresh()
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to create seller profile: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
-
-            // If profile was created but file upload failed, delete the profile
-            if (isset($sellerProfile)) {
-                $sellerProfile->delete();
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create seller profile: ' . $e->getMessage()
             ], 500);
         }
     }

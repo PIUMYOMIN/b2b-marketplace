@@ -27,7 +27,7 @@ class CouponController extends Controller
     public function index(Request $request)
     {
         $request->validate([
-            'status'   => 'sometimes|in:active,expired,upcoming',
+            'status' => 'sometimes|in:active,expired,upcoming',
             'per_page' => 'sometimes|integer|min:1|max:100',
         ]);
 
@@ -38,12 +38,12 @@ class CouponController extends Controller
         if ($request->has('status')) {
             $now = now();
             match ($request->status) {
-                'active'   => $query->where('is_active', true)
-                                    ->where(fn($q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
-                                    ->where(fn($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', $now)),
-                'expired'  => $query->where(fn($q) => $q->whereNotNull('expires_at')->where('expires_at', '<', $now)),
+                'active' => $query->where('is_active', true)
+                    ->where(fn($q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
+                    ->where(fn($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', $now)),
+                'expired' => $query->where(fn($q) => $q->whereNotNull('expires_at')->where('expires_at', '<', $now)),
                 'upcoming' => $query->where('starts_at', '>', $now),
-                default    => null,
+                default => null,
             };
         }
 
@@ -51,11 +51,11 @@ class CouponController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $coupons,
-            'meta'    => [
+            'data' => $coupons,
+            'meta' => [
                 'current_page' => $coupons->currentPage(),
-                'per_page'     => $coupons->perPage(),
-                'total'        => $coupons->total(),
+                'per_page' => $coupons->perPage(),
+                'total' => $coupons->total(),
             ],
         ]);
     }
@@ -67,20 +67,20 @@ class CouponController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name'                  => 'required|string|max:255',
-            'code'                  => 'nullable|string|max:50|unique:coupons,code',
-            'type'                  => 'required|in:percentage,fixed',
-            'value'                 => 'required|numeric|min:0.01',
-            'min_order_amount'      => 'nullable|numeric|min:0',
+            'name' => 'required|string|max:255',
+            'code' => 'nullable|string|max:50|unique:coupons,code',
+            'type' => 'required|in:percentage,fixed',
+            'value' => 'required|numeric|min:0.01',
+            'min_order_amount' => 'nullable|numeric|min:0',
             // NULL = applies to all seller products; array = specific products only
-            'applicable_product_ids'=> 'nullable|array',
+            'applicable_product_ids' => 'nullable|array',
             'applicable_product_ids.*' => 'integer|exists:products,id',
-            'max_uses'              => 'nullable|integer|min:1',
-            'max_uses_per_user'     => 'nullable|integer|min:1',
-            'is_one_time_use'       => 'boolean',
-            'is_active'             => 'boolean',
-            'starts_at'             => 'nullable|date',
-            'expires_at'            => 'nullable|date|after_or_equal:starts_at',
+            'max_uses' => 'nullable|integer|min:1',
+            'max_uses_per_user' => 'nullable|integer|min:1',
+            'is_one_time_use' => 'boolean',
+            'is_active' => 'boolean',
+            'starts_at' => 'nullable|date',
+            'expires_at' => 'nullable|date|after_or_equal:starts_at',
         ]);
 
         $sellerId = (int) Auth::id();
@@ -95,24 +95,24 @@ class CouponController extends Controller
             : strtoupper(Str::random(8));
 
         $coupon = Coupon::create([
-            'seller_id'              => $sellerId,
-            'name'                   => $request->name,
-            'code'                   => $code,
-            'type'                   => $request->type,
-            'value'                  => $request->value,
-            'min_order_amount'       => $request->min_order_amount,
+            'seller_id' => $sellerId,
+            'name' => $request->name,
+            'code' => $code,
+            'type' => $request->type,
+            'value' => $request->value,
+            'min_order_amount' => $request->min_order_amount,
             'applicable_product_ids' => $request->applicable_product_ids,
-            'max_uses'               => $request->max_uses,
-            'max_uses_per_user'      => $request->max_uses_per_user,
-            'is_one_time_use'        => $request->boolean('is_one_time_use', false),
-            'is_active'              => $request->boolean('is_active', true),
-            'starts_at'              => $request->starts_at,
-            'expires_at'             => $request->expires_at,
+            'max_uses' => $request->max_uses,
+            'max_uses_per_user' => $request->max_uses_per_user,
+            'is_one_time_use' => $request->boolean('is_one_time_use', false),
+            'is_active' => $request->boolean('is_active', true),
+            'starts_at' => $request->starts_at,
+            'expires_at' => $request->expires_at,
         ]);
 
         return response()->json([
             'success' => true,
-            'data'    => $coupon,
+            'data' => $coupon,
             'message' => 'Coupon created successfully',
         ], 201);
     }
@@ -127,7 +127,7 @@ class CouponController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $coupon->load('usages'),
+            'data' => $coupon->load('usages'),
         ]);
     }
 
@@ -140,19 +140,19 @@ class CouponController extends Controller
         $this->authorizeSeller($coupon);
 
         $request->validate([
-            'name'                  => 'sometimes|string|max:255',
-            'code'                  => 'sometimes|string|max:50|unique:coupons,code,' . $coupon->id,
-            'type'                  => 'sometimes|in:percentage,fixed',
-            'value'                 => 'sometimes|numeric|min:0.01',
-            'min_order_amount'      => 'nullable|numeric|min:0',
-            'applicable_product_ids'=> 'nullable|array',
+            'name' => 'sometimes|string|max:255',
+            'code' => 'sometimes|string|max:50|unique:coupons,code,' . $coupon->id,
+            'type' => 'sometimes|in:percentage,fixed',
+            'value' => 'sometimes|numeric|min:0.01',
+            'min_order_amount' => 'nullable|numeric|min:0',
+            'applicable_product_ids' => 'nullable|array',
             'applicable_product_ids.*' => 'integer|exists:products,id',
-            'max_uses'              => 'nullable|integer|min:1',
-            'max_uses_per_user'     => 'nullable|integer|min:1',
-            'is_one_time_use'       => 'boolean',
-            'is_active'             => 'boolean',
-            'starts_at'             => 'nullable|date',
-            'expires_at'            => 'nullable|date|after_or_equal:starts_at',
+            'max_uses' => 'nullable|integer|min:1',
+            'max_uses_per_user' => 'nullable|integer|min:1',
+            'is_one_time_use' => 'boolean',
+            'is_active' => 'boolean',
+            'starts_at' => 'nullable|date',
+            'expires_at' => 'nullable|date|after_or_equal:starts_at',
         ]);
 
         $sellerId = (int) Auth::id();
@@ -162,9 +162,17 @@ class CouponController extends Controller
         }
 
         $data = $request->only([
-            'name', 'type', 'value', 'min_order_amount',
-            'applicable_product_ids', 'max_uses', 'max_uses_per_user',
-            'is_one_time_use', 'is_active', 'starts_at', 'expires_at',
+            'name',
+            'type',
+            'value',
+            'min_order_amount',
+            'applicable_product_ids',
+            'max_uses',
+            'max_uses_per_user',
+            'is_one_time_use',
+            'is_active',
+            'starts_at',
+            'expires_at',
         ]);
 
         if ($request->filled('code')) {
@@ -175,7 +183,7 @@ class CouponController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $coupon->fresh(),
+            'data' => $coupon->fresh(),
             'message' => 'Coupon updated successfully',
         ]);
     }
@@ -191,8 +199,8 @@ class CouponController extends Controller
         $coupon->update(['is_active' => !$coupon->is_active]);
 
         return response()->json([
-            'success'   => true,
-            'message'   => 'Coupon status updated',
+            'success' => true,
+            'message' => 'Coupon status updated',
             'is_active' => $coupon->is_active,
         ]);
     }
@@ -226,10 +234,17 @@ class CouponController extends Controller
     public function validate(Request $request)
     {
         $request->validate([
-            'code'        => 'required|string',
-            'product_ids' => 'required|array|min:1',
+            'code' => 'required|string',
+            'subtotal' => 'required|numeric|min:0',
+            // Accept items as [{product_id, quantity}] so we can calculate the
+            // correct applicable subtotal (price × quantity per product).
+            // Also accept legacy product_ids array for backward compatibility.
+            'items' => 'nullable|array',
+            'items.*.product_id' => 'required_with:items|integer|exists:products,id',
+            'items.*.quantity' => 'required_with:items|integer|min:1',
+            // Legacy field — still accepted but quantities will default to 1
+            'product_ids' => 'nullable|array',
             'product_ids.*' => 'integer|exists:products,id',
-            'subtotal'    => 'required|numeric|min:0',
         ]);
 
         $coupon = Coupon::where('code', strtoupper($request->code))->first();
@@ -248,7 +263,6 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Per-user limit check
         if (Auth::check() && $coupon->hasUserExhausted((int) Auth::id())) {
             return response()->json([
                 'success' => false,
@@ -256,7 +270,6 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Minimum order check
         if ($coupon->min_order_amount && $request->subtotal < $coupon->min_order_amount) {
             return response()->json([
                 'success' => false,
@@ -264,8 +277,27 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Find which of the requested products this coupon applies to
-        $products          = Product::whereIn('id', $request->product_ids)->get();
+        // Build a quantity map: product_id → quantity
+        // Prefer the new 'items' field; fall back to legacy 'product_ids' (qty=1 each).
+        $quantityMap = [];
+        if ($request->has('items') && is_array($request->items)) {
+            foreach ($request->items as $item) {
+                $quantityMap[(int) $item['product_id']] = (int) $item['quantity'];
+            }
+        } elseif ($request->has('product_ids')) {
+            foreach ($request->product_ids as $id) {
+                $quantityMap[(int) $id] = 1;
+            }
+        }
+
+        if (empty($quantityMap)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No products provided',
+            ], 422);
+        }
+
+        $products = Product::whereIn('id', array_keys($quantityMap))->get();
         $applicableProducts = $products->filter(fn($p) => $coupon->appliesToProduct($p));
 
         if ($applicableProducts->isEmpty()) {
@@ -275,23 +307,28 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Calculate discount based on the applicable subtotal
-        $applicableSubtotal = $applicableProducts->sum('price');
-        $discountAmount     = $coupon->calculateDiscount(min($applicableSubtotal, $request->subtotal));
+        // FIX: multiply each product's price by its cart quantity so the
+        // applicable subtotal is correct (old code did sum('price') = qty×1 always).
+        $applicableSubtotal = $applicableProducts->sum(
+            fn($p) => $p->price * ($quantityMap[$p->id] ?? 1)
+        );
+
+        $discountAmount = $coupon->calculateDiscount($applicableSubtotal);
 
         return response()->json([
             'success' => true,
-            'data'    => [
-                'coupon'                  => [
-                    'id'   => $coupon->id,
+            'data' => [
+                'coupon' => [
+                    'id' => $coupon->id,
                     'code' => $coupon->code,
                     'name' => $coupon->name,
                     'type' => $coupon->type,
-                    'value'=> (float) $coupon->value,
+                    'value' => (float) $coupon->value,
                 ],
-                'applicable_product_ids'  => $applicableProducts->pluck('id')->values(),
-                'discount_amount'         => $discountAmount,
-                'final_amount'            => max(0, $request->subtotal - $discountAmount),
+                'applicable_product_ids' => $applicableProducts->pluck('id')->values(),
+                'applicable_subtotal' => $applicableSubtotal,
+                'discount_amount' => $discountAmount,
+                'final_amount' => max(0, $request->subtotal - $discountAmount),
             ],
             'message' => 'Coupon applied successfully',
         ]);
