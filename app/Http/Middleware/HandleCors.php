@@ -4,7 +4,8 @@ return [
     'paths' => ['/api/v1/*', 'login', 'logout', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
     'allowed_origins' => [
-        'https://b2b.piueducation.org',
+        'https://www.pyonea.com',
+        'https://pyonea.com',
         'http://localhost:5173',
     ],
     'allowed_origins_patterns' => [],

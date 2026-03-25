@@ -9,6 +9,7 @@ return [
     'allowed_origins' => [
         'http://localhost:5173',
         'https://pyonea.com',
+        'https://www.pyonea.com',
     ],
 
     'allowed_origins_patterns' => [],
