@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\BusinessTypeController;
 use App\Http\Controllers\Api\DiscountController;
 use App\Http\Controllers\Api\CouponController;
 use App\Http\Controllers\Api\DeliveryAreaController;
+use App\Http\Controllers\Api\OrderTrackingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -62,6 +63,10 @@ Route::group([
 
     //Contact
     Route::post('/contact', [ContactMessageController::class, 'submit']);
+
+    //Order Tracking
+    Route::get('/track/{orderNumber}', [OrderTrackingController::class, 'track'])
+        ->where('orderNumber', '[A-Za-z0-9\-]+');
 
     // --------------------
     // Public Routes
