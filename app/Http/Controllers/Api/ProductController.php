@@ -192,23 +192,29 @@ class ProductController extends Controller
                 'id' => $product->id,
                 'name_en' => $product->name_en,
                 'name_mm' => $product->name_mm,
+                'sku' => $product->sku,
+                'moq' => $product->moq,
+                'min_order' => $product->moq,
+                'min_order_unit' => $product->min_order_unit,
                 'price' => (float) $product->price,
                 'quantity' => $product->quantity,
                 'status' => $product->status,
                 'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
                 'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
+                'is_new' => (bool) $product->is_new,
                 'is_on_sale' => (bool) $product->is_on_sale,
                 'discount_start' => $product->discount_start,
                 'discount_end' => $product->discount_end,
-                'is_active' => $product->is_active,
+                'is_active' => (bool) $product->is_active,
                 'approved_at' => $product->approved_at,
+                'rejection_reason' => $product->rejection_reason,
                 'category' => $product->category ? [
                     'id' => $product->category->id,
-                    'name_en' => $product->category->name_en
+                    'name_en' => $product->category->name_en,
                 ] : null,
                 'seller' => $product->seller ? [
                     'id' => $product->seller->id,
-                    'name' => $product->seller->name
+                    'name' => $product->seller->name,
                 ] : null,
                 'images' => $this->formatImages($product->images),
             ];
@@ -228,26 +234,33 @@ class ProductController extends Controller
     /**
      * Approve a product (admin only)
      */
-    public function approve(Product $product)
+    public function approve($id)
     {
+        // Resolve by primary key, not slug — bypass getRouteKeyName()
+        $product = Product::withoutGlobalScopes()->findOrFail($id);
+
         if (!Auth::user()->hasRole('admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        if ($product->status !== 'pending') {
-            return response()->json(['success' => false, 'message' => 'Product is not pending'], 422);
+        if (!in_array($product->status, ['pending', 'rejected'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only pending or rejected products can be approved',
+            ], 422);
         }
 
         $product->update([
             'status' => 'approved',
             'approved_at' => now(),
             'listed_at' => now(),
+            'rejection_reason' => null,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Product approved',
-            'data' => new ProductResource($product)
+            'data' => new ProductResource($product),
         ]);
     }
 
@@ -255,27 +268,34 @@ class ProductController extends Controller
     /**
      * Reject a product (admin only)
      */
-    public function reject(Request $request, Product $product)
+    public function reject(Request $request, $id)
     {
+        $product = Product::withoutGlobalScopes()->findOrFail($id);
+
         if (!Auth::user()->hasRole('admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
         $request->validate(['reason' => 'nullable|string|max:500']);
 
-        if ($product->status !== 'pending') {
-            return response()->json(['success' => false, 'message' => 'Product is not pending'], 422);
+        if ($product->status === 'rejected') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Product is already rejected',
+            ], 422);
         }
 
         $product->update([
             'status' => 'rejected',
             'approved_at' => null,
             'listed_at' => null,
+            'rejection_reason' => $request->reason ?: null,
         ]);
 
         return response()->json([
             'success' => true,
             'message' => 'Product rejected',
+            'data' => ['rejection_reason' => $product->rejection_reason],
         ]);
     }
 
@@ -758,9 +778,6 @@ class ProductController extends Controller
 
             $updateData['images'] = $finalImages;
 
-            // FIX: reset status to 'pending' whenever a seller edits an approved product.
-            // Without this a seller can silently change price, images or description
-            // on an already-approved product with no re-review by admin.
             if ($product->status === 'approved') {
                 $updateData['status'] = 'pending';
                 $updateData['approved_at'] = null;
@@ -789,8 +806,6 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        // FIX: use (int) cast — seller_id comes from DB as string, Auth::id() is int.
-        // Strict !== would fail even for the legitimate owner without the cast.
         if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
@@ -799,11 +814,7 @@ class ProductController extends Controller
         }
 
         try {
-            // FIX: do NOT delete physical images here. The model uses SoftDeletes,
-            // so the product can be restored. If we delete images now, a restored
-            // product will have broken image links. Images are deleted in a
-            // 'forceDeleting' model observer (add that separately when needed).
-            $product->delete(); // soft-delete only
+            $product->delete();
 
             return response()->json([
                 'success' => true,
@@ -1193,13 +1204,18 @@ class ProductController extends Controller
         ]);
     }
 
-    public function toggleStatus(Product $product)
+    public function toggleStatus($id)
     {
-        // Authorization check
+        // FIX: same slug-binding issue as approve() and reject().
+        // Product::getRouteKeyName() returns 'slug_en', so implicit binding would
+        // look up by slug. Admin sends numeric IDs — resolve by primary key directly.
+        $product = Product::withoutGlobalScopes()->findOrFail($id);
+
+        // Authorization: seller can toggle their own products; admin can toggle any
         if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to update this product'
+                'message' => 'Unauthorized to update this product',
             ], 403);
         }
 
@@ -1208,7 +1224,7 @@ class ProductController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Product status updated',
-            'is_active' => $product->is_active
+            'is_active' => $product->is_active,
         ]);
     }
 
