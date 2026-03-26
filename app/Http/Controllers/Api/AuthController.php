@@ -68,27 +68,15 @@ class AuthController extends Controller
             // Assign role
             $user->syncRoles([$validated['type']]);
 
-            // If user is seller, create seller profile
             if ($validated['type'] === 'seller') {
                 $storeName = $validated['name'] . "'s Store";
                 $storeSlug = SellerProfile::generateStoreSlug($storeName);
-
-                // Get default individual business type
-                $defaultBusinessType = BusinessType::where('slug_en', 'individual')
-                    ->where('is_active', true)
-                    ->first();
-
-                if (!$defaultBusinessType) {
-                    throw new \Exception('Default business type not found');
-                }
 
                 SellerProfile::create([
                     'user_id' => $user->id,
                     'store_name' => $storeName,
                     'store_slug' => $storeSlug,
                     'store_id' => SellerProfile::generateStoreId(),
-                    'business_type_id' => $defaultBusinessType->id,
-                    'business_type' => $defaultBusinessType->slug,
                     'contact_email' => $user->email,
                     'contact_phone' => $user->phone,
                     'address' => $validated['address'] ?? '',
@@ -101,12 +89,11 @@ class AuthController extends Controller
                     'verification_status' => 'pending',
                 ]);
 
-                Log::info('Seller profile created during registration', [
+                Log::info('Seller profile shell created during registration', [
                     'user_id' => $user->id,
-                    'business_type_id' => $defaultBusinessType->id,
                     'store_name' => $storeName,
                     'store_slug' => $storeSlug,
-                    'status' => SellerProfile::STATUS_SETUP_PENDING
+                    'status' => SellerProfile::STATUS_SETUP_PENDING,
                 ]);
             }
 
@@ -254,74 +241,74 @@ class AuthController extends Controller
      * Check seller onboarding status
      */
     public function getOnboardingStatus(Request $request)
-{
-    try {
-        $user = $request->user();
+    {
+        try {
+            $user = $request->user();
 
-        // ✅ Check if user is seller using both type field and role
-        $isSeller = $user->type === 'seller' || $user->hasRole('seller');
+            // ✅ Check if user is seller using both type field and role
+            $isSeller = $user->type === 'seller' || $user->hasRole('seller');
 
-        if (!$isSeller) {
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'is_seller' => false,
-                    'onboarding_complete' => false,
-                    'needs_onboarding' => false,
-                    'message' => 'User is not a seller'
-                ]
-            ]);
-        }
+            if (!$isSeller) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'is_seller' => false,
+                        'onboarding_complete' => false,
+                        'needs_onboarding' => false,
+                        'message' => 'User is not a seller'
+                    ]
+                ]);
+            }
 
-        $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
 
-        // ✅ If no seller profile exists, onboarding hasn't started
-        if (!$sellerProfile) {
+            // ✅ If no seller profile exists, onboarding hasn't started
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'is_seller' => true,
+                        'has_profile' => false,
+                        'onboarding_complete' => false,
+                        'needs_onboarding' => true,
+                        'current_step' => 'store-basic',
+                        'profile_status' => 'not_created',
+                        'message' => 'Seller profile not created yet - start onboarding'
+                    ]
+                ]);
+            }
+
+            // Check if onboarding is complete - be more strict
+            $onboardingComplete = $sellerProfile->isOnboardingComplete() &&
+                in_array($sellerProfile->status, ['approved', 'active']);
+
+            // Get current step for incomplete onboarding
+            $currentStep = $sellerProfile->getOnboardingStep();
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'is_seller' => true,
-                    'has_profile' => false,
-                    'onboarding_complete' => false,
-                    'needs_onboarding' => true,
-                    'current_step' => 'store-basic',
-                    'profile_status' => 'not_created',
-                    'message' => 'Seller profile not created yet - start onboarding'
+                    'has_profile' => true,
+                    'onboarding_complete' => $onboardingComplete,
+                    'needs_onboarding' => !$onboardingComplete,
+                    'current_step' => $currentStep,
+                    'profile_status' => $sellerProfile->status,
+                    'profile' => $sellerProfile,
+                    'message' => $onboardingComplete ?
+                        'Onboarding complete' :
+                        'Onboarding in progress - current step: ' . $currentStep
                 ]
             ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get onboarding status'
+            ], 500);
         }
-
-        // Check if onboarding is complete - be more strict
-        $onboardingComplete = $sellerProfile->isOnboardingComplete() &&
-                             in_array($sellerProfile->status, ['approved', 'active']);
-
-        // Get current step for incomplete onboarding
-        $currentStep = $sellerProfile->getOnboardingStep();
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'is_seller' => true,
-                'has_profile' => true,
-                'onboarding_complete' => $onboardingComplete,
-                'needs_onboarding' => !$onboardingComplete,
-                'current_step' => $currentStep,
-                'profile_status' => $sellerProfile->status,
-                    'profile' => $sellerProfile,
-                'message' => $onboardingComplete ?
-                    'Onboarding complete' :
-                    'Onboarding in progress - current step: ' . $currentStep
-            ]
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to get onboarding status'
-        ], 500);
     }
-}
 
     /**
      * Get business types for onboarding
