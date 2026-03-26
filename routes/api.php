@@ -325,7 +325,6 @@ Route::group([
             Route::prefix('delivery-areas')->group(function () {
                 Route::get('/', [DeliveryAreaController::class, 'index']);
                 Route::post('/', [DeliveryAreaController::class, 'store']);
-                // Bulk replace all zones in one transaction — used by the DeliveryZones UI
                 Route::post('/sync', [DeliveryAreaController::class, 'sync']);
                 Route::get('/location-options', [DeliveryAreaController::class, 'getLocationOptions']);
                 Route::post('/check-shipping-fee', [DeliveryAreaController::class, 'checkShippingFee']);

@@ -34,7 +34,7 @@ class ProductController extends Controller
             'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
             'sort_by' => 'sometimes|in:created_at,price,average_rating,reviews_count,name_en,sales',
             'sort_order' => 'sometimes|in:asc,desc',
-            'featured' => 'sometimes|boolean',
+            'is_featured' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
