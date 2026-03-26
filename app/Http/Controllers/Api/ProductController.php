@@ -35,8 +35,8 @@ class ProductController extends Controller
             'sort_by' => 'sometimes|in:created_at,price,average_rating,reviews_count,name_en,sales',
             'sort_order' => 'sometimes|in:asc,desc',
             'is_featured' => 'sometimes|boolean',
-            'featured' => 'sometimes|boolean',
-            'fields' => 'sometimes|string',
+            'featured' => 'sometimes|boolean',      // alias for is_featured
+            'fields' => 'sometimes|string',         // comma-separated list of fields
         ]);
 
         if ($validator->fails()) {
@@ -83,7 +83,7 @@ class ProductController extends Controller
             }
         }
 
-        // Other filters
+        // Other filters (unchanged)
         if ($request->has('seller_id')) {
             $query->where('seller_id', $request->seller_id);
         }
@@ -105,7 +105,7 @@ class ProductController extends Controller
             });
         }
 
-        // Sorting
+        // Sorting (unchanged)
         $allowedFields = ['created_at', 'price', 'average_rating', 'reviews_count', 'name_en', 'sales'];
         $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedFields)
             ? $request->input('sort_by', 'created_at') : 'created_at';
@@ -151,12 +151,12 @@ class ProductController extends Controller
             });
         }
 
-        // Use the resource to generate the full array, then optionally filter fields
+        // Build the resource collection
         $resourceCollection = ProductResource::collection($products);
         $data = $resourceCollection->toArray($request);
 
+        // Apply field filtering if requested
         if ($selectedFields) {
-            // Apply field filtering to each item in the nested 'data' array
             if (isset($data['data']) && is_array($data['data'])) {
                 $data['data'] = array_map(function ($item) use ($selectedFields) {
                     return array_intersect_key($item, array_flip($selectedFields));
@@ -166,7 +166,7 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $data,
+            'data' => $data,   // contains nested 'data', 'links', 'meta'
         ]);
     }
 
