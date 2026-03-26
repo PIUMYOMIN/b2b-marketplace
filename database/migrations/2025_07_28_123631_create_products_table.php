@@ -76,11 +76,10 @@ return new class extends Migration {
             $table->text('additional_info')->nullable();
             $table->timestamp('listed_at')->nullable();
             $table->timestamp('approved_at')->nullable();
-            $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
             $table->string('rejection_reason', 500)
                 ->nullable()
-                ->after('approved_at')
                 ->comment('Admin rejection reason shown to the seller');
+            $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
