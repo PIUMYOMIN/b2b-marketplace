@@ -18,8 +18,8 @@ use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     /**
- * Display a listing of products with optional filters.
- */
+     * Display a listing of products with optional filters
+     */
     public function indexPublic(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -43,7 +43,7 @@ class ProductController extends Controller
 
         $perPage = $request->input('per_page', 15);
 
-        // Base query – only approved, active products visible to the public
+        // Base query — only approved, active products visible to the public
         $query = Product::with(['category', 'seller.sellerProfile'])
             ->where('is_active', true)
             ->where('status', 'approved')
@@ -58,7 +58,6 @@ class ProductController extends Controller
                 },
             ], 'rating');
 
-        // Featured filter
         if ($request->boolean('is_featured')) {
             $query->where('is_featured', true);
         }
@@ -79,7 +78,6 @@ class ProductController extends Controller
             }
         }
 
-        // Other filters
         if ($request->has('seller_id')) {
             $query->where('seller_id', $request->seller_id);
         }
@@ -102,13 +100,14 @@ class ProductController extends Controller
             });
         }
 
-        // Sorting
+        // Sorting — allowlisted to prevent column injection
         $allowedFields = ['created_at', 'price', 'average_rating', 'reviews_count', 'name_en', 'sales'];
         $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedFields)
             ? $request->input('sort_by', 'created_at') : 'created_at';
         $sortOrder = in_array(strtolower($request->input('sort_order', 'desc')), ['asc', 'desc'])
             ? strtolower($request->input('sort_order', 'desc')) : 'desc';
 
+        // Legacy ?sort= shorthand overrides sort_by/sort_order
         if ($request->has('sort')) {
             switch ($request->input('sort')) {
                 case 'price_asc':
@@ -141,7 +140,6 @@ class ProductController extends Controller
 
         $products = $query->paginate($perPage);
 
-        // Transform images to full URLs
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
                 return $this->transformProductImages($product);
