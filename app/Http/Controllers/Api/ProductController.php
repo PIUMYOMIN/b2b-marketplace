@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     /**
-     * Display a listing of products with optional filters.
+     * Display a listing of products with optional filters
      */
     public function indexPublic(Request $request)
     {
@@ -32,63 +32,67 @@ class ProductController extends Controller
             'min_rating' => 'sometimes|numeric|min:0|max:5',
             'search' => 'sometimes|string|max:255',
             'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
-            'sort_by' => 'sometimes|in:created_at,price,average_rating,reviews_count,name_en,sales',
-            'sort_order' => 'sometimes|in:asc,desc',
-            'is_featured' => 'sometimes|in:true,false,1,0', // Accepts string "true"/"false"
+            'status' => 'sometimes|in:active,inactive'
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $perPage = $request->input('per_page', 15);
 
-        // Base query – only approved, active products visible to the public
         $query = Product::with(['category', 'seller.sellerProfile'])
-            ->where('is_active', true)
-            ->where('status', 'approved')
             ->withCount([
-                'reviews as reviews_count' => function ($q) {
-                    $q->where('status', 'approved');
-                },
+                'reviews as reviews_count' => function ($query) {
+                    $query->where('status', 'approved');
+                }
             ])
             ->withAvg([
-                'reviews as average_rating' => function ($q) {
-                    $q->where('status', 'approved');
-                },
+                'reviews as average_rating' => function ($query) {
+                    $query->where('status', 'approved');
+                }
             ], 'rating');
 
-        // Featured filter
-        if ($request->boolean('is_featured')) {
-            $query->where('is_featured', true);
-        }
-
-        // Category filter with descendant support
+        // Apply category filter with descendants
         if ($request->has('category') || $request->has('category_id')) {
             $categoryId = $request->has('category') ? $request->category : $request->category_id;
+
             try {
+                // Get the category and its descendants
                 $category = Category::find($categoryId);
                 if ($category) {
-                    $allIds = array_merge([$categoryId], $category->descendants()->pluck('id')->toArray());
-                    $query->whereIn('category_id', $allIds);
+                    // Get all descendant category IDs including the parent
+                    $descendantIds = $category->descendants()->pluck('id')->toArray();
+                    $allCategoryIds = array_merge([$categoryId], $descendantIds);
+
+                    // Filter products by any of these category IDs
+                    $query->whereIn('category_id', $allCategoryIds);
                 } else {
+                    // Fallback to direct category ID if category not found
                     $query->where('category_id', $categoryId);
                 }
             } catch (\Exception $e) {
+                // Fallback to direct filtering
                 $query->where('category_id', $categoryId);
             }
         }
 
-        // Other filters (unchanged)
+        // Apply other filters (keep existing code)
         if ($request->has('seller_id')) {
             $query->where('seller_id', $request->seller_id);
         }
+
         if ($request->filled('min_price')) {
             $query->where('price', '>=', $request->min_price);
         }
+
         if ($request->filled('max_price')) {
             $query->where('price', '<=', $request->max_price);
         }
+
         if ($request->has('min_rating')) {
             $query->having('average_rating', '>=', $request->min_rating);
         }
@@ -102,12 +106,13 @@ class ProductController extends Controller
             });
         }
 
-        // Sorting
-        $allowedFields = ['created_at', 'price', 'average_rating', 'reviews_count', 'name_en', 'sales'];
-        $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedFields)
-            ? $request->input('sort_by', 'created_at') : 'created_at';
-        $sortOrder = in_array(strtolower($request->input('sort_order', 'desc')), ['asc', 'desc'])
-            ? strtolower($request->input('sort_order', 'desc')) : 'desc';
+        if ($request->has('status')) {
+            $query->where('is_active', $request->status === 'active');
+        }
+
+        // Apply sorting
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortOrder = $request->input('sort_order', 'desc');
 
         if ($request->has('sort')) {
             switch ($request->input('sort')) {
@@ -133,15 +138,21 @@ class ProductController extends Controller
             }
         }
 
-        if (in_array($sortBy, ['average_rating', 'reviews_count'])) {
-            $query->orderByRaw($sortBy . ' ' . $sortOrder);
+        // Apply sorting based on field
+        if ($sortBy === 'average_rating' || $sortBy === 'reviews_count') {
+            // These are computed columns, need special handling
+            if ($sortBy === 'average_rating') {
+                $query->orderByRaw('average_rating ' . $sortOrder);
+            } else {
+                $query->orderByRaw('reviews_count ' . $sortOrder);
+            }
         } else {
             $query->orderBy($sortBy, $sortOrder);
         }
 
         $products = $query->paginate($perPage);
 
-        // Transform images to full URLs
+        // ✅ Transform images for all products
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
                 return $this->transformProductImages($product);
@@ -156,7 +167,7 @@ class ProductController extends Controller
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
                 'last_page' => $products->lastPage(),
-            ],
+            ]
         ]);
     }
 
