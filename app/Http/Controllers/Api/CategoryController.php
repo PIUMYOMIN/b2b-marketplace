@@ -20,8 +20,9 @@ class CategoryController extends Controller
      */
     public function index()
     {
-        // Get only root categories (parent_id null) that are active
+        // Get only root categories that are active
         $categories = Category::whereNull('parent_id')
+            ->where('is_active', true)
             ->with('children')
             ->get();
 
@@ -60,7 +61,7 @@ class CategoryController extends Controller
             'name_mm' => 'nullable|string|max:255',
             'description_en' => 'nullable|string',
             'description_mm' => 'nullable|string',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // file upload
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
             'commission_rate' => 'nullable|numeric|min:0|max:100',
             'parent_id' => [
                 'nullable',

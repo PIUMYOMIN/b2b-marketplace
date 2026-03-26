@@ -32,67 +32,62 @@ class ProductController extends Controller
             'min_rating' => 'sometimes|numeric|min:0|max:5',
             'search' => 'sometimes|string|max:255',
             'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
-            'status' => 'sometimes|in:active,inactive'
+            'sort_by' => 'sometimes|in:created_at,price,average_rating,reviews_count,name_en,sales',
+            'sort_order' => 'sometimes|in:asc,desc',
+            'featured' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
         }
 
         $perPage = $request->input('per_page', 15);
 
+        // Base query — only approved, active products visible to the public
         $query = Product::with(['category', 'seller.sellerProfile'])
+            ->where('is_active', true)
+            ->where('status', 'approved')
             ->withCount([
-                'reviews as reviews_count' => function ($query) {
-                    $query->where('status', 'approved');
-                }
+                'reviews as reviews_count' => function ($q) {
+                    $q->where('status', 'approved');
+                },
             ])
             ->withAvg([
-                'reviews as average_rating' => function ($query) {
-                    $query->where('status', 'approved');
-                }
+                'reviews as average_rating' => function ($q) {
+                    $q->where('status', 'approved');
+                },
             ], 'rating');
 
-        // Apply category filter with descendants
+        // Featured filter
+        if ($request->boolean('featured')) {
+            $query->where('is_featured', true);
+        }
+
+        // Category filter with descendant support
         if ($request->has('category') || $request->has('category_id')) {
             $categoryId = $request->has('category') ? $request->category : $request->category_id;
-
             try {
-                // Get the category and its descendants
                 $category = Category::find($categoryId);
                 if ($category) {
-                    // Get all descendant category IDs including the parent
-                    $descendantIds = $category->descendants()->pluck('id')->toArray();
-                    $allCategoryIds = array_merge([$categoryId], $descendantIds);
-
-                    // Filter products by any of these category IDs
-                    $query->whereIn('category_id', $allCategoryIds);
+                    $allIds = array_merge([$categoryId], $category->descendants()->pluck('id')->toArray());
+                    $query->whereIn('category_id', $allIds);
                 } else {
-                    // Fallback to direct category ID if category not found
                     $query->where('category_id', $categoryId);
                 }
             } catch (\Exception $e) {
-                // Fallback to direct filtering
                 $query->where('category_id', $categoryId);
             }
         }
 
-        // Apply other filters (keep existing code)
         if ($request->has('seller_id')) {
             $query->where('seller_id', $request->seller_id);
         }
-
         if ($request->filled('min_price')) {
             $query->where('price', '>=', $request->min_price);
         }
-
         if ($request->filled('max_price')) {
             $query->where('price', '<=', $request->max_price);
         }
-
         if ($request->has('min_rating')) {
             $query->having('average_rating', '>=', $request->min_rating);
         }
@@ -106,14 +101,14 @@ class ProductController extends Controller
             });
         }
 
-        if ($request->has('status')) {
-            $query->where('is_active', $request->status === 'active');
-        }
+        // Sorting — allowlisted to prevent column injection
+        $allowedFields = ['created_at', 'price', 'average_rating', 'reviews_count', 'name_en', 'sales'];
+        $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedFields)
+            ? $request->input('sort_by', 'created_at') : 'created_at';
+        $sortOrder = in_array(strtolower($request->input('sort_order', 'desc')), ['asc', 'desc'])
+            ? strtolower($request->input('sort_order', 'desc')) : 'desc';
 
-        // Apply sorting
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortOrder = $request->input('sort_order', 'desc');
-
+        // Legacy ?sort= shorthand overrides sort_by/sort_order
         if ($request->has('sort')) {
             switch ($request->input('sort')) {
                 case 'price_asc':
@@ -138,21 +133,14 @@ class ProductController extends Controller
             }
         }
 
-        // Apply sorting based on field
-        if ($sortBy === 'average_rating' || $sortBy === 'reviews_count') {
-            // These are computed columns, need special handling
-            if ($sortBy === 'average_rating') {
-                $query->orderByRaw('average_rating ' . $sortOrder);
-            } else {
-                $query->orderByRaw('reviews_count ' . $sortOrder);
-            }
+        if (in_array($sortBy, ['average_rating', 'reviews_count'])) {
+            $query->orderByRaw($sortBy . ' ' . $sortOrder);
         } else {
             $query->orderBy($sortBy, $sortOrder);
         }
 
         $products = $query->paginate($perPage);
 
-        // ✅ Transform images for all products
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
                 return $this->transformProductImages($product);
@@ -167,7 +155,7 @@ class ProductController extends Controller
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
                 'last_page' => $products->lastPage(),
-            ]
+            ],
         ]);
     }
 
@@ -398,9 +386,6 @@ class ProductController extends Controller
         }
 
         try {
-            // FIX: scope duplicate check to this seller only — the old check was
-            // global so two different sellers listing the same product name would
-            // block each other.
             $recentProduct = Product::where('seller_id', Auth::id())
                 ->where('name_en', $request->name_en)
                 ->where('created_at', '>=', now()->subSeconds(30))
@@ -444,10 +429,6 @@ class ProductController extends Controller
             $productData['description_en'] = $request->description_en;
             $productData['description_mm'] = $request->description_mm;
 
-            // Generate slugs — use a retry loop with uniqueness check to avoid
-            // race conditions. The count-then-append pattern can produce duplicates
-            // under concurrent requests; generateUniqueSlug() retries until the
-            // slug is not taken.
             $productData['slug_en'] = $this->generateUniqueSlug(Str::slug($request->name_en));
             $productData['slug_mm'] = $request->name_mm
                 ? $this->generateUniqueSlug(Str::slug($request->name_mm), 'slug_mm')
@@ -455,9 +436,7 @@ class ProductController extends Controller
 
             $productData['seller_id'] = Auth::id();
             $productData['is_active'] = $request->get('is_active', true);
-            // FIX: new products must start as 'pending' so admin approval is required
-            // before they appear publicly. Without this the column defaults to NULL
-            // and the approve/reject endpoints always return 422 "not pending".
+
             $productData['status'] = 'pending';
 
             // Process images: move from temp to permanent storage

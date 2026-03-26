@@ -37,7 +37,7 @@ class SellerController extends Controller
                 ->whereIn('status', ['approved', 'active'])
                 ->orderByDesc('reviews_avg_rating')
                 ->orderByDesc('reviews_count')
-                ->take(6)
+                ->take((int) $request->input('limit', 6))
                 ->get();
 
             // Convert store logo and banner to full URLs for top sellers

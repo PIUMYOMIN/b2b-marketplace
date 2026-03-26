@@ -23,7 +23,7 @@ class ProductResource extends JsonResource
             'category_id' => $this->category_id,
             'seller_id' => $this->seller_id,
             'average_rating' => (float) $this->average_rating,
-            'review_count' => $this->review_count ?? $this->reviews_count ?? 0,
+            'review_count' => $this->reviews_count ?? $this->review_count ?? 0,
             'specifications' => $this->specifications,
             'images' => $this->formatImages($this->images),
             'weight_kg' => $this->weight_kg,
@@ -65,7 +65,17 @@ class ProductResource extends JsonResource
             'status' => $this->status,
             'is_active' => $this->is_active,
             'category' => $this->whenLoaded('category'),
-            'seller' => $this->whenLoaded('seller'),
+            'seller' => $this->whenLoaded('seller', function () {
+                $profile = $this->seller->sellerProfile;
+                return [
+                    'id' => $this->seller->id,
+                    'store_name' => $profile?->store_name ?? $this->seller->name,
+                    'logo' => $profile?->store_logo
+                        ? Storage::disk('public')->url($profile->store_logo)
+                        : null,
+                    'slug' => $profile?->slug ?? null,
+                ];
+            }),
         ];
     }
 
