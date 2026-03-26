@@ -18,8 +18,8 @@ use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     /**
- * Display a listing of products with optional filters and field selection.
- */
+     * Display a listing of products with optional filters and field selection.
+     */
     public function indexPublic(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -35,8 +35,8 @@ class ProductController extends Controller
             'sort_by' => 'sometimes|in:created_at,price,average_rating,reviews_count,name_en,sales',
             'sort_order' => 'sometimes|in:asc,desc',
             'is_featured' => 'sometimes|boolean',
-            'featured' => 'sometimes|boolean',      // alias for is_featured
-            'fields' => 'sometimes|string',         // comma-separated list of fields
+            'featured' => 'sometimes|boolean',
+            'fields' => 'sometimes|string',
         ]);
 
         if ($validator->fails()) {
@@ -166,7 +166,7 @@ class ProductController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $data,   // contains nested 'data', 'links', 'meta'
+            'data' => $data,
         ]);
     }
 
