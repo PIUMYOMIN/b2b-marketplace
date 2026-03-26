@@ -191,10 +191,12 @@ Route::group([
             //Product management by admin
             Route::prefix('products')->group(function () {
                 Route::get('/', [ProductController::class, 'adminIndex']);
-                Route::post('/{product}/approve', [ProductController::class, 'approve']);
-                Route::post('/{product}/reject', [ProductController::class, 'reject']);
-                // FIX: admin status toggle — separate from seller update route
-                Route::patch('/{product}/toggle-status', [ProductController::class, 'toggleStatus']);
+                Route::post('/{product}/approve', [ProductController::class, 'approve'])
+                    ->whereNumber('product');
+                Route::post('/{product}/reject', [ProductController::class, 'reject'])
+                    ->whereNumber('product');
+                Route::patch('/{product}/toggle-status', [ProductController::class, 'toggleStatus'])
+                    ->whereNumber('product');
             });
 
             Route::prefix('contact-messages')->group(function () {
