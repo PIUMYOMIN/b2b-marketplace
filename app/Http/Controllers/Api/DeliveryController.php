@@ -340,7 +340,7 @@ class DeliveryAreaController extends Controller
                         $query->whereNull('township');
                     }
                 })
-                ->orderBy('area_type', 'desc')
+                ->orderBy('area_type', 'desc') // Most specific first
                 ->first();
 
             if (!$matchingArea) {
@@ -393,6 +393,17 @@ class DeliveryAreaController extends Controller
         }
     }
 
+    /**
+     * Sync delivery zones — replace the seller's entire zone configuration in one call.
+     *
+     * Accepts an array of zone objects. Each object must have:
+     *   area_type, country, state?, city?, township?, shipping_fee,
+     *   estimated_delivery_days_min?, estimated_delivery_days_max?,
+     *   free_shipping_threshold?, is_active?
+     *
+     * The backend deletes all existing zones for this seller then inserts the
+     * new set inside a transaction, so the UI never shows a partial state.
+     */
     public function sync(Request $request)
     {
         try {

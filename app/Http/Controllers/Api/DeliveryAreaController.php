@@ -319,14 +319,14 @@ class DeliveryAreaController extends Controller
                 ->where('country', $validated['country'])
                 ->where(function ($query) use ($validated) {
                     $query->where('state', $validated['state'])
-                          ->orWhereNull('state')
-                          ->orWhere('area_type', 'country');
+                        ->orWhereNull('state')
+                        ->orWhere('area_type', 'country');
                 })
                 ->where(function ($query) use ($validated) {
                     if ($validated['city']) {
                         $query->where('city', $validated['city'])
-                              ->orWhereNull('city')
-                              ->orWhereIn('area_type', ['country', 'state']);
+                            ->orWhereNull('city')
+                            ->orWhereIn('area_type', ['country', 'state']);
                     } else {
                         $query->whereNull('city');
                     }
@@ -334,8 +334,8 @@ class DeliveryAreaController extends Controller
                 ->where(function ($query) use ($validated) {
                     if ($validated['township']) {
                         $query->where('township', $validated['township'])
-                              ->orWhereNull('township')
-                              ->orWhereIn('area_type', ['country', 'state', 'city']);
+                            ->orWhereNull('township')
+                            ->orWhereIn('area_type', ['country', 'state', 'city']);
                     } else {
                         $query->whereNull('township');
                     }
@@ -354,8 +354,10 @@ class DeliveryAreaController extends Controller
             }
 
             // Check weight restrictions
-            if ($validated['weight_kg'] && $matchingArea->has_weight_limit &&
-                $validated['weight_kg'] > $matchingArea->max_weight_kg) {
+            if (
+                $validated['weight_kg'] && $matchingArea->has_weight_limit &&
+                $validated['weight_kg'] > $matchingArea->max_weight_kg
+            ) {
                 return response()->json([
                     'success' => true,
                     'data' => [
@@ -392,6 +394,106 @@ class DeliveryAreaController extends Controller
     }
 
     /**
+     * Sync delivery zones — replace the seller's entire zone configuration in one call.
+     *
+     * Accepts an array of zone objects. Each object must have:
+     *   area_type, country, state?, city?, township?, shipping_fee,
+     *   estimated_delivery_days_min?, estimated_delivery_days_max?,
+     *   free_shipping_threshold?, is_active?
+     *
+     * The backend deletes all existing zones for this seller then inserts the
+     * new set inside a transaction, so the UI never shows a partial state.
+     */
+    public function sync(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found',
+                ], 404);
+            }
+
+            $request->validate([
+                'zones' => 'required|array',
+                'zones.*.area_type' => 'required|in:country,state,city,township',
+                'zones.*.country' => 'required|string|max:100',
+                'zones.*.state' => 'nullable|string|max:100',
+                'zones.*.city' => 'nullable|string|max:100',
+                'zones.*.township' => 'nullable|string|max:150',
+                'zones.*.shipping_fee' => 'required|numeric|min:0',
+                'zones.*.free_shipping_threshold' => 'nullable|numeric|min:0',
+                'zones.*.estimated_delivery_days_min' => 'nullable|integer|min:1',
+                'zones.*.estimated_delivery_days_max' => 'nullable|integer|min:1',
+                'zones.*.is_active' => 'nullable|boolean',
+            ]);
+
+            \DB::transaction(function () use ($request, $sellerProfile, $user) {
+                // Delete all existing zones for this seller
+                DeliveryArea::where('seller_profile_id', $sellerProfile->id)->delete();
+
+                // Insert the new set
+                $now = now();
+                $rows = collect($request->zones)->map(function ($zone, $index) use ($sellerProfile, $user, $now) {
+                    return [
+                        'seller_profile_id' => $sellerProfile->id,
+                        'user_id' => $user->id,
+                        'area_type' => $zone['area_type'],
+                        'country' => $zone['country'],
+                        'state' => $zone['state'] ?? null,
+                        'city' => $zone['city'] ?? null,
+                        'township' => $zone['township'] ?? null,
+                        'shipping_fee' => $zone['shipping_fee'],
+                        'free_shipping_threshold' => $zone['free_shipping_threshold'] ?? null,
+                        'estimated_delivery_days_min' => $zone['estimated_delivery_days_min'] ?? null,
+                        'estimated_delivery_days_max' => $zone['estimated_delivery_days_max'] ?? null,
+                        'is_deliverable' => true,
+                        'is_active' => $zone['is_active'] ?? true,
+                        'standard_shipping_available' => true,
+                        'sort_order' => $index,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                })->toArray();
+
+                if (!empty($rows)) {
+                    // Chunk inserts to avoid hitting parameter limits on large zone sets
+                    foreach (array_chunk($rows, 50) as $chunk) {
+                        DeliveryArea::insert($chunk);
+                    }
+                }
+            });
+
+            $saved = DeliveryArea::where('seller_profile_id', $sellerProfile->id)
+                ->orderBy('sort_order')
+                ->get();
+
+            Log::info('Delivery zones synced', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'zone_count' => $saved->count(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery zones saved successfully',
+                'data' => $saved,
+                'count' => $saved->count(),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to sync delivery zones: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save delivery zones: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Check for overlapping delivery areas
      */
     private function checkOverlappingArea($sellerProfileId, $newAreaData, $excludeId = null)
@@ -414,10 +516,10 @@ class DeliveryAreaController extends Controller
                     // State covers: same state, or any area within that state
                     return $query->where(function ($q) use ($newAreaData) {
                         $q->where('area_type', 'country')
-                          ->orWhere(function ($sub) use ($newAreaData) {
-                              $sub->where('area_type', 'state')
-                                  ->where('state', $newAreaData['state']);
-                          });
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'state')
+                                    ->where('state', $newAreaData['state']);
+                            });
                     })->first();
                 }
                 break;
@@ -427,15 +529,15 @@ class DeliveryAreaController extends Controller
                     // City covers: country, same state, or same city
                     return $query->where(function ($q) use ($newAreaData) {
                         $q->where('area_type', 'country')
-                          ->orWhere(function ($sub) use ($newAreaData) {
-                              $sub->where('area_type', 'state')
-                                  ->where('state', $newAreaData['state']);
-                          })
-                          ->orWhere(function ($sub) use ($newAreaData) {
-                              $sub->where('area_type', 'city')
-                                  ->where('state', $newAreaData['state'])
-                                  ->where('city', $newAreaData['city']);
-                          });
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'state')
+                                    ->where('state', $newAreaData['state']);
+                            })
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'city')
+                                    ->where('state', $newAreaData['state'])
+                                    ->where('city', $newAreaData['city']);
+                            });
                     })->first();
                 }
                 break;
@@ -445,21 +547,21 @@ class DeliveryAreaController extends Controller
                     // Township covers: country, same state, same city, or same township
                     return $query->where(function ($q) use ($newAreaData) {
                         $q->where('area_type', 'country')
-                          ->orWhere(function ($sub) use ($newAreaData) {
-                              $sub->where('area_type', 'state')
-                                  ->where('state', $newAreaData['state']);
-                          })
-                          ->orWhere(function ($sub) use ($newAreaData) {
-                              $sub->where('area_type', 'city')
-                                  ->where('state', $newAreaData['state'])
-                                  ->where('city', $newAreaData['city']);
-                          })
-                          ->orWhere(function ($sub) use ($newAreaData) {
-                              $sub->where('area_type', 'township')
-                                  ->where('state', $newAreaData['state'])
-                                  ->where('city', $newAreaData['city'])
-                                  ->where('township', $newAreaData['township']);
-                          });
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'state')
+                                    ->where('state', $newAreaData['state']);
+                            })
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'city')
+                                    ->where('state', $newAreaData['state'])
+                                    ->where('city', $newAreaData['city']);
+                            })
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'township')
+                                    ->where('state', $newAreaData['state'])
+                                    ->where('city', $newAreaData['city'])
+                                    ->where('township', $newAreaData['township']);
+                            });
                     })->first();
                 }
                 break;
