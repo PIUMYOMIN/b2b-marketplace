@@ -91,7 +91,7 @@ class SellerController extends Controller
         if ($request->has('search') && $request->search !== null) {
             $query->where(function ($q) use ($request) {
                 $q->where('store_name', 'like', '%' . $request->search . '%')
-                                                            ->orWhere('store_description', 'like', '%' . $request->search . '%');
+                    ->orWhere('store_description', 'like', '%' . $request->search . '%');
             });
         }
 
@@ -350,36 +350,36 @@ class SellerController extends Controller
                     'message' => 'Profile already exists',
                     'data' => [
                         'seller_profile' => $existing,
-                        'current_step'   => $this->getCurrentStep($existing),
+                        'current_step' => $this->getCurrentStep($existing),
                     ],
                 ]);
             }
 
             $profile = SellerProfile::create([
-                'user_id'    => $user->id,
-                'store_id'   => SellerProfile::generateStoreId(),
+                'user_id' => $user->id,
+                'store_id' => SellerProfile::generateStoreId(),
                 'store_slug' => 'pending-' . $user->id . '-' . time(),
                 'store_name' => '',           // filled in step 1
                 'contact_email' => '',        // filled in step 1
                 'contact_phone' => '',        // filled in step 1
-                'address'    => '',           // filled in step 3
-                'city'       => '',           // filled in step 3
-                'state'      => '',           // filled in step 3
-                'country'    => 'Myanmar',    // filled in step 3
-                'status'     => SellerProfile::STATUS_SETUP_PENDING,
+                'address' => '',           // filled in step 3
+                'city' => '',           // filled in step 3
+                'state' => '',           // filled in step 3
+                'country' => 'Myanmar',    // filled in step 3
+                'status' => SellerProfile::STATUS_SETUP_PENDING,
             ]);
 
             Log::info('Seller profile initialised', [
-                'user_id'           => $user->id,
+                'user_id' => $user->id,
                 'seller_profile_id' => $profile->id,
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Seller profile initialised',
-                'data'    => [
+                'data' => [
                     'seller_profile' => $profile,
-                    'current_step'   => 'store-basic',
+                    'current_step' => 'store-basic',
                 ],
             ], 201);
 
@@ -427,12 +427,12 @@ class SellerController extends Controller
     }
 
     /**
- * Save store logo file and return the storage path.
- *
- * @param \Illuminate\Http\UploadedFile $file
- * @param int $sellerProfileId
- * @return string|null
- */
+     * Save store logo file and return the storage path.
+     *
+     * @param \Illuminate\Http\UploadedFile $file
+     * @param int $sellerProfileId
+     * @return string|null
+     */
     private function saveStoreLogo($file, $sellerProfileId)
     {
         try {
@@ -548,8 +548,8 @@ class SellerController extends Controller
     }
 
     /**
- * Get my store details (authenticated seller)
- */
+     * Get my store details (authenticated seller)
+     */
     public function myStore(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
@@ -576,7 +576,7 @@ class SellerController extends Controller
                         foreach ($images as &$image) {
                             if (isset($image['url'])) {
                                 $image['url'] = $this->formatMediaUrl($image['url']);
-                        }
+                            }
                         }
                         $product['images'] = $images;
                     }
@@ -1355,21 +1355,21 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'is_seller'          => true,
-                    'has_profile'        => true,
+                    'is_seller' => true,
+                    'has_profile' => true,
                     'onboarding_complete' => $sellerProfile->onboarding_completed_at !== null,
-                    'needs_onboarding'   => $sellerProfile->onboarding_completed_at === null,
-                    'current_step'       => $currentStep,
-                    'completed_steps'    => $stepsCompleted,
-                    'progress'           => $progress,
+                    'needs_onboarding' => $sellerProfile->onboarding_completed_at === null,
+                    'current_step' => $currentStep,
+                    'completed_steps' => $stepsCompleted,
+                    'progress' => $progress,
                     'progress_percentage' => $progress,    // FIX: hook reads progress_percentage
-                    'profile_status'     => $sellerProfile->status,
+                    'profile_status' => $sellerProfile->status,
                     // FIX: hook reads business_type_info but it was never returned here
                     'business_type_info' => $sellerProfile->businessType ? [
-                        'id'                    => $sellerProfile->businessType->id,
-                        'name_en'               => $sellerProfile->businessType->name_en,
-                        'slug_en'               => $sellerProfile->businessType->slug_en,
-                        'is_individual'         => $sellerProfile->businessType->isIndividualType(),
+                        'id' => $sellerProfile->businessType->id,
+                        'name_en' => $sellerProfile->businessType->name_en,
+                        'slug_en' => $sellerProfile->businessType->slug_en,
+                        'is_individual' => $sellerProfile->businessType->isIndividualType(),
                         'requires_registration' => $sellerProfile->businessType->requires_registration,
                         'requires_tax_document' => $sellerProfile->businessType->requires_tax_document,
                     ] : null,
@@ -1545,17 +1545,17 @@ class SellerController extends Controller
             // without having called initProfile() first.
             if (!$sellerProfile) {
                 $sellerProfile = SellerProfile::create([
-                    'user_id'    => $user->id,
-                    'store_id'   => SellerProfile::generateStoreId(),
+                    'user_id' => $user->id,
+                    'store_id' => SellerProfile::generateStoreId(),
                     'store_slug' => 'pending-' . $user->id . '-' . time(),
                     'store_name' => '',
                     'contact_email' => '',
                     'contact_phone' => '',
-                    'address'    => '',
-                    'city'       => '',
-                    'state'      => '',
-                    'country'    => 'Myanmar',
-                    'status'     => SellerProfile::STATUS_SETUP_PENDING,
+                    'address' => '',
+                    'city' => '',
+                    'state' => '',
+                    'country' => 'Myanmar',
+                    'status' => SellerProfile::STATUS_SETUP_PENDING,
                 ]);
             }
 
@@ -1686,21 +1686,21 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Store basic information updated successfully',
-                'data'    => [
+                'data' => [
                     'seller_profile' => $sellerProfile,
-                    'next_step'      => 'business-details',   // FIX: was missing — frontend hardcoded it
-                    'business_type'  => [
-                        'id'                  => $businessType->id,
-                        'slug_en'             => $businessType->slug_en,
-                        'name'                => $businessType->name,
-                        'description_en'      => $businessType->description_en,
-                        'is_individual'       => $businessType->isIndividualType(),
-                        'requires_registration'  => $businessType->requires_registration,
-                        'requires_tax_document'  => $businessType->requires_tax_document,
-                        'document_requirements'  => $businessType->getDocumentRequirements(),
+                    'next_step' => 'business-details',   // FIX: was missing — frontend hardcoded it
+                    'business_type' => [
+                        'id' => $businessType->id,
+                        'slug_en' => $businessType->slug_en,
+                        'name' => $businessType->name,
+                        'description_en' => $businessType->description_en,
+                        'is_individual' => $businessType->isIndividualType(),
+                        'requires_registration' => $businessType->requires_registration,
+                        'requires_tax_document' => $businessType->requires_tax_document,
+                        'document_requirements' => $businessType->getDocumentRequirements(),
                     ],
                     'media_urls' => [
-                        'store_logo'   => $sellerProfile->store_logo
+                        'store_logo' => $sellerProfile->store_logo
                             ? url('storage/' . $sellerProfile->store_logo) : null,
                         'store_banner' => $sellerProfile->store_banner
                             ? url('storage/' . $sellerProfile->store_banner) : null,
@@ -1869,10 +1869,10 @@ class SellerController extends Controller
             }
 
             return response()->json([
-                'success'   => true,
-                'message'   => 'Address information updated successfully',
+                'success' => true,
+                'message' => 'Address information updated successfully',
                 'next_step' => 'documents',   // FIX: was missing
-                'data'      => $sellerProfile->fresh(),
+                'data' => $sellerProfile->fresh(),
             ]);
 
         } catch (\Exception $e) {
@@ -3310,11 +3310,11 @@ class SellerController extends Controller
         // Progress is derived on the fly by getOnboardingStatus() from the actual column
         // values, so no separate tracking column is needed.
         $stepToColumn = [
-            'store-basic'      => 'current_step',
+            'store-basic' => 'current_step',
             'business-details' => 'current_step',
-            'address'          => 'current_step',
-            'documents'        => 'current_step',
-            'review'           => 'current_step',
+            'address' => 'current_step',
+            'documents' => 'current_step',
+            'review' => 'current_step',
         ];
 
         if (array_key_exists($step, $stepToColumn)) {
@@ -4184,8 +4184,8 @@ class SellerController extends Controller
     }
 
     /**
- * Get comprehensive sales summary with delivery stats (FIXED VERSION)
- */
+     * Get comprehensive sales summary with delivery stats (FIXED VERSION)
+     */
     public function salesSummary(Request $request)
     {
         try {
@@ -4251,16 +4251,16 @@ class SellerController extends Controller
 
             // Delivery status counts
             try {
-            $deliveryStatusCounts = DB::table('deliveries')
-                ->where('supplier_id', $user->id)
+                $deliveryStatusCounts = DB::table('deliveries')
+                    ->where('supplier_id', $user->id)
                     ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
-                ->select(
-                    'status',
-                    DB::raw('COUNT(*) as count')
-                )
-                ->groupBy('status')
-                ->get()
-                ->pluck('count', 'status');
+                    ->select(
+                        'status',
+                        DB::raw('COUNT(*) as count')
+                    )
+                    ->groupBy('status')
+                    ->get()
+                    ->pluck('count', 'status');
             } catch (\Exception $e) {
                 \Log::warning('Deliveries table query failed', ['error' => $e->getMessage()]);
                 $deliveryStatusCounts = collect([]);
@@ -4292,7 +4292,7 @@ class SellerController extends Controller
             try {
                 // Get all buyers with their order counts
                 $buyerOrders = DB::table('orders')
-                ->where('seller_id', $user->id)
+                    ->where('seller_id', $user->id)
                     ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                     ->select('buyer_id')
                     ->get();
@@ -4333,22 +4333,22 @@ class SellerController extends Controller
                 $topProducts = DB::table('order_items')
                     ->join('orders', 'order_items.order_id', '=', 'orders.id')
                     ->join('products', 'order_items.product_id', '=', 'products.id')
-                ->where('orders.seller_id', $user->id)
+                    ->where('orders.seller_id', $user->id)
                     ->whereBetween('orders.created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
-                ->select(
-                    'products.id',
+                    ->select(
+                        'products.id',
                         'products.name_en as name', // FIXED: Use name_en
-                    'products.images',
+                        'products.images',
                         DB::raw('COALESCE(SUM(order_items.quantity), 0) as total_sold'),
                         // Check if subtotal column exists, otherwise calculate it
                         $hasSubtotal
                         ? DB::raw('COALESCE(SUM(order_items.subtotal), 0) as total_revenue')
                         : DB::raw('COALESCE(SUM(order_items.price * order_items.quantity), 0) as total_revenue')
-                )
+                    )
                     ->groupBy('products.id', 'products.name_en', 'products.images')
-                ->orderBy('total_sold', 'desc')
-                ->limit(5)
-                ->get();
+                    ->orderBy('total_sold', 'desc')
+                    ->limit(5)
+                    ->get();
 
             } catch (\Exception $e) {
                 \Log::error('Top products query error', ['error' => $e->getMessage()]);
