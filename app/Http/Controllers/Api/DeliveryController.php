@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Delivery;
 use App\Models\Order;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class DeliveryController extends Controller
@@ -19,10 +21,38 @@ class DeliveryController extends Controller
     {
         try {
             $user = $request->user();
-            $query = Delivery::with(['order.shippingAddress', 'platformCourier'])
+            $isSeller = $user->type === 'seller' || (method_exists($user, 'hasRole') && $user->hasRole('seller'));
+
+            // ── Stats mode (used by DashboardSummary) ──────────────────────
+            if ($request->boolean('stats')) {
+                $query = Delivery::query();
+                if ($isSeller) {
+                    $query->where('supplier_id', $user->id);
+                }
+
+                $total = $query->count();
+                $byStatus = (clone $query)
+                    ->selectRaw('status, count(*) as count')
+                    ->groupBy('status')
+                    ->pluck('count', 'status')
+                    ->toArray();
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'delivery_stats' => [
+                            'total' => $total,
+                            'by_status' => $byStatus,
+                        ],
+                    ],
+                ]);
+            }
+
+            // ── List mode ──────────────────────────────────────────────────
+            $query = Delivery::with(['order', 'platformCourier'])
                 ->orderBy('created_at', 'desc');
 
-            if ($user->hasRole('seller') || $user->type === 'seller') {
+            if ($isSeller) {
                 $query->where('supplier_id', $user->id);
             } elseif ($request->has('delivery_method')) {
                 $query->where('delivery_method', $request->delivery_method);
