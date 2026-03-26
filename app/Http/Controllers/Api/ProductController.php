@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     /**
-     * Display a listing of products with optional filters and field selection.
+     * Display a listing of products with optional filters
      */
     public function indexPublic(Request $request)
     {
@@ -35,8 +35,6 @@ class ProductController extends Controller
             'sort_by' => 'sometimes|in:created_at,price,average_rating,reviews_count,name_en,sales',
             'sort_order' => 'sometimes|in:asc,desc',
             'is_featured' => 'sometimes|boolean',
-            'featured' => 'sometimes|boolean',
-            'fields' => 'sometimes|string',
         ]);
 
         if ($validator->fails()) {
@@ -44,10 +42,8 @@ class ProductController extends Controller
         }
 
         $perPage = $request->input('per_page', 15);
-        $fields = $request->input('fields');
-        $selectedFields = $fields ? array_map('trim', explode(',', $fields)) : null;
 
-        // Base query – only approved, active products visible to the public
+        // Base query — only approved, active products visible to the public
         $query = Product::with(['category', 'seller.sellerProfile'])
             ->where('is_active', true)
             ->where('status', 'approved')
@@ -62,8 +58,7 @@ class ProductController extends Controller
                 },
             ], 'rating');
 
-        // Featured filter – accept both 'featured' and 'is_featured'
-        if ($request->boolean('featured') || $request->boolean('is_featured')) {
+        if ($request->boolean('is_featured')) {
             $query->where('is_featured', true);
         }
 
@@ -83,7 +78,6 @@ class ProductController extends Controller
             }
         }
 
-        // Other filters (unchanged)
         if ($request->has('seller_id')) {
             $query->where('seller_id', $request->seller_id);
         }
@@ -96,6 +90,7 @@ class ProductController extends Controller
         if ($request->has('min_rating')) {
             $query->having('average_rating', '>=', $request->min_rating);
         }
+
         if ($request->has('search')) {
             $query->where(function ($q) use ($request) {
                 $q->where('name_en', 'like', '%' . $request->search . '%')
@@ -105,13 +100,14 @@ class ProductController extends Controller
             });
         }
 
-        // Sorting (unchanged)
+        // Sorting — allowlisted to prevent column injection
         $allowedFields = ['created_at', 'price', 'average_rating', 'reviews_count', 'name_en', 'sales'];
         $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedFields)
             ? $request->input('sort_by', 'created_at') : 'created_at';
         $sortOrder = in_array(strtolower($request->input('sort_order', 'desc')), ['asc', 'desc'])
             ? strtolower($request->input('sort_order', 'desc')) : 'desc';
 
+        // Legacy ?sort= shorthand overrides sort_by/sort_order
         if ($request->has('sort')) {
             switch ($request->input('sort')) {
                 case 'price_asc':
@@ -144,29 +140,21 @@ class ProductController extends Controller
 
         $products = $query->paginate($perPage);
 
-        // Transform images to full URLs
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
                 return $this->transformProductImages($product);
             });
         }
 
-        // Build the resource collection
-        $resourceCollection = ProductResource::collection($products);
-        $data = $resourceCollection->toArray($request);
-
-        // Apply field filtering if requested
-        if ($selectedFields) {
-            if (isset($data['data']) && is_array($data['data'])) {
-                $data['data'] = array_map(function ($item) use ($selectedFields) {
-                    return array_intersect_key($item, array_flip($selectedFields));
-                }, $data['data']);
-            }
-        }
-
         return response()->json([
             'success' => true,
-            'data' => $data,
+            'data' => ProductResource::collection($products),
+            'meta' => [
+                'current_page' => $products->currentPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
+                'last_page' => $products->lastPage(),
+            ],
         ]);
     }
 
