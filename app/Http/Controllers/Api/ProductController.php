@@ -465,9 +465,11 @@ class ProductController extends Controller
                 foreach ($request->images as $image) {
                     $tempPath = $image['url'];
 
-                    // Security: ensure the path belongs to the current user
-                    $expectedPrefix = 'products/' . Auth::id() . '/';
-                    if (Str::startsWith($tempPath, $expectedPrefix)) {
+                    // FIX: temp images are now stored at products/temp/{uid}/ so the
+                    // prefix check is reliable even when permanent images also live under
+                    // products/{uid}/.
+                    $tempPrefix = 'products/temp/' . Auth::id() . '/';
+                    if (Str::startsWith($tempPath, $tempPrefix)) {
                         $filename = basename($tempPath);
                         $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' . $filename;
 
@@ -480,7 +482,7 @@ class ProductController extends Controller
                             ];
                         }
                     } else {
-                        // If path is not a temp path (maybe external URL), store as is (not recommended)
+                        // External URL or path we don't control — store as-is
                         $permanentImages[] = [
                             'url' => $tempPath,
                             'angle' => $image['angle'] ?? 'default',
@@ -549,13 +551,17 @@ class ProductController extends Controller
             $user = Auth::user();
             $angle = $request->angle ?? 'default';
 
-            // Store image in user-specific temp directory
+            // FIX: store in a temp/ subdirectory so update() can reliably distinguish
+            // a freshly-uploaded image (products/temp/{uid}/) from an already-permanent
+            // existing image (products/{uid}/).  Previously both lived in products/{uid}/
+            // and the only "detection" was a prefix match that caused existing images
+            // to be moved/renamed on every update even when unchanged.
             $path = $request->file('image')->store(
-                'products/' . $user->id,
+                'products/temp/' . $user->id,
                 'public'
             );
 
-            // Return the relative path (no full URL)
+            // Return the relative path (no full URL) — frontend uses getImageUrl() for display
             $imageData = [
                 'url' => $path,
                 'angle' => $angle,
@@ -602,16 +608,39 @@ class ProductController extends Controller
     }
 
     /**
-     * Get product data for editing (seller only)
-     * Returns raw data including relative image paths.
+     * Get product data for editing (seller only).
+     *
+     * Returns relative `path` on each image alongside the absolute `url`.
+     * The frontend uses `url` for <img> display and sends `path` back on
+     * update so the backend can match existing images by their stored path,
+     * not by a full absolute URL (which would never match the stored value).
      */
     public function getProductForEdit($id)
     {
         $product = Product::where('seller_id', Auth::id())->findOrFail($id);
 
-        // Return raw data with formatted image URLs
         $data = $product->toArray();
-        $data['images'] = $this->formatImages($product->images); // ✅ absolute URLs
+
+        // Build images with both the display URL (absolute) and the submission
+        // path (relative) so the frontend round-trips the correct value.
+        $rawImages = is_string($product->images)
+            ? json_decode($product->images, true) ?? []
+            : ($product->images ?? []);
+
+        $data['images'] = array_map(function ($img) {
+            $relativePath = $img['url'] ?? '';
+            // Build absolute URL for the <img> src preview
+            $absoluteUrl = $relativePath && !str_starts_with($relativePath, 'http')
+                ? url('storage/' . ltrim($relativePath, '/'))
+                : $relativePath;
+
+            return [
+                'url' => $absoluteUrl,    // display only
+                'path' => $relativePath,   // send back on update
+                'angle' => $img['angle'] ?? 'default',
+                'is_primary' => $img['is_primary'] ?? false,
+            ];
+        }, $rawImages);
 
         return response()->json([
             'success' => true,
@@ -722,61 +751,92 @@ class ProductController extends Controller
                 $updateData['description_mm'] = $request->description_mm;
             }
 
-            // Process images
-            $oldImages = $product->images ?? [];
-            $newImages = $request->images ?? [];
+            // ── Image processing ──────────────────────────────────────────────
+            //
+            // FIX (multiple issues repaired here):
+            //
+            // 1. If `images` key is NOT present in the request the seller did not
+            //    touch the image section at all — preserve existing images as-is.
+            //    Previously the code defaulted to $request->images ?? [] which
+            //    silently wiped all images when the seller only updated price/name.
+            //
+            // 2. uploadImage now stores at products/temp/{uid}/ so new images have
+            //    a distinct prefix from permanent images (products/{uid}/).
+            //    Previously both used products/{uid}/ and existing images were
+            //    re-moved/renamed on every update.
+            //
+            // 3. Existing images are matched by their stored relative path.
+            //    Previously the frontend sent back absolute URLs (from formatImages)
+            //    but $oldImages stores relative paths → comparison always failed →
+            //    all existing images were dropped silently.
+            //    getProductForEdit now returns a `path` field (relative) which the
+            //    frontend sends back as `url` in the payload.
 
-            $finalImages = [];
+            if ($request->has('images')) {
+                $oldImages = $product->images ?? [];
+                $newImages = $request->images;
+                $finalImages = [];
 
-            // 1. Process new uploaded images (temp paths)
-            foreach ($newImages as $image) {
-                $tempPath = $image['url'];
-                $expectedPrefix = 'products/' . Auth::id() . '/';
+                $tempPrefix = 'products/temp/' . Auth::id() . '/';
+                $permPrefix = 'products/' . Auth::id() . '/';
 
-                if (Str::startsWith($tempPath, $expectedPrefix)) {
-                    // This is a temp image from uploadImage endpoint, move it
-                    $filename = basename($tempPath);
-                    $newPath = 'products/' . Auth::id() . '/' . uniqid() . '_' . $filename;
-                    if (Storage::disk('public')->exists($tempPath)) {
-                        Storage::disk('public')->move($tempPath, $newPath);
-                        $finalImages[] = [
-                            'url' => $newPath,
-                            'angle' => $image['angle'] ?? 'default',
-                            'is_primary' => $image['is_primary'] ?? false
-                        ];
-                    }
-                } else {
-                    // This is an existing image (relative path already in permanent location)
-                    // Check if it belongs to the product to avoid security issues
-                    $isValid = false;
-                    foreach ($oldImages as $oldImage) {
-                        if ($oldImage['url'] === $tempPath) {
-                            $isValid = true;
-                            break;
+                foreach ($newImages as $image) {
+                    // The frontend sends `path` (relative) as the `url` field:
+                    //   • New uploads  → 'products/temp/{uid}/filename.jpg'
+                    //   • Existing     → 'products/{uid}/filename.jpg'
+                    $submittedPath = $image['url'];
+
+                    if (Str::startsWith($submittedPath, $tempPrefix)) {
+                        // ── New temp image: move to permanent storage ─────────
+                        $filename = basename($submittedPath);
+                        $newPath = $permPrefix . uniqid() . '_' . $filename;
+
+                        if (Storage::disk('public')->exists($submittedPath)) {
+                            Storage::disk('public')->move($submittedPath, $newPath);
+                            $finalImages[] = [
+                                'url' => $newPath,
+                                'angle' => $image['angle'] ?? 'default',
+                                'is_primary' => $image['is_primary'] ?? false,
+                            ];
                         }
-                    }
-                    if ($isValid) {
+                    } elseif (Str::startsWith($submittedPath, $permPrefix)) {
+                        // ── Existing permanent image: keep as-is ──────────────
+                        // Validate it actually belongs to this product (security)
+                        $existingPaths = collect($oldImages)->pluck('url');
+                        if ($existingPaths->contains($submittedPath)) {
+                            $finalImages[] = [
+                                'url' => $submittedPath,
+                                'angle' => $image['angle'] ?? 'default',
+                                'is_primary' => $image['is_primary'] ?? false,
+                            ];
+                        }
+                    } else {
+                        // External URL (http/https) — store as-is
                         $finalImages[] = [
-                            'url' => $tempPath,
+                            'url' => $submittedPath,
                             'angle' => $image['angle'] ?? 'default',
-                            'is_primary' => $image['is_primary'] ?? false
+                            'is_primary' => $image['is_primary'] ?? false,
                         ];
                     }
                 }
-            }
 
-            // 2. Delete images that are no longer in the final array
-            $oldPaths = collect($oldImages)->pluck('url')->toArray();
-            $newPaths = collect($finalImages)->pluck('url')->toArray();
-            $pathsToDelete = array_diff($oldPaths, $newPaths);
-
-            foreach ($pathsToDelete as $path) {
-                if (Storage::disk('public')->exists($path)) {
-                    Storage::disk('public')->delete($path);
+                // Delete storage files that were explicitly removed by the seller
+                $oldPaths = collect($oldImages)->pluck('url')->toArray();
+                $newPaths = collect($finalImages)->pluck('url')->toArray();
+                foreach (array_diff($oldPaths, $newPaths) as $removed) {
+                    // Only delete files we own (not external URLs)
+                    if (
+                        !str_starts_with($removed, 'http') &&
+                        Storage::disk('public')->exists($removed)
+                    ) {
+                        Storage::disk('public')->delete($removed);
+                    }
                 }
-            }
 
-            $updateData['images'] = $finalImages;
+                $updateData['images'] = $finalImages;
+            }
+            // If 'images' key absent: $updateData has no 'images' key →
+            // $product->update($updateData) leaves images column unchanged.
 
             if ($product->status === 'approved') {
                 $updateData['status'] = 'pending';
