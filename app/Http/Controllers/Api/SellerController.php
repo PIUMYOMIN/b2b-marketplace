@@ -427,12 +427,12 @@ class SellerController extends Controller
     }
 
     /**
-     * Save store logo file and return the storage path.
-     *
-     * @param \Illuminate\Http\UploadedFile $file
-     * @param int $sellerProfileId
-     * @return string|null
-     */
+ * Save store logo file and return the storage path.
+ *
+ * @param \Illuminate\Http\UploadedFile $file
+ * @param int $sellerProfileId
+ * @return string|null
+ */
     private function saveStoreLogo($file, $sellerProfileId)
     {
         try {
@@ -548,8 +548,8 @@ class SellerController extends Controller
     }
 
     /**
-     * Get my store details (authenticated seller)
-     */
+ * Get my store details (authenticated seller)
+ */
     public function myStore(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
@@ -4184,8 +4184,8 @@ class SellerController extends Controller
     }
 
     /**
-     * Get comprehensive sales summary with delivery stats (FIXED VERSION)
-     */
+ * Get comprehensive sales summary with delivery stats (FIXED VERSION)
+ */
     public function salesSummary(Request $request)
     {
         try {
@@ -4524,9 +4524,8 @@ class SellerController extends Controller
 
             $limit = $request->input('limit', 10);
 
-            // Get recent orders with order items and buyer info - FIXED: Use proper Eloquent
             $recentOrders = Order::where('seller_id', $user->id)
-                ->with(['buyer:id,name,email', 'items.product:id,name'])
+                ->with(['buyer:id,name,email', 'items'])
                 ->select([
                     'id',
                     'order_number',
@@ -4557,7 +4556,7 @@ class SellerController extends Controller
                         'items_count' => $order->items->count(),
                         'products' => $order->items->take(2)->map(function ($item) {
                             return [
-                                'name' => $item->product->name ?? $item->product_name,
+                                'name' => $item->product->name,
                                 'quantity' => $item->quantity,
                                 'price' => $item->price
                             ];
