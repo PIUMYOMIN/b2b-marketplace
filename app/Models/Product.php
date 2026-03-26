@@ -70,7 +70,7 @@ class Product extends Model
         'additional_info',
         'listed_at',
         'approved_at',
-        'rejection_reason',   // FIX: added so reject() can store the admin's reason
+        'rejection_reason',
         'status',
         'is_active'
     ];

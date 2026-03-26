@@ -551,11 +551,6 @@ class ProductController extends Controller
             $user = Auth::user();
             $angle = $request->angle ?? 'default';
 
-            // FIX: store in a temp/ subdirectory so update() can reliably distinguish
-            // a freshly-uploaded image (products/temp/{uid}/) from an already-permanent
-            // existing image (products/{uid}/).  Previously both lived in products/{uid}/
-            // and the only "detection" was a prefix match that caused existing images
-            // to be moved/renamed on every update even when unchanged.
             $path = $request->file('image')->store(
                 'products/temp/' . $user->id,
                 'public'
@@ -610,10 +605,6 @@ class ProductController extends Controller
     /**
      * Get product data for editing (seller only).
      *
-     * Returns relative `path` on each image alongside the absolute `url`.
-     * The frontend uses `url` for <img> display and sends `path` back on
-     * update so the backend can match existing images by their stored path,
-     * not by a full absolute URL (which would never match the stored value).
      */
     public function getProductForEdit($id)
     {
@@ -685,7 +676,9 @@ class ProductController extends Controller
             'shipping_cost' => 'nullable|numeric|min:0',
             'shipping_time' => 'nullable|string|max:255',
             'packaging_details' => 'nullable|string',
-            'additional_info' => 'nullable|string'
+            'additional_info' => 'nullable|string',
+            'is_featured' => 'sometimes|boolean',
+            'is_new' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -718,7 +711,9 @@ class ProductController extends Controller
                 'shipping_cost',
                 'shipping_time',
                 'packaging_details',
-                'additional_info'
+                'additional_info',
+                'is_featured',  // FIX: was missing — checkbox value never saved
+                'is_new',       // FIX: was missing — checkbox value never saved
             ]);
 
             // Handle name/description updates and slugs
@@ -752,26 +747,6 @@ class ProductController extends Controller
             }
 
             // ── Image processing ──────────────────────────────────────────────
-            //
-            // FIX (multiple issues repaired here):
-            //
-            // 1. If `images` key is NOT present in the request the seller did not
-            //    touch the image section at all — preserve existing images as-is.
-            //    Previously the code defaulted to $request->images ?? [] which
-            //    silently wiped all images when the seller only updated price/name.
-            //
-            // 2. uploadImage now stores at products/temp/{uid}/ so new images have
-            //    a distinct prefix from permanent images (products/{uid}/).
-            //    Previously both used products/{uid}/ and existing images were
-            //    re-moved/renamed on every update.
-            //
-            // 3. Existing images are matched by their stored relative path.
-            //    Previously the frontend sent back absolute URLs (from formatImages)
-            //    but $oldImages stores relative paths → comparison always failed →
-            //    all existing images were dropped silently.
-            //    getProductForEdit now returns a `path` field (relative) which the
-            //    frontend sends back as `url` in the payload.
-
             if ($request->has('images')) {
                 $oldImages = $product->images ?? [];
                 $newImages = $request->images;
@@ -781,9 +756,7 @@ class ProductController extends Controller
                 $permPrefix = 'products/' . Auth::id() . '/';
 
                 foreach ($newImages as $image) {
-                    // The frontend sends `path` (relative) as the `url` field:
-                    //   • New uploads  → 'products/temp/{uid}/filename.jpg'
-                    //   • Existing     → 'products/{uid}/filename.jpg'
+
                     $submittedPath = $image['url'];
 
                     if (Str::startsWith($submittedPath, $tempPrefix)) {
@@ -1654,8 +1627,6 @@ class ProductController extends Controller
     /**
      * Generate a unique slug using a retry loop.
      *
-     * Safe under concurrent requests: loops until a slug is genuinely not taken.
-     * A unique DB index on slug_en / slug_mm is still recommended as a final guard.
      *
      * @param  string   $base       Already Str::slug()-processed base string
      * @param  string   $column     'slug_en' or 'slug_mm'
