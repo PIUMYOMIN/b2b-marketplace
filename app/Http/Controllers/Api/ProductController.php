@@ -18,8 +18,8 @@ use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     /**
-     * Display a listing of products with optional filters and field selection.
-     */
+ * Display a listing of products with optional filters and field selection.
+ */
     public function indexPublic(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -34,9 +34,9 @@ class ProductController extends Controller
             'sort' => 'sometimes|in:newest,price_asc,price_desc,rating,popular',
             'sort_by' => 'sometimes|in:created_at,price,average_rating,reviews_count,name_en,sales',
             'sort_order' => 'sometimes|in:asc,desc',
-            'is_featured' => 'sometimes|boolean',   // added to validation
-            'featured' => 'sometimes|boolean',      // legacy support
-            'fields' => 'sometimes|string',         // comma-separated list of fields
+            'is_featured' => 'sometimes|boolean',
+            'featured' => 'sometimes|boolean',
+            'fields' => 'sometimes|string',
         ]);
 
         if ($validator->fails()) {
@@ -62,12 +62,12 @@ class ProductController extends Controller
                 },
             ], 'rating');
 
-        // Featured filter – accept both 'featured' and 'is_featured' for compatibility
+        // Featured filter – accept both 'featured' and 'is_featured'
         if ($request->boolean('featured') || $request->boolean('is_featured')) {
             $query->where('is_featured', true);
         }
 
-        // Category filter with descendant support (unchanged)
+        // Category filter with descendant support
         if ($request->has('category') || $request->has('category_id')) {
             $categoryId = $request->has('category') ? $request->category : $request->category_id;
             try {
@@ -105,7 +105,7 @@ class ProductController extends Controller
             });
         }
 
-        // Sorting (unchanged)
+        // Sorting
         $allowedFields = ['created_at', 'price', 'average_rating', 'reviews_count', 'name_en', 'sales'];
         $sortBy = in_array($request->input('sort_by', 'created_at'), $allowedFields)
             ? $request->input('sort_by', 'created_at') : 'created_at';
@@ -144,34 +144,29 @@ class ProductController extends Controller
 
         $products = $query->paginate($perPage);
 
-        // Transform images
+        // Transform images to full URLs
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
                 return $this->transformProductImages($product);
             });
         }
 
-        // Prepare data with optional field filtering
-        $data = $products->getCollection();
+        // Use the resource to generate the full array, then optionally filter fields
+        $resourceCollection = ProductResource::collection($products);
+        $data = $resourceCollection->toArray($request);
+
         if ($selectedFields) {
-            $data = $data->map(function ($product) use ($selectedFields) {
-                $resource = new ProductResource($product);
-                $array = $resource->toArray(request());
-                return array_intersect_key($array, array_flip($selectedFields));
-            });
-        } else {
-            $data = ProductResource::collection($products);
+            // Apply field filtering to each item in the nested 'data' array
+            if (isset($data['data']) && is_array($data['data'])) {
+                $data['data'] = array_map(function ($item) use ($selectedFields) {
+                    return array_intersect_key($item, array_flip($selectedFields));
+                }, $data['data']);
+            }
         }
 
         return response()->json([
             'success' => true,
-            'data' => $data,   // the resource (which includes its own 'data' key)
-            'meta' => [
-                'current_page' => $products->currentPage(),
-                'per_page' => $products->perPage(),
-                'total' => $products->total(),
-                'last_page' => $products->lastPage(),
-            ],
+            'data' => $data,
         ]);
     }
 
