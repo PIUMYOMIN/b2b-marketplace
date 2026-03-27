@@ -13,7 +13,6 @@ class Kernel extends HttpKernel
         // \App\Http\Middleware\TrustHosts::class,
         \App\Http\Middleware\TrustProxies::class,
         \Illuminate\Http\Middleware\HandleCors::class,
-        \App\Http\Middleware\PreventRequestsDuringMaintenance::class,
         \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
         \App\Http\Middleware\TrimStrings::class,
         \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
@@ -34,12 +33,8 @@ class Kernel extends HttpKernel
 
         'api' => [
             \App\Http\Middleware\SetLocale::class,
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-            \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+            \Illuminate\Routing\Middleware\ThrottleRequests::class . ':api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
-            'seller.onboarding' => \App\Http\Middleware\CheckSellerOnboarding::class,
-            'seller.verification' => \App\Http\Middleware\CheckSellerVerification::class,
-            'seller.active' => \App\Http\Middleware\CheckSellerActive::class,
             'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         ],
     ];
