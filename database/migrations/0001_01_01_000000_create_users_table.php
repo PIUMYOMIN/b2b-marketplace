@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -6,28 +7,63 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('social_id')->nullable()->after('profile_photo');
-            $table->string('social_provider')->nullable()->after('social_id');
-            $table->string('identity_document_front')->nullable()->after('social_provider');
-            $table->string('identity_document_back')->nullable()->after('identity_document_front');
-            $table->string('identity_document_type')->nullable()->after('identity_document_back');
-            $table->json('notification_preferences')->nullable()->after('identity_document_type');
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('user_id')->unique();
+            $table->string('email')->unique()->nullable();
+            $table->string('phone')->unique();
+            $table->date('date_of_birth')->nullable();
+            $table->string('password');
+            $table->enum('type', ['buyer', 'seller', 'admin'])->default('buyer');
+            $table->text('address')->nullable();
+            $table->string('city')->nullable();
+            $table->string('state')->nullable();
+            $table->string('country')->nullable();
+            $table->string('postal_code')->nullable();
+            $table->string('profile_photo')->nullable();
+            // Social / OAuth login
+            $table->string('social_id')->nullable();
+            $table->string('social_provider')->nullable();
+            // Identity documents
+            $table->string('identity_document_front')->nullable();
+            $table->string('identity_document_back')->nullable();
+            $table->string('identity_document_type')->nullable();
+            // Email notification preferences (JSON toggles)
+            $table->json('notification_preferences')->nullable();
+            // Email verification
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('verification_code', 6)->nullable();
+            $table->timestamp('verification_code_expires_at')->nullable();
+            $table->enum('status', ['active', 'inactive', 'suspended', 'disabled', 'restricted'])->default('active');
+            $table->boolean('is_active')->default(true);
+            $table->softDeletes();
+            $table->rememberToken();
+            $table->timestamps();
+
             $table->index(['social_provider', 'social_id'], 'users_social_index');
         });
+
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token');
+            $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
     }
+
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropIndex('users_social_index');
-            $table->dropColumn([
-                'social_id',
-                'social_provider',
-                'identity_document_front',
-                'identity_document_back',
-                'identity_document_type',
-                'notification_preferences',
-            ]);
-        });
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('sessions');
     }
 };
