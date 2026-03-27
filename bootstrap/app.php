@@ -23,10 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
         ]);
 
-        // ── API middleware group (replaces Kernel.php $middlewareGroups['api']) ─
+        // ── API middleware group ───────────────────────────────────────────────
+        // Only SetLocale is prepended. EnsureFrontendRequestsAreStateful is NOT
+        // used because Pyonea uses Bearer token auth, not cookie/session Sanctum.
+        // Adding it causes CSRF token mismatch on every API login request.
         $middleware->api(prepend: [
             \App\Http\Middleware\SetLocale::class,
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
 
         // ── Middleware aliases ─────────────────────────────────────────────────
