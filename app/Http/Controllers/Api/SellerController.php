@@ -5613,4 +5613,107 @@ class SellerController extends Controller
         }
     }
 
+
+    /**
+     * GET /seller/customers
+     * Returns paginated list of unique buyers who have ordered from this seller,
+     * with per-customer stats (total spent, order count, last order date).
+     * Supports: ?search=, ?sort=last_order|total_spent|order_count|name, ?page=, ?per_page=
+     */
+    public function customers(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->firstOrFail();
+            $sellerId = $user->id;
+
+            $search = $request->input('search');
+            $sort = $request->input('sort', 'last_order');
+            $perPage = min((int) $request->input('per_page', 15), 100);
+
+            // ── Per-customer aggregates via subquery ─────────────────────────
+            $customersQuery = \DB::table('orders as o')
+                ->join('users as u', 'u.id', '=', 'o.buyer_id')
+                ->where('o.seller_id', $sellerId)
+                ->whereNotIn('o.status', ['cancelled', 'refunded'])
+                ->select([
+                    'u.id',
+                    'u.name',
+                    'u.email',
+                    'u.phone',
+                    'u.city',
+                    \DB::raw('COUNT(o.id)          AS order_count'),
+                    \DB::raw('SUM(o.total_amount)  AS total_spent'),
+                    \DB::raw('MAX(o.created_at)    AS last_order_at'),
+                    \DB::raw('MIN(o.created_at)    AS first_order_at'),
+                ])
+                ->groupBy('u.id', 'u.name', 'u.email', 'u.phone', 'u.city');
+
+            // ── Search ────────────────────────────────────────────────────────
+            if ($search) {
+                $customersQuery->where(function ($q) use ($search) {
+                    $q->where('u.name', 'like', "%{$search}%")
+                        ->orWhere('u.email', 'like', "%{$search}%")
+                        ->orWhere('u.phone', 'like', "%{$search}%");
+                });
+            }
+
+            // ── Sort ──────────────────────────────────────────────────────────
+            match ($sort) {
+                'total_spent' => $customersQuery->orderByDesc('total_spent'),
+                'order_count' => $customersQuery->orderByDesc('order_count'),
+                'name' => $customersQuery->orderBy('u.name'),
+                default => $customersQuery->orderByDesc('last_order_at'),
+            };
+
+            // ── Paginate ──────────────────────────────────────────────────────
+            $paginator = $customersQuery->paginate($perPage);
+            $customers = $paginator->items();
+
+            // ── Summary stats (not filtered by search for card display) ───────
+            $statsRow = \DB::table('orders as o')
+                ->where('o.seller_id', $sellerId)
+                ->whereNotIn('o.status', ['cancelled', 'refunded'])
+                ->selectRaw('
+                    COUNT(DISTINCT o.buyer_id) AS total_customers,
+                    COUNT(o.id)                AS total_orders,
+                    COALESCE(SUM(o.total_amount), 0) AS total_revenue,
+                    COALESCE(AVG(o.total_amount), 0) AS avg_order_value
+                ')
+                ->first();
+
+            $active30d = \DB::table('orders as o')
+                ->where('o.seller_id', $sellerId)
+                ->whereNotIn('o.status', ['cancelled', 'refunded'])
+                ->where('o.created_at', '>=', now()->subDays(30))
+                ->distinct('o.buyer_id')
+                ->count('o.buyer_id');
+
+            return response()->json([
+                'success' => true,
+                'data' => $customers,
+                'meta' => [
+                    'total' => $paginator->total(),
+                    'per_page' => $paginator->perPage(),
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                ],
+                'stats' => [
+                    'total_customers' => (int) ($statsRow->total_customers ?? 0),
+                    'total_orders' => (int) ($statsRow->total_orders ?? 0),
+                    'total_revenue' => (float) ($statsRow->total_revenue ?? 0),
+                    'avg_order_value' => (float) ($statsRow->avg_order_value ?? 0),
+                    'active_30d' => $active30d,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Seller customers endpoint failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load customers.',
+            ], 500);
+        }
+    }
+
 }
