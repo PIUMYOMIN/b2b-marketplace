@@ -190,4 +190,26 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->following()->where('seller_id', $sellerId)->delete();
     }
+
+    /**
+     * Generate a fresh 6-digit verification code, store it, and return it.
+     * Expires in 15 minutes.
+     */
+    public function generateVerificationCode(): string
+    {
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $this->update([
+            'verification_code' => $code,
+            'verification_code_expires_at' => now()->addMinutes(15),
+        ]);
+        return $code;
+    }
+
+    public function verificationCodeIsValid(string $code): bool
+    {
+        return $this->verification_code === $code
+            && $this->verification_code_expires_at
+            && now()->lt($this->verification_code_expires_at);
+    }
+
 }

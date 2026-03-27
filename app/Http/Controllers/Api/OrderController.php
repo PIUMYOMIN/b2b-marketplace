@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\CommissionRateResolver;
 use App\Models\Coupon;
 use App\Models\CouponUsage;
 use App\Models\Cart;
@@ -218,6 +219,18 @@ class OrderController extends Controller
                 // Generate order number
                 $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(Order::count() + 1, 5, '0', STR_PAD_LEFT);
 
+                // Resolve commission rate via priority chain:
+                // account_level (tier) → business_type → category → default (5%)
+                // Pass a stub Order with seller_id so the resolver can load the seller profile.
+                // Items are resolved from $sellerItems directly inside the resolver stub.
+                $stubOrder = new Order(['seller_id' => $sellerId]);
+                $resolved = app(CommissionRateResolver::class)->resolveForSeller($sellerId, $sellerItems);
+                $commissionRate = $resolved['rate'];
+                $taxRate = 0.05;
+                $commissionAmount = round($sellerSubtotal * $commissionRate, 2);
+                $platformRevenue = $commissionAmount + $sellerTax;
+                $sellerPayout = $sellerSubtotal - $commissionAmount;
+
                 // Create order
                 $order = Order::create([
                     'order_number' => $orderNumber,
@@ -227,22 +240,35 @@ class OrderController extends Controller
                     'subtotal_amount' => $sellerSubtotal,
                     'shipping_fee' => $sellerShippingFee,
                     'tax_amount' => $sellerTax,
-                    'tax_rate' => 0.05,
+                    'tax_rate' => $taxRate,
                     'status' => self::STATUS_PENDING,
                     'payment_method' => $request->payment_method,
                     'payment_status' => self::PAYMENT_STATUS_PENDING,
                     'shipping_address' => $request->shipping_address,
                     'order_notes' => $request->notes,
-                    'commission_rate' => 0.10,
+                    'commission_rate' => $commissionRate,
+                    'commission_amount' => $commissionAmount,
                     // Coupon columns (populated when a coupon was applied)
                     'coupon_id' => $coupon?->id,
                     'coupon_code' => $coupon?->code,
                     'coupon_discount_amount' => $sellerCouponDiscount,
                 ]);
 
-                // Calculate commission
-                $order->commission_amount = $sellerSubtotal * $order->commission_rate;
-                $order->save();
+                // Record commission in commissions table for admin revenue tracking
+                Commission::create([
+                    'order_id' => $order->id,
+                    'seller_id' => $sellerId,
+                    'amount' => $commissionAmount,
+                    'commission_rate' => $commissionRate,
+                    'tax_amount' => $sellerTax,
+                    'tax_rate' => $taxRate,
+                    'platform_revenue' => $platformRevenue,
+                    'seller_payout' => $sellerPayout,
+                    'status' => 'pending',
+                    'due_date' => now()->addDays(30),
+                    'notes' => "Order {$orderNumber}: {$commissionRate}% commission + 5% tax (rule: {$resolved['rule_type']})",
+                    'commission_rule_id' => $resolved['rule_id'],
+                ]);
 
                 // Create order items
                 foreach ($sellerItems as $item) {

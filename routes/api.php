@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\CommissionRuleController;
+use App\Http\Controllers\Api\NewsletterController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\VerificationController;
@@ -23,6 +25,7 @@ use App\Http\Controllers\Api\DiscountController;
 use App\Http\Controllers\Api\CouponController;
 use App\Http\Controllers\Api\DeliveryAreaController;
 use App\Http\Controllers\Api\OrderTrackingController;
+use App\Http\Controllers\Api\RevenueExportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -55,6 +58,7 @@ Route::group([
             ->name('verification.verify')
             ->withoutMiddleware(['auth', 'auth:sanctum', 'verified']);
         Route::post('/resend', [VerificationController::class, 'resend'])->middleware('auth:sanctum');
+        Route::post('/verify-code', [VerificationController::class, 'verifyCode'])->middleware('auth:sanctum');
     });
 
     // Password Reset
@@ -63,6 +67,11 @@ Route::group([
 
     //Contact
     Route::post('/contact', [ContactMessageController::class, 'submit']);
+
+    // Newsletter (public)
+    Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
+    Route::get('/newsletter/confirm', [NewsletterController::class, 'confirm']);
+    Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
 
     //Order Tracking
     Route::get('/track/{orderNumber}', [OrderTrackingController::class, 'track'])
@@ -120,9 +129,31 @@ Route::group([
             Route::get('/monthly-revenue', [DashboardController::class, 'monthlyRevenueTrend']);
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
             Route::get('/commission-summary', [DashboardController::class, 'commissionSummary']);
+            Route::get('/revenue/export', [RevenueExportController::class, 'adminExport']);
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
+
+            // Notification preferences (all auth users)
+            Route::put('/notification-preferences', [\App\Http\Controllers\Api\UserController::class, 'updateNotificationPreferences']);
+
+            // Admin newsletter + campaigns
+            Route::prefix('admin/newsletter')->middleware('role:admin')->group(function () {
+                Route::get('/subscribers', [NewsletterController::class, 'subscribers']);
+                Route::get('/campaigns', [NewsletterController::class, 'campaigns']);
+                Route::post('/campaigns', [NewsletterController::class, 'createCampaign']);
+                Route::put('/campaigns/{id}', [NewsletterController::class, 'updateCampaign']);
+                Route::post('/campaigns/{id}/send', [NewsletterController::class, 'sendCampaign']);
+                Route::get('/campaigns/{id}/preview', [NewsletterController::class, 'previewCampaign']);
+            });
+
+            // Commission Rules (admin CRUD)
+            Route::prefix('commission-rules')->group(function () {
+                Route::get('/', [CommissionRuleController::class, 'index']);
+                Route::post('/', [CommissionRuleController::class, 'store']);
+                Route::put('/{id}', [CommissionRuleController::class, 'update']);
+                Route::delete('/{id}', [CommissionRuleController::class, 'destroy']);
+            });
             Route::get('/user-growth', [DashboardController::class, 'userGrowthLast30Days']);
             Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary']);
             Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts']);
@@ -268,6 +299,10 @@ Route::group([
             Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
             Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
             Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
+            Route::get('/customers', [SellerController::class, 'customers']);
+
+            // Revenue export
+            Route::get('/revenue/export', [RevenueExportController::class, 'sellerExport']);
 
             Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
 
@@ -432,6 +467,8 @@ Route::group([
 
             // ── Static routes must come before /{user} wildcard ──────────────
             // Profile (authenticated user — no {user} param needed)
+            Route::put('/newsletter/preferences', [NewsletterController::class, 'updatePreferences']);
+
             Route::prefix('profile')->group(function () {
                 Route::get('/', [UserController::class, 'showProfile']);
                 Route::put('/', [UserController::class, 'updateProfile']);

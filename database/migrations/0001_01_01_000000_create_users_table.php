@@ -27,6 +27,8 @@ return new class extends Migration
             $table->string('postal_code')->nullable();
             $table->string('profile_photo')->nullable();
             $table->timestamp('email_verified_at')->nullable();
+            $table->string('verification_code', 6)->nullable();
+            $table->timestamp('verification_code_expires_at')->nullable();
             $table->enum('status', ['active', 'inactive', 'suspended', 'disabled', 'restricted'])->default('active');
             $table->boolean('is_active')->default(true);
             $table->softDeletes();

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 
 class VerificationController extends Controller
@@ -70,4 +71,40 @@ class VerificationController extends Controller
             'message' => 'Verification email resent.'
         ]);
     }
+
+    /**
+     * Verify email using 6-digit code.
+     * POST /email/verify-code
+     * Body: { code: "123456" }
+     */
+    public function verifyCode(Request $request): JsonResponse
+    {
+        $request->validate(['code' => 'required|string|size:6']);
+
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json(['success' => true, 'message' => 'Email already verified.']);
+        }
+
+        if (!$user->verificationCodeIsValid($request->code)) {
+            // Subtle timing: wrong code has same response time as expired code
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or expired code. Please request a new one.',
+            ], 422);
+        }
+
+        if ($user->markEmailAsVerified()) {
+            event(new Verified($user));
+        }
+
+        // Clear the used code
+        $user->update(['verification_code' => null, 'verification_code_expires_at' => null]);
+
+        Log::info('Email verified via code', ['user_id' => $user->id]);
+
+        return response()->json(['success' => true, 'message' => 'Email verified successfully.']);
+    }
+
 }

@@ -36,14 +36,17 @@ class VerifyEmailApi extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $frontendUrl = config('app.frontend_url');
         $verificationUrl = $this->frontendVerificationUrl($notifiable);
 
+        // Generate a fresh 6-digit code each time the email is sent
+        $code = $notifiable->generateVerificationCode();
+
         return (new MailMessage)
-            ->subject('Verify Your Email Address')
+            ->subject('Verify Your Email — ' . $code . ' is your code')
             ->view('emails.verify-email', [
                 'url' => $verificationUrl,
                 'user' => $notifiable,
+                'code' => $code,
             ]);
     }
 

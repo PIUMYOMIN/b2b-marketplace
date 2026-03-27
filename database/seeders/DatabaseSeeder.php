@@ -14,7 +14,8 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             BusinessTypeSeeder::class,
             // ProductSeeder::class,
-            // SellerProfileSeeder::class
+                // SellerProfileSeeder::class,
+            CommissionRuleSeeder::class,
         ]);
     }
 }

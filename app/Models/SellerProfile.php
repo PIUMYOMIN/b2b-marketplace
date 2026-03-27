@@ -112,6 +112,11 @@ class SellerProfile extends Model
         // Admin notes
         'admin_notes',
 
+        // Tier
+        'seller_tier',
+        'completed_orders_count',
+        'tier_promoted_at',
+
         'return_policy',
         'shipping_policy',
         'warranty_policy',
@@ -822,6 +827,31 @@ class SellerProfile extends Model
     public function shippingSetting()
     {
         return $this->hasOne(ShippingSetting::class);
+    }
+
+
+    /**
+     * Human-readable tier label for display.
+     */
+    public function getTierLabelAttribute(): string
+    {
+        return match ($this->seller_tier ?? 'bronze') {
+            'gold' => '🥇 Gold',
+            'silver' => '🥈 Silver',
+            default => '🥉 Bronze',
+        };
+    }
+
+    /**
+     * Threshold for next tier promotion.
+     */
+    public function getNextTierThresholdAttribute(): ?int
+    {
+        return match ($this->seller_tier ?? 'bronze') {
+            'bronze' => 50,
+            'silver' => 500,
+            default => null, // gold is the top
+        };
     }
 
 }

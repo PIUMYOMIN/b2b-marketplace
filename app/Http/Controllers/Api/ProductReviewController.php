@@ -172,6 +172,15 @@ class ProductReviewController extends Controller
                 'status' => 'approved'
             ]);
 
+            try {
+                $product = $review->product()->with('seller')->first();
+                if ($product?->seller) {
+                    $product->seller->notify(new NewProductReview($review));
+                }
+            } catch (\Exception $e) {
+                \Log::warning('ProductReview notification failed: ' . $e->getMessage());
+            }
+
             // Update product rating statistics
             $this->updateProductRating($request->product_id);
 

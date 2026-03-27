@@ -1,8 +1,8 @@
 <?php
 
 namespace App\Http\Controllers\Api;
-
 use App\Models\Order;
+use App\Notifications\SellerRejected;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
@@ -3849,7 +3849,11 @@ class SellerController extends Controller
             );
 
             // Send notification to seller (you can implement this)
-            // $sellerProfile->user->notify(new SellerRejectedNotification($sellerProfile, $validated['reason']));
+            try {
+                $sellerProfile->user->notify(new SellerRejected($sellerProfile, $validated['reason'] ?? null));
+            } catch (\Exception $e) {
+                \Log::warning('SellerRejected notification failed: ' . $e->getMessage());
+            }
 
             return response()->json([
                 'success' => true,
@@ -4524,8 +4528,9 @@ class SellerController extends Controller
 
             $limit = $request->input('limit', 10);
 
+            // Get recent orders with order items and buyer info - FIXED: Use proper Eloquent
             $recentOrders = Order::where('seller_id', $user->id)
-                ->with(['buyer:id,name,email', 'items'])
+                ->with(['buyer:id,name,email', 'items.product:id,name'])
                 ->select([
                     'id',
                     'order_number',
@@ -4556,7 +4561,7 @@ class SellerController extends Controller
                         'items_count' => $order->items->count(),
                         'products' => $order->items->take(2)->map(function ($item) {
                             return [
-                                'name' => $item->product->name,
+                                'name' => $item->product->name ?? $item->product_name,
                                 'quantity' => $item->quantity,
                                 'price' => $item->price
                             ];

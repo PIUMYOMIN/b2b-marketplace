@@ -12,6 +12,7 @@ use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
+use App\Notifications\WelcomeUser;
 use Carbon\Carbon;
 use App\Rules\Recaptcha;
 
@@ -68,15 +69,27 @@ class AuthController extends Controller
             // Assign role
             $user->syncRoles([$validated['type']]);
 
+            // If user is seller, create seller profile
             if ($validated['type'] === 'seller') {
                 $storeName = $validated['name'] . "'s Store";
                 $storeSlug = SellerProfile::generateStoreSlug($storeName);
+
+                // Get default individual business type
+                $defaultBusinessType = BusinessType::where('slug_en', 'individual')
+                    ->where('is_active', true)
+                    ->first();
+
+                if (!$defaultBusinessType) {
+                    throw new \Exception('Default business type not found');
+                }
 
                 SellerProfile::create([
                     'user_id' => $user->id,
                     'store_name' => $storeName,
                     'store_slug' => $storeSlug,
                     'store_id' => SellerProfile::generateStoreId(),
+                    'business_type_id' => $defaultBusinessType->id,
+                    'business_type' => $defaultBusinessType->slug,
                     'contact_email' => $user->email,
                     'contact_phone' => $user->phone,
                     'address' => $validated['address'] ?? '',
@@ -89,11 +102,12 @@ class AuthController extends Controller
                     'verification_status' => 'pending',
                 ]);
 
-                Log::info('Seller profile shell created during registration', [
+                Log::info('Seller profile created during registration', [
                     'user_id' => $user->id,
+                    'business_type_id' => $defaultBusinessType->id,
                     'store_name' => $storeName,
                     'store_slug' => $storeSlug,
-                    'status' => SellerProfile::STATUS_SETUP_PENDING,
+                    'status' => SellerProfile::STATUS_SETUP_PENDING
                 ]);
             }
 
