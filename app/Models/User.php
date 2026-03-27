@@ -32,6 +32,18 @@ class User extends Authenticatable implements MustVerifyEmail
         'postal_code',
         'profile_photo',
         'date_of_birth',
+        // Email verification code (OTP)
+        'verification_code',
+        'verification_code_expires_at',
+        // Social / OAuth
+        'social_id',
+        'social_provider',
+        // Identity documents
+        'identity_document_front',
+        'identity_document_back',
+        'identity_document_type',
+        // Notification preferences
+        'notification_preferences',
     ];
 
     protected $hidden = [
