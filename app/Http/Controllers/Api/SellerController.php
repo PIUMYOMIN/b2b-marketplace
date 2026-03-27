@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 use App\Models\Order;
 use App\Notifications\SellerRejected;
-use App\Notifications\SellerApproved;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
@@ -1340,15 +1339,15 @@ class SellerController extends Controller
                 $stepsCompleted[] = 'documents';
             }
 
-            // Determine current step
+            // Trust the current_step column — it is set to 'store-basic' at
+            // registration and advanced explicitly by saveStep(). Do NOT compute
+            // it from field values; auto-filled defaults would push past store-basic.
             $stepOrder = ['store-basic', 'business-details', 'address', 'documents', 'review-submit'];
-            $currentStep = 'store-basic';
+            $currentStep = $sellerProfile->current_step ?: 'store-basic';
 
-            foreach ($stepOrder as $step) {
-                if (!in_array($step, $stepsCompleted)) {
-                    $currentStep = $step;
-                    break;
-                }
+            // Clamp: if DB has a step not in the known order, fall back
+            if (!in_array($currentStep, $stepOrder)) {
+                $currentStep = 'store-basic';
             }
 
             $progress = (count($stepsCompleted) / count($stepOrder)) * 100;
@@ -3306,21 +3305,24 @@ class SellerController extends Controller
 
     private function updateOnboardingProgress($sellerProfile, $step)
     {
-        // FIX: the original wrote to an 'onboarding_progress' JSON column that doesn't
-        // exist in the migration — this caused a silent DB error on every saveStep() call.
-        // Progress is derived on the fly by getOnboardingStatus() from the actual column
-        // values, so no separate tracking column is needed.
-        $stepToColumn = [
-            'store-basic' => 'current_step',
-            'business-details' => 'current_step',
-            'address' => 'current_step',
-            'documents' => 'current_step',
-            'review' => 'current_step',
+        // Advance current_step to the NEXT step after the one just saved.
+        // getOnboardingStatus() now trusts this column directly.
+        $stepOrder = [
+            'store-basic',
+            'business-details',
+            'address',
+            'documents',
+            'review-submit',
         ];
 
-        if (array_key_exists($step, $stepToColumn)) {
-            $sellerProfile->update(['current_step' => $step]);
+        $currentIndex = array_search($step, $stepOrder);
+        if ($currentIndex !== false && isset($stepOrder[$currentIndex + 1])) {
+            $nextStep = $stepOrder[$currentIndex + 1];
+        } else {
+            $nextStep = $step; // already at last step
         }
+
+        $sellerProfile->update(['current_step' => $nextStep]);
     }
 
     /**
@@ -3791,13 +3793,6 @@ class SellerController extends Controller
                 'Seller verified by admin',
                 $validated['notes'] ?? null
             );
-
-            // Notify seller of approval
-            try {
-                $sellerProfile->user->notify(new SellerApproved($sellerProfile->fresh()));
-            } catch (\Exception $e) {
-                \Log::warning('SellerApproved notification failed: ' . $e->getMessage());
-            }
 
             return response()->json([
                 'success' => true,
