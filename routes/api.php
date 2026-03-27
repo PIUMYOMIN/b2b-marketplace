@@ -128,15 +128,24 @@ Route::group([
             Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts']);
             Route::get('/seller-recent-orders', [DashboardController::class, 'sellerRecentOrders']);
 
-            // Seller Verification Routes
+            // ── Admin Seller Management ─────────────────────────────────────────
+            Route::prefix('sellers')->group(function () {
+                // List all sellers (paginated, filterable by status/search)
+                Route::get('/', [DashboardController::class, 'getSellers']);
+            });
+
             Route::prefix('seller')->group(function () {
-                // Get sellers for verification review
+                // Verification queue
                 Route::get('/verification-review', [SellerController::class, 'getSellersForVerificationReview']);
                 Route::get('/pending-verification', [SellerController::class, 'getPendingVerification']);
                 Route::get('/sellers-with-documents', [SellerController::class, 'getSellersWithDocuments']);
 
-                // Individual seller verification
+                // Full detail view (profile + documents + history)
+                Route::get('/{id}/detail', [SellerController::class, 'getSellerDetail']);
+
+                // Documents & status reads
                 Route::get('/{id}/documents', [SellerController::class, 'getSellerDocuments']);
+                Route::get('/{id}/status', [SellerController::class, 'getSellerStatus']);
                 Route::get('/{id}/verification-status', [SellerController::class, 'getSellerStatus']);
 
                 // Verification actions
@@ -144,26 +153,11 @@ Route::group([
                 Route::post('/{id}/reject', [SellerController::class, 'rejectVerification']);
                 Route::put('/{id}/verification-status', [SellerController::class, 'updateVerificationStatus']);
 
-                // Seller status management
+                // Store status management
                 Route::put('/{id}/status', [SellerController::class, 'updateStatus']);
-                Route::get('/{id}/status', [SellerController::class, 'getSellerStatus']);
-
-                // Admin approval routes
-                Route::put('/{id}/status', [SellerController::class, 'update']);
-
-                // Admin approval routes
-                Route::post('/{seller}/approve', [DashboardController::class, 'adminApprove']);
-                Route::put('/{id}', [SellerController::class, 'update']);
                 Route::put('/{id}/approve', [SellerController::class, 'sellerApprove']);
-
-                // Seller status management
-                Route::put('/{id}/status', [SellerController::class, 'updateStatus']);
-                Route::get('/{id}/status', [SellerController::class, 'getSellerStatus']);
-
-                Route::get('/seller-verification', [SellerController::class, 'getAllSellerVerifications']);
-                Route::get('/seller-verification/{verification}', [SellerController::class, 'getSellerVerificationDetails']);
-                Route::post('/seller-verification/{verification}/approve', [SellerController::class, 'approveSellerVerification']);
-                Route::post('/{verification}/reject', [SellerController::class, 'rejectSellerVerification']);
+                Route::post('/{id}/suspend', [SellerController::class, 'suspendSeller']);
+                Route::post('/{id}/reactivate', [SellerController::class, 'reactivateSeller']);
             });
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
@@ -435,18 +429,26 @@ Route::group([
         // Users
         Route::prefix('users')->group(function () {
             Route::get('/', [UserController::class, 'index'])->middleware('role:admin');
+
+            // ── Static routes must come before /{user} wildcard ──────────────
+            // Profile (authenticated user — no {user} param needed)
+            Route::prefix('profile')->group(function () {
+                Route::get('/', [UserController::class, 'showProfile']);
+                Route::put('/', [UserController::class, 'updateProfile']);
+                Route::put('/password', [UserController::class, 'changePassword']);
+                Route::post('/photo', [UserController::class, 'uploadProfilePhoto']);
+                Route::delete('/photo', [UserController::class, 'deleteProfilePhoto']);
+                Route::post('/identity', [UserController::class, 'uploadIdentityDocument']);
+            });
+
+            // Roles list
+            Route::get('/roles/list', [UserController::class, 'getRoles'])->middleware('role:admin');
+
+            // ── Wildcard routes last ──────────────────────────────────────────
             Route::get('/{user}', [UserController::class, 'show']);
             Route::put('/{user}', [UserController::class, 'update']);
             Route::delete('/{user}', [UserController::class, 'destroy'])->middleware('role:admin');
-
             Route::post('/{user}/assign-roles', [UserController::class, 'assignRoles'])->middleware('role:admin');
-            Route::get('/roles/list', [UserController::class, 'getRoles'])->middleware('role:admin');
-
-            // Profile
-            Route::prefix('profile')->group(function () {
-                Route::put('/', [UserController::class, 'updateProfile']);
-                Route::put('/password', [UserController::class, 'changePassword']);
-            });
         });
 
         // Reviews

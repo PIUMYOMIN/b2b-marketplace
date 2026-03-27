@@ -233,12 +233,37 @@ class CouponController extends Controller
      */
     public function validate(Request $request)
     {
+        // Accept both formats:
+        //   items: [{product_id, quantity}]  ← sent by Checkout.jsx
+        //   product_ids: [1, 2, 3]           ← legacy flat array
         $request->validate([
             'code' => 'required|string',
-            'product_ids' => 'required|array|min:1',
-            'product_ids.*' => 'integer|exists:products,id',
             'subtotal' => 'required|numeric|min:0',
+            // items format (preferred)
+            'items' => 'nullable|array',
+            'items.*.product_id' => 'required_with:items|integer|exists:products,id',
+            'items.*.quantity' => 'required_with:items|integer|min:1',
+            // legacy flat format
+            'product_ids' => 'nullable|array',
+            'product_ids.*' => 'integer|exists:products,id',
         ]);
+
+        // Normalise to a quantity-keyed map: [product_id => quantity]
+        $itemsMap = [];
+        if ($request->filled('items')) {
+            foreach ($request->items as $item) {
+                $itemsMap[(int) $item['product_id']] = (int) ($item['quantity'] ?? 1);
+            }
+        } elseif ($request->filled('product_ids')) {
+            foreach ($request->product_ids as $id) {
+                $itemsMap[(int) $id] = 1;
+            }
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cart is empty — no products to apply coupon to.',
+            ], 422);
+        }
 
         $coupon = Coupon::where('code', strtoupper($request->code))->first();
 
@@ -276,9 +301,20 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Find which of the requested products this coupon applies to
-        $products = Product::whereIn('id', $request->product_ids)->get();
-        $applicableProducts = $products->filter(fn($p) => $coupon->appliesToProduct($p));
+        // Find applicable products and calculate subtotal respecting quantities
+        $productIds = array_keys($itemsMap);
+        $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+
+        $applicableProducts = collect();
+        $applicableSubtotal = 0;
+
+        foreach ($itemsMap as $productId => $qty) {
+            $product = $products->get($productId);
+            if ($product && $coupon->appliesToProduct($product)) {
+                $applicableProducts->push($product);
+                $applicableSubtotal += $product->price * $qty;
+            }
+        }
 
         if ($applicableProducts->isEmpty()) {
             return response()->json([
@@ -287,8 +323,6 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Calculate discount based on the applicable subtotal
-        $applicableSubtotal = $applicableProducts->sum('price');
         $discountAmount = $coupon->calculateDiscount(min($applicableSubtotal, $request->subtotal));
 
         return response()->json([
