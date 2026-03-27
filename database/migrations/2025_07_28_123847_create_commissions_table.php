@@ -19,7 +19,6 @@ return new class extends Migration {
             $table->decimal('platform_revenue', 12, 2)->default(0);
             $table->decimal('seller_payout', 12, 2)->default(0);
             $table->string('notes')->nullable();
-            // FK added after commission_rules table is created
             $table->unsignedBigInteger('commission_rule_id')->nullable();
             $table->enum('status', ['pending', 'collected', 'due', 'waived']);
             $table->timestamp('due_date')->nullable();
