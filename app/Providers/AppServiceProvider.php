@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Route;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -12,20 +13,20 @@ class AppServiceProvider extends ServiceProvider
      * Register any application services.
      */
     public function register()
-{
-    // Manually register Spatie middleware
-    $this->app->singleton('role', function() {
-        return new \Spatie\Permission\Middleware\RoleMiddleware();
-    });
-    
-    $this->app->singleton('permission', function() {
-        return new \Spatie\Permission\Middleware\PermissionMiddleware();
-    });
-    
-    $this->app->singleton('role_or_permission', function() {
-        return new \Spatie\Permission\Middleware\RoleOrPermissionMiddleware();
-    });
-}
+    {
+        // Manually register Spatie middleware
+        $this->app->singleton('role', function () {
+            return new \Spatie\Permission\Middleware\RoleMiddleware();
+        });
+
+        $this->app->singleton('permission', function () {
+            return new \Spatie\Permission\Middleware\PermissionMiddleware();
+        });
+
+        $this->app->singleton('role_or_permission', function () {
+            return new \Spatie\Permission\Middleware\RoleOrPermissionMiddleware();
+        });
+    }
 
     /**
      * Bootstrap any application services.
@@ -33,5 +34,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Schema::defaultStringLength(191);
+        // Route model binding (moved from CustomRouteProvider)
+        Route::model('role', \Spatie\Permission\Models\Role::class);
     }
 }

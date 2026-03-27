@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\CommissionRateResolver;
+use App\Notifications\OrderPlaced;
+use App\Notifications\NewOrderForSeller;
+use App\Models\User as UserModel;
 use App\Models\Coupon;
 use App\Models\CouponUsage;
 use App\Models\Cart;
@@ -307,6 +310,16 @@ class OrderController extends Controller
                 ]);
 
                 $orders[] = $order;
+
+                // ── Fire notifications ──────────────────────────────────────
+                try {
+                    $order->buyer->notify(new OrderPlaced($order));
+                    $sellerUser = UserModel::find($sellerId);
+                    if ($sellerUser)
+                        $sellerUser->notify(new NewOrderForSeller($order));
+                } catch (\Exception $notifEx) {
+                    \Log::warning('Order notification failed: ' . $notifEx->getMessage());
+                }
             }
 
             // Record coupon usage once, against the first order (usage tracks the buyer, not per-order)
@@ -490,9 +503,6 @@ class OrderController extends Controller
                 'cancelled_at' => now(),
             ]);
 
-            // FIX: eager-load items with their products before iterating.
-            // Without this, $item->product is null if the product has been
-            // soft-deleted, causing a fatal "Call to member function on null".
             $order->load('items.product');
 
             foreach ($order->items as $item) {
@@ -501,17 +511,15 @@ class OrderController extends Controller
                 }
             }
 
-            // FIX: reverse coupon usage so the buyer can use the code again
-            // and the used_count goes back down.
             if ($order->coupon_id) {
-                $usage = \App\Models\CouponUsage::where('coupon_id', $order->coupon_id)
+                $usage = CouponUsage::where('coupon_id', $order->coupon_id)
                     ->where('user_id', $order->buyer_id)
                     ->where('order_id', $order->id)
                     ->first();
 
                 if ($usage) {
                     $usage->delete();
-                    \App\Models\Coupon::where('id', $order->coupon_id)
+                    Coupon::where('id', $order->coupon_id)
                         ->where('used_count', '>', 0)
                         ->decrement('used_count');
                 }
@@ -519,7 +527,7 @@ class OrderController extends Controller
 
             // FIX: cancel the associated delivery record so it doesn't remain
             // in-progress while the order itself is cancelled.
-            $delivery = \App\Models\Delivery::where('order_id', $order->id)->first();
+            $delivery = Delivery::where('order_id', $order->id)->first();
             if ($delivery && !in_array($delivery->status, ['delivered', 'failed'])) {
                 $delivery->update(['status' => 'cancelled']);
             }
