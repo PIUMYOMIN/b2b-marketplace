@@ -138,7 +138,7 @@ Route::group([
             Route::put('/notification-preferences', [\App\Http\Controllers\Api\UserController::class, 'updateNotificationPreferences']);
 
             // Admin newsletter + campaigns
-            Route::prefix('admin/newsletter')->middleware('role:admin')->group(function () {
+            Route::prefix('newsletter')->middleware('role:admin')->group(function () {
                 Route::get('/subscribers', [NewsletterController::class, 'subscribers']);
                 Route::get('/campaigns', [NewsletterController::class, 'campaigns']);
                 Route::post('/campaigns', [NewsletterController::class, 'createCampaign']);
