@@ -467,7 +467,7 @@ Route::group([
 
             // ── Static routes must come before /{user} wildcard ──────────────
             // Profile (authenticated user — no {user} param needed)
-            Route::put('/newsletter/preferences', [NewsletterController::class, 'updatePreferences']);
+            Route::put('/newsletter-preferences', [NewsletterController::class, 'updatePreferences']);
 
             Route::prefix('profile')->group(function () {
                 Route::get('/', [UserController::class, 'showProfile']);

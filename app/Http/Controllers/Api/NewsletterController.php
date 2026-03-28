@@ -5,7 +5,6 @@ use App\Http\Controllers\Controller;
 use App\Mail\CampaignMail;
 use App\Models\EmailCampaign;
 use App\Models\NewsletterSubscriber;
-use App\Models\SellerProfile;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
