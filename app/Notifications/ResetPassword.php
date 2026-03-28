@@ -36,9 +36,12 @@ class ResetPassword extends Notification
 
     protected function resetUrl($notifiable)
     {
-        return url(route('password.reset', [
+        // Build a frontend URL — the React app handles the actual reset form.
+        // url(route()) was previously used but 'password.reset' is a POST API route,
+        // not a page, so it produced a broken link pointing back to the API server.
+        return config('app.frontend_url') . '/reset-password?' . http_build_query([
             'token' => $this->token,
             'email' => $notifiable->getEmailForPasswordReset(),
-        ], false));
+        ]);
     }
 }
