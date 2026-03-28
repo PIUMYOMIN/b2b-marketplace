@@ -31,7 +31,8 @@ class CartController extends Controller
                 'product' => function ($query) {
                     $query->withTrashed(); // Include soft-deleted products to avoid null
                 },
-                'product.category'
+                'product.category',
+                'product.sellerProfile',
             ])
                 ->where('user_id', $user->id)
                 ->get()
@@ -80,9 +81,12 @@ class CartController extends Controller
                         'category' => $categoryName,
                         'stock' => $stock,
                         'min_order' => $product && !$product->trashed() ? ($product->min_order ?? 1) : 1,
-                        'is_available' => $isAvailable,
+                        'is_available'     => $isAvailable,
                         'is_quantity_valid' => $isAvailable && $item->quantity <= $stock,
-                        'subtotal' => $productPrice * $item->quantity
+                        'subtotal'          => $productPrice * $item->quantity,
+                        'seller_id'         => $product?->sellerProfile?->user_id,
+                        'seller_name'       => $product?->sellerProfile?->store_name,
+                        'seller_slug'       => $product?->sellerProfile?->store_slug,
                     ];
                 })
                 ->filter(function ($item) {
