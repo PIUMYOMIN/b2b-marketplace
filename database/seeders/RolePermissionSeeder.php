@@ -38,13 +38,14 @@ class RolePermissionSeeder extends Seeder
         ];
 
         foreach ($permissions as $permission) {
-            Permission::create(['name' => $permission]);
+            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'sanctum']);
         }
 
-        // Create roles
-        $admin = Role::create(['name' => 'admin']);
-        $seller = Role::create(['name' => 'seller']);
-        $buyer = Role::create(['name' => 'buyer']);
+        // Create roles — guard_name must match config/permission.php ('sanctum')
+        // and the guard used in auth:sanctum middleware
+        $admin  = Role::firstOrCreate(['name' => 'admin',  'guard_name' => 'sanctum']);
+        $seller = Role::firstOrCreate(['name' => 'seller', 'guard_name' => 'sanctum']);
+        $buyer  = Role::firstOrCreate(['name' => 'buyer',  'guard_name' => 'sanctum']);
 
         // Assign permissions
         $admin->givePermissionTo(Permission::all());
