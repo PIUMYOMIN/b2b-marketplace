@@ -134,9 +134,6 @@ Route::group([
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
 
-            // Notification preferences (all auth users)
-            Route::put('/notification-preferences', [\App\Http\Controllers\Api\UserController::class, 'updateNotificationPreferences']);
-
             // Admin newsletter + campaigns
             Route::prefix('newsletter')->middleware('role:admin')->group(function () {
                 Route::get('/subscribers', [NewsletterController::class, 'subscribers']);
@@ -429,6 +426,9 @@ Route::group([
                 Route::post('/validate', [CouponController::class, 'validate']);
             });
         });
+
+        // Notification preferences (all auth users)
+            Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
 
         // Business Types
         Route::group(['prefix' => 'business-types'], function () {
