@@ -114,6 +114,13 @@ class AuthController extends Controller
             // 🔔 Send email verification notification
             event(new Registered($user));
 
+            // Welcome email
+            try {
+                $user->notify(new WelcomeUser());
+            } catch (\Exception $e) {
+                \Log::warning('Welcome email failed: ' . $e->getMessage());
+            }
+
             // Generate API token
             $token = $user->createToken('auth_token')->plainTextToken;
 

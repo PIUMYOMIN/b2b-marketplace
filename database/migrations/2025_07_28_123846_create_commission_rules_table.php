@@ -45,10 +45,19 @@ return new class extends Migration {
             $table->index(['type', 'is_active']);
             $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
         });
+
+        // Add FK on commissions now that commission_rules exists
+        Schema::table('commissions', function (Blueprint $table) {
+            $table->foreign('commission_rule_id')
+                ->references('id')->on('commission_rules')->onDelete('set null');
+        });
     }
 
     public function down(): void
     {
+        Schema::table('commissions', function (Blueprint $table) {
+            $table->dropForeign(['commission_rule_id']);
+        });
         Schema::dropIfExists('commission_rules');
     }
 };

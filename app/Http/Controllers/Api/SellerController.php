@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 use App\Models\Order;
 use App\Notifications\SellerRejected;
+use App\Notifications\SellerApproved;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
@@ -3793,6 +3794,13 @@ class SellerController extends Controller
                 'Seller verified by admin',
                 $validated['notes'] ?? null
             );
+
+            // Notify seller of approval
+            try {
+                $sellerProfile->user->notify(new SellerApproved($sellerProfile->fresh()));
+            } catch (\Exception $e) {
+                \Log::warning('SellerApproved notification failed: ' . $e->getMessage());
+            }
 
             return response()->json([
                 'success' => true,

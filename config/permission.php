@@ -28,6 +28,13 @@ return [
 
     ],
 
+    /*
+     * The default guard name to use when checking permissions/roles.
+     * Must match guard_name used when seeding roles.
+     * Roles are seeded with guard_name='sanctum', so set this to 'sanctum'.
+     */
+    'guard_name' => 'sanctum',
+
     'table_names' => [
 
         /*
