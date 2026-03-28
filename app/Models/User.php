@@ -56,8 +56,6 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'date_of_birth' => 'date',
-            'settings' => 'array',
-            'preferences' => 'array', // FIX: was 'peferences' (typo)
             'password' => 'hashed',
         ];
     }

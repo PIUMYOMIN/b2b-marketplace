@@ -315,5 +315,30 @@ class UserController extends Controller
         ]);
     }
 
+    public function updateNotificationPreferences(Request $request)
+    {
+        $user = $request->user();
 
+        $validated = $request->validate([
+            'order_updates' => 'sometimes|boolean',
+            'promotional_emails' => 'sometimes|boolean',
+            'newsletter' => 'sometimes|boolean',
+            'security_alerts' => 'sometimes|boolean',
+            'new_orders' => 'sometimes|boolean',
+            'review_notifications' => 'sometimes|boolean',
+            'seller_updates' => 'sometimes|boolean',
+        ]);
+
+        $existing = $user->notification_preferences ?? [];
+
+        $user->update([
+            'notification_preferences' => array_merge($existing, $validated)
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Notification preferences updated successfully',
+            'data' => $user->notification_preferences
+        ]);
+    }
 }
