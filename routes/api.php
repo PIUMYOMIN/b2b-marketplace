@@ -112,7 +112,7 @@ Route::group([
     });
 
     // Notification preferences (all auth users)
-    Route::put('/notification-preferences', [\App\Http\Controllers\Api\UserController::class, 'updateNotificationPreferences']);
+    Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
 
     // --------------------
     // Authenticated Routes
