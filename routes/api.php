@@ -111,9 +111,6 @@ Route::group([
         Route::get('/sellers/{slug}', [SellerReviewController::class, 'sellerReviews']);
     });
 
-    // Notification preferences (all auth users)
-    Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
-
     // --------------------
     // Authenticated Routes
     // --------------------
@@ -428,6 +425,9 @@ Route::group([
                 Route::post('/validate', [CouponController::class, 'validate']);
             });
         });
+
+        // Notification preferences (all auth users)
+        Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
 
         // Business Types
         Route::group(['prefix' => 'business-types'], function () {
