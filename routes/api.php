@@ -111,6 +111,9 @@ Route::group([
         Route::get('/sellers/{slug}', [SellerReviewController::class, 'sellerReviews']);
     });
 
+    // Notification preferences (all auth users)
+    Route::put('/notification-preferences', [\App\Http\Controllers\Api\UserController::class, 'updateNotificationPreferences']);
+
     // --------------------
     // Authenticated Routes
     // --------------------
@@ -133,9 +136,6 @@ Route::group([
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
-
-            // Notification preferences (all auth users)
-            Route::put('/notification-preferences', [\App\Http\Controllers\Api\UserController::class, 'updateNotificationPreferences']);
 
             // Admin newsletter + campaigns
             Route::prefix('admin/newsletter')->middleware('role:admin')->group(function () {
