@@ -195,23 +195,7 @@ class NewsletterController extends Controller
             'all_buyers' =>
             User::where('type', 'buyer')->where('is_active', true)
                 ->when($filter['city'] ?? null, fn($q, $city) => $q->where('city', $city))
-                ->get(['email', 'name'])
-                ->map(function ($u) {
-                    $subscriber = NewsletterSubscriber::firstOrCreate(
-                        ['email' => $u->email],
-                        [
-                            'unsubscribe_token' => NewsletterSubscriber::generateToken(),
-                            'confirmed_at' => now(),
-                            'source' => 'campaign'
-                        ]
-                    );
-
-                    return (object)[
-                        'email' => $u->email,
-                        'name' => $u->name,
-                        'unsubscribe_token' => $subscriber->unsubscribe_token
-                    ];
-                }),
+                ->get(['email', 'name'])->map(fn($u) => (object)['email' => $u->email, 'name' => $u->name, 'unsubscribe_token' => null]),
 
             'all_sellers' =>
                 User::where('type','seller')->where('is_active',true)
