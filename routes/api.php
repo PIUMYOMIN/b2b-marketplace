@@ -135,7 +135,7 @@ Route::group([
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
 
             // Admin newsletter + campaigns
-            Route::prefix('admin/newsletter')->middleware('role:admin')->group(function () {
+            Route::prefix('newsletter')->middleware('role:admin')->group(function () {
                 Route::get('/subscribers', [NewsletterController::class, 'subscribers']);
                 Route::get('/campaigns', [NewsletterController::class, 'campaigns']);
                 Route::post('/campaigns', [NewsletterController::class, 'createCampaign']);
