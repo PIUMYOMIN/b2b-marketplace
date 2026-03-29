@@ -150,9 +150,9 @@ class OrderController extends Controller
             "order_otp_expires_{$user->id}" => $expires->toISOString(),
         ]);
 
-        // Send OTP email (queued so it's fast for the user)
+        // Send OTP email (send so it's fast for the user)
         Mail::to($user->email)
-            ->queue(new OrderOtpMail($otp, $user->name, $formattedTotal));
+            ->send(new OrderOtpMail($otp, $user->name, $formattedTotal));
 
         return response()->json([
             'success'    => true,
