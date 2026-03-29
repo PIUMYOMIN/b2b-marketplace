@@ -13,12 +13,16 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\OrderItem;
-use App\Models\Delivery; // Add this import
-use App\Models\DeliveryUpdate; // FIX: was used in confirm() but never imported → fatal error
+use App\Models\Delivery;
+use App\Models\DeliveryUpdate;
+use App\Models\Commission;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\OrderOtpMail;
 
 class OrderController extends Controller
 {
@@ -91,12 +95,141 @@ class OrderController extends Controller
         ]);
     }
 
+    // ── OTP ────────────────────────────────────────────────────────────────────
+
+    /**
+     * POST /orders/request-otp
+     *
+     * Validates the cart + shipping fields, calculates the total,
+     * then emails a 6-digit OTP to the authenticated buyer.
+     * The OTP is stored temporarily on a draft order (status=pending, otp_verified=false).
+     * The actual order creation is completed in store() after OTP verification.
+     */
+    public function requestOtp(Request $request)
+    {
+        $user = Auth::user();
+
+        $request->validate([
+            'items'                        => 'required|array|min:1',
+            'items.*.product_id'           => 'required|exists:products,id',
+            'items.*.quantity'             => 'required|integer|min:1',
+            'shipping_address'             => 'required|array',
+            'shipping_address.full_name'   => 'required|string',
+            'shipping_address.phone'       => 'required|string',
+            'shipping_address.address'     => 'required|string',
+            'payment_method'               => 'required|in:kbz_pay,wave_pay,cb_pay,aya_pay,mmqr,cash_on_delivery',
+        ]);
+
+        // Quick stock check before bothering to send an email
+        foreach ($request->items as $item) {
+            $product = Product::findOrFail($item['product_id']);
+            if (!$product->is_active) {
+                return response()->json(['success' => false, 'message' => "Product \"{$product->name}\" is no longer available."], 422);
+            }
+            if ($product->quantity < $item['quantity']) {
+                return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name}\"."], 422);
+            }
+        }
+
+        // Calculate estimated total to show in the email
+        $subtotal = collect($request->items)->sum(function ($item) {
+            $product = Product::find($item['product_id']);
+            return $product ? $product->price * $item['quantity'] : 0;
+        });
+        $total = $subtotal + 5000 + ($subtotal * 0.05); // shipping + tax
+        $formattedTotal = number_format($total, 0) . ' MMK';
+
+        // Generate a 6-digit OTP
+        $otp     = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $expires = now()->addMinutes(10);
+
+        // Store OTP in session (keyed by user ID) so we don't need a DB column
+        // at this stage — the real order is only written after verification.
+        session([
+            "order_otp_{$user->id}"         => $otp,
+            "order_otp_expires_{$user->id}" => $expires->toISOString(),
+        ]);
+
+        // Send OTP email (queued so it's fast for the user)
+        Mail::to($user->email)
+            ->queue(new OrderOtpMail($otp, $user->name, $formattedTotal));
+
+        return response()->json([
+            'success'    => true,
+            'message'    => "A 6-digit confirmation code has been sent to {$user->email}.",
+            'email_hint' => $this->maskEmail($user->email),
+            'expires_in' => 600, // seconds
+        ]);
+    }
+
+    /**
+     * POST /orders/verify-otp
+     *
+     * Verifies the OTP submitted by the buyer.
+     * Returns success so the frontend knows it can proceed to call POST /orders.
+     */
+    public function verifyOtp(Request $request)
+    {
+        $user = Auth::user();
+
+        $request->validate([
+            'otp' => 'required|string|size:6',
+        ]);
+
+        $storedOtp     = session("order_otp_{$user->id}");
+        $storedExpires = session("order_otp_expires_{$user->id}");
+
+        if (!$storedOtp || !$storedExpires) {
+            return response()->json(['success' => false, 'message' => 'No OTP found. Please request a new code.'], 422);
+        }
+
+        if (now()->gt(\Carbon\Carbon::parse($storedExpires))) {
+            session()->forget(["order_otp_{$user->id}", "order_otp_expires_{$user->id}"]);
+            return response()->json(['success' => false, 'message' => 'This code has expired. Please request a new one.'], 422);
+        }
+
+        if ($request->otp !== $storedOtp) {
+            return response()->json(['success' => false, 'message' => 'Incorrect code. Please try again.'], 422);
+        }
+
+        // Mark OTP as verified in session — store() will check this flag
+        session(["order_otp_verified_{$user->id}" => true]);
+        session()->forget(["order_otp_{$user->id}", "order_otp_expires_{$user->id}"]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Code verified successfully.',
+        ]);
+    }
+
+    /** Mask an email address for display: hello@example.com → h***o@e***.com */
+    private function maskEmail(string $email): string
+    {
+        [$local, $domain] = explode('@', $email, 2);
+        $maskedLocal  = substr($local, 0, 1) . str_repeat('*', max(strlen($local) - 2, 1)) . substr($local, -1);
+        [$domainName, $tld] = array_pad(explode('.', $domain, 2), 2, '');
+        $maskedDomain = substr($domainName, 0, 1) . str_repeat('*', max(strlen($domainName) - 1, 1));
+        return "{$maskedLocal}@{$maskedDomain}.{$tld}";
+    }
+
     public function store(Request $request)
     {
         DB::beginTransaction();
 
         try {
             $user = Auth::user();
+
+            // ── OTP gate ────────────────────────────────────────────────────
+            $otpVerified = session("order_otp_verified_{$user->id}");
+            if (!$otpVerified) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not verified. Please complete the email OTP step.',
+                    'code'    => 'OTP_REQUIRED',
+                ], 403);
+            }
+            // Consume the verification flag — one OTP = one order
+            session()->forget("order_otp_verified_{$user->id}");
 
             // Validate request - UPDATED PAYMENT METHODS
             $request->validate([
@@ -340,7 +473,6 @@ class OrderController extends Controller
                     'total_orders' => count($orders)
                 ]
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Order creation failed: ' . $e->getMessage());
@@ -468,7 +600,6 @@ class OrderController extends Controller
                 'message' => 'Payment status updated successfully',
                 'data' => $order
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -539,7 +670,6 @@ class OrderController extends Controller
                 'message' => 'Order cancelled successfully',
                 'data' => $order->fresh(),
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Order cancellation failed: ' . $e->getMessage());

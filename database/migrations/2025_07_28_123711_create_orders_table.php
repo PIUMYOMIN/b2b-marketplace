@@ -76,6 +76,9 @@ return new class extends Migration
 
             // Additional info
             $table->text('order_notes')->nullable();
+            $table->string('order_otp', 6)->nullable();
+            $table->timestamp('order_otp_expires_at')->nullable();
+            $table->boolean('order_otp_verified')->default(false);
 
             // Shipping info
             $table->string('tracking_number')->nullable();

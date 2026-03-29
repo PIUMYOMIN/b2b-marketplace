@@ -134,8 +134,11 @@ Route::group([
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
 
+            // Notification preferences (all auth users)
+            Route::put('/notification-preferences', [\App\Http\Controllers\Api\UserController::class, 'updateNotificationPreferences']);
+
             // Admin newsletter + campaigns
-            Route::prefix('newsletter')->middleware('role:admin')->group(function () {
+            Route::prefix('admin/newsletter')->middleware('role:admin')->group(function () {
                 Route::get('/subscribers', [NewsletterController::class, 'subscribers']);
                 Route::get('/campaigns', [NewsletterController::class, 'campaigns']);
                 Route::post('/campaigns', [NewsletterController::class, 'createCampaign']);
@@ -232,7 +235,6 @@ Route::group([
                 Route::put('/{id}/read', [ContactMessageController::class, 'markAsRead']);
                 Route::delete('/{id}', [ContactMessageController::class, 'destroy']);
             });
-
         });
 
         Route::prefix('seller')->middleware('role:seller')->group(function () {
@@ -427,9 +429,6 @@ Route::group([
             });
         });
 
-        // Notification preferences (all auth users)
-            Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
-
         // Business Types
         Route::group(['prefix' => 'business-types'], function () {
             Route::get('/', [BusinessTypeController::class, 'index']);
@@ -467,7 +466,7 @@ Route::group([
 
             // ── Static routes must come before /{user} wildcard ──────────────
             // Profile (authenticated user — no {user} param needed)
-            Route::put('/newsletter-preferences', [NewsletterController::class, 'updatePreferences']);
+            Route::put('/newsletter/preferences', [NewsletterController::class, 'updatePreferences']);
 
             Route::prefix('profile')->group(function () {
                 Route::get('/', [UserController::class, 'showProfile']);
@@ -510,6 +509,9 @@ Route::group([
         // Orders
         Route::prefix('orders')->group(function () {
             Route::get('/', [OrderController::class, 'index']);
+            // OTP routes — static paths must come BEFORE /{order} wildcard
+            Route::post('/request-otp', [OrderController::class, 'requestOtp'])->middleware('role:buyer|admin');
+            Route::post('/verify-otp',  [OrderController::class, 'verifyOtp'])->middleware('role:buyer|admin');
             Route::post('/', [OrderController::class, 'store'])->middleware('role:buyer|admin');
             Route::get('/{order}', [OrderController::class, 'show']);
             Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
