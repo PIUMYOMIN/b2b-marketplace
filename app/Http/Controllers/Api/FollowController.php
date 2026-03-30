@@ -106,21 +106,20 @@ class FollowController extends Controller
     /**
      * Toggle follow status
      */
-    public function toggleFollow(Request $request, $sellerId)
+    public function toggleFollow(Request $request, User $seller)
     {
         try {
             $user = $request->user();
-            $seller = User::findOrFail($sellerId);
 
-            // Check if seller is actually a seller
-            if ($seller->type !== 'seller') {
+            // Validate seller role
+            if (!$seller->hasRole('seller')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'User is not a seller'
                 ], 422);
             }
 
-            // Prevent following yourself
+            // Prevent self-follow
             if ($user->id === $seller->id) {
                 return response()->json([
                     'success' => false,
@@ -128,13 +127,13 @@ class FollowController extends Controller
                 ], 422);
             }
 
-            $isFollowing = $user->isFollowing($sellerId);
+            $isFollowing = $user->isFollowing($seller->id);
 
             if ($isFollowing) {
-                $user->unfollow($sellerId);
+                $user->unfollow($seller->id);
                 $message = 'Successfully unfollowed seller';
             } else {
-                $user->follow($sellerId);
+                $user->follow($seller->id);
                 $message = 'Successfully followed seller';
             }
 
@@ -143,12 +142,17 @@ class FollowController extends Controller
                 'message' => $message,
                 'data' => [
                     'is_following' => !$isFollowing,
-                    'followers_count' => $seller->followers()->count()
+                    'followers_count' => $seller->followers()->count(),
                 ]
             ]);
-
         } catch (\Exception $e) {
-            \Log::error('Error toggling follow: ' . $e->getMessage());
+            // Log the actual error for debugging
+            \Log::error('Toggle follow failed: ' . $e->getMessage(), [
+                'seller_id' => $seller->id ?? null,
+                'user_id'   => $user->id ?? null,
+                'trace'     => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update follow status'
