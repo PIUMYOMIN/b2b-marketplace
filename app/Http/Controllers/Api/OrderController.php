@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\OrderOtpMail;
 
@@ -140,17 +141,22 @@ class OrderController extends Controller
         $formattedTotal = number_format($total, 0) . ' MMK';
 
         // Generate a 6-digit OTP
-        $otp     = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-        $expires = now()->addMinutes(10);
+        $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $ttl = now()->addMinutes(10);
 
-        // Store OTP in session (keyed by user ID) so we don't need a DB column
-        // at this stage — the real order is only written after verification.
-        session([
-            "order_otp_{$user->id}"         => $otp,
-            "order_otp_expires_{$user->id}" => $expires->toISOString(),
-        ]);
+        // Store OTP in the Laravel Cache (database driver, table: cache).
+        //
+        // WHY NOT session(): This API runs under Laravel 12's `api` middleware
+        // group defined in bootstrap/app.php. That group does NOT include
+        // StartSession, so session() always returns a fresh empty store on
+        // every request — the OTP written in requestOtp() is invisible to
+        // verifyOtp(), producing "No OTP found" every time. Cache persists
+        // across stateless Bearer-token requests because it's backed by the
+        // database, not the HTTP session.
+        Cache::put("order_otp_{$user->id}",          $otp,                 $ttl);
+        Cache::put("order_otp_expires_{$user->id}",  $ttl->toISOString(),  $ttl);
 
-        // Send OTP email (send so it's fast for the user)
+        // Send synchronously — OTP is time-sensitive, the user is waiting.
         Mail::to($user->email)
             ->send(new OrderOtpMail($otp, $user->name, $formattedTotal));
 
@@ -176,15 +182,16 @@ class OrderController extends Controller
             'otp' => 'required|string|size:6',
         ]);
 
-        $storedOtp     = session("order_otp_{$user->id}");
-        $storedExpires = session("order_otp_expires_{$user->id}");
+        $storedOtp     = Cache::get("order_otp_{$user->id}");
+        $storedExpires = Cache::get("order_otp_expires_{$user->id}");
 
         if (!$storedOtp || !$storedExpires) {
             return response()->json(['success' => false, 'message' => 'No OTP found. Please request a new code.'], 422);
         }
 
         if (now()->gt(\Carbon\Carbon::parse($storedExpires))) {
-            session()->forget(["order_otp_{$user->id}", "order_otp_expires_{$user->id}"]);
+            Cache::forget("order_otp_{$user->id}");
+            Cache::forget("order_otp_expires_{$user->id}");
             return response()->json(['success' => false, 'message' => 'This code has expired. Please request a new one.'], 422);
         }
 
@@ -192,9 +199,10 @@ class OrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Incorrect code. Please try again.'], 422);
         }
 
-        // Mark OTP as verified in session — store() will check this flag
-        session(["order_otp_verified_{$user->id}" => true]);
-        session()->forget(["order_otp_{$user->id}", "order_otp_expires_{$user->id}"]);
+        // Mark verified in Cache with a 5-minute window for the order POST to arrive.
+        Cache::put("order_otp_verified_{$user->id}", true, now()->addMinutes(5));
+        Cache::forget("order_otp_{$user->id}");
+        Cache::forget("order_otp_expires_{$user->id}");
 
         return response()->json([
             'success' => true,
@@ -220,7 +228,7 @@ class OrderController extends Controller
             $user = Auth::user();
 
             // ── OTP gate ────────────────────────────────────────────────────
-            $otpVerified = session("order_otp_verified_{$user->id}");
+            $otpVerified = Cache::get("order_otp_verified_{$user->id}");
             if (!$otpVerified) {
                 return response()->json([
                     'success' => false,
@@ -229,7 +237,7 @@ class OrderController extends Controller
                 ], 403);
             }
             // Consume the verification flag — one OTP = one order
-            session()->forget("order_otp_verified_{$user->id}");
+            Cache::forget("order_otp_verified_{$user->id}");
 
             // Validate request - UPDATED PAYMENT METHODS
             $request->validate([
