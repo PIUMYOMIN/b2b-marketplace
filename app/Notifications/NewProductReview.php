@@ -25,7 +25,7 @@ class NewProductReview extends Notification
     {
         return ['type' => 'product_review', 'review_id' => $this->review->id, 'rating' => $this->review->rating, 'product_name' => $this->review->product?->name_en, 'message' => "New {$this->review->rating}-star review on \"{$this->review->product?->name_en}\"."];
     }
-    private function shouldSend($user): bool
+    public function shouldSend($user): bool
     {
         $prefs = $user->notification_preferences ?? [];
         return $prefs['review_notifications'] ?? true;
