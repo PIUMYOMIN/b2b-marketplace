@@ -542,10 +542,10 @@ Route::group([
 
         // Follow routes
         Route::prefix('follow')->middleware('auth:sanctum')->group(function () {
-            Route::post('/{seller}', [FollowController::class, 'followSeller']);
-            Route::delete('/{seller}', [FollowController::class, 'unfollowSeller']);
-            Route::post('/{seller}/toggle', [FollowController::class, 'toggleFollow']);
-            Route::get('/{seller}/status', [FollowController::class, 'checkFollowStatus']);
+            Route::post('/seller/{seller}', [FollowController::class, 'followSeller']);
+            Route::delete('/seller/{seller}', [FollowController::class, 'unfollowSeller']);
+            Route::post('/seller/{seller}/toggle', [FollowController::class, 'toggleFollow']);
+            Route::get('/seller/{seller}/status', [FollowController::class, 'checkFollowStatus']);
             Route::get('/my-sellers', [FollowController::class, 'getFollowedSellers']);
             Route::get('/seller/{seller}/followers', [FollowController::class, 'getSellerFollowers']);
         });
