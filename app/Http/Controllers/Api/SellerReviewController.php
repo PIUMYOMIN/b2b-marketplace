@@ -25,8 +25,19 @@ class SellerReviewController extends Controller
 
     public function store(Request $request, $seller)
     {
-        $validator = Validator::make(array_merge($request->all(), ['seller_id' => $seller]), [
-            'seller_id' => 'required|exists:seller_profiles,id',
+        // Find the seller profile by ID or store slug
+        $sellerProfile = SellerProfile::where('id', $seller)
+            ->orWhere('store_slug', $seller)
+            ->first();
+
+        if (!$sellerProfile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seller not found'
+            ], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
             'rating' => 'required|integer|min:1|max:5',
             'comment' => 'required|string|min:10|max:1000',
         ]);
@@ -38,41 +49,33 @@ class SellerReviewController extends Controller
             ], 422);
         }
 
-        try {
-            $user = auth()->user();
+        $user = auth()->user();
 
-            // Check if user already reviewed this seller
-            $existingReview = SellerReview::where('user_id', $user->id)
-                ->where('seller_id', $seller)
-                ->first();
+        // Check if the user has already reviewed this seller
+        $existingReview = SellerReview::where('user_id', $user->id)
+            ->where('seller_id', $sellerProfile->id)
+            ->first();
 
-            if ($existingReview) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You have already reviewed this seller'
-                ], 409);
-            }
-
-            $review = SellerReview::create([
-                'user_id' => $user->id,
-                'seller_id' => $seller,
-                'rating' => $request->rating,
-                'comment' => $request->comment,
-                'status' => 'approved'
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Review submitted successfully',
-                'data' => $review->load('user')
-            ], 201);
-
-        } catch (\Exception $e) {
+        if ($existingReview) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit review: ' . $e->getMessage()
-            ], 500);
+                'message' => 'You have already reviewed this seller'
+            ], 409);
         }
+
+        $review = SellerReview::create([
+            'user_id' => $user->id,
+            'seller_id' => $sellerProfile->id,
+            'rating' => $request->rating,
+            'comment' => $request->comment,
+            'status' => 'approved'
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Review submitted successfully',
+            'data' => $review->load('user')
+        ], 201);
     }
 
     /**
