@@ -106,10 +106,18 @@ class FollowController extends Controller
     /**
      * Toggle follow status
      */
-    public function toggleFollow(Request $request, User $seller)
+    /**
+     * Toggle follow status
+     */
+    public function toggleFollow(Request $request, $slug)
     {
         try {
             $user = $request->user();
+
+            // Find seller by store_slug through the sellerProfile relationship
+            $seller = User::whereHas('sellerProfile', function ($query) use ($slug) {
+                $query->where('store_slug', $slug);
+            })->firstOrFail();
 
             // Validate seller role
             if (!$seller->hasRole('seller')) {
@@ -146,11 +154,10 @@ class FollowController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
-            // Log the actual error for debugging
             \Log::error('Toggle follow failed: ' . $e->getMessage(), [
-                'seller_id' => $seller->id ?? null,
-                'user_id'   => $user->id ?? null,
-                'trace'     => $e->getTraceAsString()
+                'slug'     => $slug,
+                'user_id'  => $user->id ?? null,
+                'trace'    => $e->getTraceAsString()
             ]);
 
             return response()->json([
