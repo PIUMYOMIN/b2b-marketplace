@@ -25,7 +25,7 @@ class OrderPlaced extends Notification
     {
         return ['type' => 'order_placed', 'order_id' => $this->order->id, 'order_number' => $this->order->order_number, 'message' => "Your order #{$this->order->order_number} has been placed successfully."];
     }
-    protected function shouldSend($user): bool
+    public function shouldSend($user): bool
     {
         $prefs = is_array($user->notification_preferences)
             ? $user->notification_preferences
