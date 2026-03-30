@@ -454,7 +454,7 @@ Route::group([
             });
 
             // Seller reviews (buyers can review sellers)
-            Route::post('/{seller}/reviews', [SellerReviewController::class, 'store'])->middleware('role:buyer|admin');
+            Route::post('/{seller:store_slug}/reviews', [SellerReviewController::class, 'store'])->middleware('role:buyer|admin');
             Route::get('/my-reviews', [SellerReviewController::class, 'myReviews'])->middleware('role:buyer|admin');
             Route::put('/{review}', [SellerReviewController::class, 'update'])->middleware('role:buyer|admin');
             Route::delete('/{review}', [SellerReviewController::class, 'destroy'])->middleware('role:buyer|admin');
