@@ -25,7 +25,7 @@ class NewOrderForSeller extends Notification
     {
         return ['type' => 'new_order', 'order_id' => $this->order->id, 'order_number' => $this->order->order_number, 'message' => "New order #{$this->order->order_number} received."];
     }
-    private function shouldSend($user): bool
+    public function shouldSend($user): bool
     {
         $prefs = $user->notification_preferences ?? [];
         return $prefs['new_orders'] ?? true;
