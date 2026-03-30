@@ -16,6 +16,7 @@ use App\Models\OrderItem;
 use App\Models\Delivery;
 use App\Models\DeliveryUpdate;
 use App\Models\Commission;
+use App\Models\CommissionRule;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -914,5 +915,82 @@ class OrderController extends Controller
             $totalWeight += ($item['product']->weight_kg ?? 1) * $item['quantity'];
         }
         return $totalWeight;
+    }
+
+    /**
+     * GET /orders/checkout-fees
+     *
+     * Returns the live platform fee rate (resolved from commission_rules table
+     * via CommissionRateResolver) and the flat shipping fee, so the checkout
+     * page can display accurate totals instead of hardcoded constants.
+     *
+     * Resolution priority (highest → lowest):
+     *   1. Seller tier (account_level rule)
+     *   2. Business type rule
+     *   3. Category rule (first item's category)
+     *   4. Platform default rule
+     *
+     * For multi-seller carts the default rule is returned as a display estimate;
+     * the per-seller rate is applied precisely at order creation time.
+     */
+    public function checkoutFees(Request $request): \Illuminate\Http\JsonResponse
+    {
+        try {
+            $user = $request->user();
+
+            $platformFeeRate = 0.05;
+            $ruleType        = 'default';
+
+            // Try to load buyer's cart for a seller-specific rate lookup
+            $cartItems = Cart::where('user_id', $user->id)
+                ->with('product:id,seller_id,category_id')
+                ->get();
+
+            if ($cartItems->isNotEmpty()) {
+                $sellerIds = $cartItems->pluck('product.seller_id')->filter()->unique();
+
+                if ($sellerIds->count() === 1) {
+                    $sellerId    = $sellerIds->first();
+                    $sellerItems = $cartItems->map(fn($c) => ['product' => $c->product])->values()->toArray();
+                    $resolved    = app(CommissionRateResolver::class)->resolveForSeller($sellerId, $sellerItems);
+                    $platformFeeRate = $resolved['rate'];
+                    $ruleType        = $resolved['rule_type'];
+                } else {
+                    // Multi-seller cart — use default rule as conservative estimate
+                    $rule = CommissionRule::active()->where('type', 'default')->first();
+                    if ($rule) {
+                        $platformFeeRate = (float) $rule->rate;
+                    }
+                }
+            } else {
+                $rule = CommissionRule::active()->where('type', 'default')->first();
+                if ($rule) {
+                    $platformFeeRate = (float) $rule->rate;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'platform_fee_rate' => $platformFeeRate,
+                    'platform_fee_pct'  => round($platformFeeRate * 100, 2),
+                    'shipping_fee'      => 5000,
+                    'rule_type'         => $ruleType,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('checkoutFees failed: ' . $e->getMessage());
+
+            // Safe fallback so checkout never breaks
+            return response()->json([
+                'success' => true,
+                'data'    => [
+                    'platform_fee_rate' => 0.05,
+                    'platform_fee_pct'  => 5.0,
+                    'shipping_fee'      => 5000,
+                    'rule_type'         => 'fallback',
+                ],
+            ]);
+        }
     }
 }

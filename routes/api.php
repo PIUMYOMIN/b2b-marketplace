@@ -509,7 +509,8 @@ Route::group([
         // Orders
         Route::prefix('orders')->group(function () {
             Route::get('/', [OrderController::class, 'index']);
-            // OTP routes — static paths must come BEFORE /{order} wildcard
+            // Static paths MUST come BEFORE /{order} wildcard
+            Route::get('/checkout-fees', [OrderController::class, 'checkoutFees'])->middleware('role:buyer|admin');
             Route::post('/request-otp', [OrderController::class, 'requestOtp'])->middleware('role:buyer|admin');
             Route::post('/verify-otp',  [OrderController::class, 'verifyOtp'])->middleware('role:buyer|admin');
             Route::post('/', [OrderController::class, 'store'])->middleware('role:buyer|admin');
