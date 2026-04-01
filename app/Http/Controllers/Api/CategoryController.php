@@ -31,20 +31,9 @@ class CategoryController extends Controller
             $categoryIds = $category->descendants()->pluck('id')->push($category->id);
             $category->products_count = Product::whereIn('category_id', $categoryIds)
                 ->where('is_active', true)
-                ->where('status', 'approved')
                 ->count();
 
             $category->children_count = $category->children->count();
-
-            // Compute products_count for each child so CategorySelector
-            // can correctly filter out zero-product subcategories on the frontend.
-            foreach ($category->children as $child) {
-                $child->products_count = Product::where('category_id', $child->id)
-                    ->where('is_active', true)
-                    ->where('status', 'approved')
-                    ->count();
-                $child->children_count = 0;
-            }
         }
 
         return response()->json([
