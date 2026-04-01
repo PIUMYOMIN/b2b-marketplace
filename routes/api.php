@@ -298,7 +298,7 @@ Route::group([
             Route::get('/customers', [SellerController::class, 'customers']);
 
             // Revenue export
-            Route::get('/revenue/export', [RevenueExportController::class, 'sellerExport']);
+            Route::get('/revenue/seller-export', [RevenueExportController::class, 'sellerExport']);
 
             Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
 
