@@ -24,7 +24,7 @@ class ShippingSettingController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access shipping settings'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -33,7 +33,7 @@ class ShippingSettingController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -81,7 +81,7 @@ class ShippingSettingController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can update shipping settings'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -90,7 +90,7 @@ class ShippingSettingController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -197,7 +197,7 @@ class ShippingSettingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Shipping settings updated successfully',
+                'message' => __('messages.delivery.settings_updated'),
                 'data' => $shippingSetting->fresh()
             ]);
 
@@ -359,7 +359,7 @@ class ShippingSettingController extends Controller
                     'success' => true,
                     'data' => [
                         'shipping_available' => false,
-                        'message' => 'Shipping not available to this location'
+                        'message' => __('messages.delivery.not_available_location')
                     ]
                 ]);
             }
@@ -372,7 +372,7 @@ class ShippingSettingController extends Controller
                         'success' => true,
                         'data' => [
                             'shipping_available' => false,
-                            'message' => 'Shipping not available to this zip code'
+                            'message' => __('messages.delivery.not_available_zip')
                         ]
                     ]);
                 }
@@ -685,7 +685,7 @@ class ShippingSettingController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 

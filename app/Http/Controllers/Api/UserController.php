@@ -96,7 +96,7 @@ class UserController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => new UserResource($user),
-                'message' => 'User created successfully'
+                'message' => __('messages.users.created')
             ], 201);
         });
     }
@@ -179,7 +179,7 @@ class UserController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => new UserResource($user->fresh()->load('roles')),
-                'message' => 'User updated successfully'
+                'message' => __('messages.users.updated')
             ]);
         });
     }
@@ -198,7 +198,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'User deleted successfully'
+            'message' => __('messages.users.deleted')
         ]);
     }
 
@@ -219,7 +219,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'data' => new UserResource($user->load('roles')),
-            'message' => 'Roles assigned successfully'
+            'message' => __('messages.users.roles_assigned')
         ]);
     }
 

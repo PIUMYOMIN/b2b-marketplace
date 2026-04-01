@@ -111,7 +111,7 @@ class CategoryController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => new CategoryResource($category),
-                'message' => 'Category created successfully.'
+                'message' => __('messages.categories.created')
             ], 201);
         } catch (\Exception $e) {
             \Log::error('Category creation failed: ' . $e->getMessage());
@@ -250,7 +250,7 @@ class CategoryController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Category updated successfully',
+            'message' => __('messages.categories.updated'),
             'data' => new CategoryResource($category),
         ]);
     }
@@ -376,7 +376,7 @@ class CategoryController extends Controller
             if ($category->products()->exists()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot delete category because it has associated products.'
+                    'message' => __('messages.categories.has_products')
                 ], 422);
             }
 
@@ -389,7 +389,7 @@ class CategoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Category deleted successfully.'
+                'message' => __('messages.categories.deleted')
             ]);
         } catch (\Exception $e) {
             \Log::error('Category deletion failed: ' . $e->getMessage());

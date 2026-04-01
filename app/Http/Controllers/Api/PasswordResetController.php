@@ -28,7 +28,7 @@ class PasswordResetController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => __('messages.general.validation_failed'),
                 'errors' => $validator->errors()
             ], 422);
         }
@@ -45,7 +45,7 @@ class PasswordResetController extends Controller
             if (!$this->isValidMyanmarPhone($normalizedPhone)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid phone number format'
+                    'message' => __('messages.auth.invalid_phone')
                 ], 422);
             }
             $user = User::where('phone', $normalizedPhone)->first();
@@ -54,7 +54,7 @@ class PasswordResetController extends Controller
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'User not found'
+                'message' => __('messages.auth.user_not_found')
             ], 404);
         }
 
@@ -66,7 +66,7 @@ class PasswordResetController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Password reset link sent successfully'
+            'message' => __('messages.auth.verification_sent')
         ]);
     }
 
@@ -85,7 +85,7 @@ class PasswordResetController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => __('messages.general.validation_failed'),
                 'errors' => $validator->errors()
             ], 422);
         }
@@ -100,7 +100,7 @@ class PasswordResetController extends Controller
             if (!$this->isValidMyanmarPhone($normalizedPhone)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid phone number format'
+                    'message' => __('messages.auth.invalid_phone')
                 ], 422);
             }
             $user = User::where('phone', $normalizedPhone)->first();
@@ -109,7 +109,7 @@ class PasswordResetController extends Controller
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'User not found'
+                'message' => __('messages.auth.user_not_found')
             ], 404);
         }
 
@@ -135,7 +135,7 @@ class PasswordResetController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Password reset successfully'
+            'message' => __('messages.auth.logout_success')
         ]);
     }
 

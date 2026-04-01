@@ -106,7 +106,7 @@ class DeliveryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Delivery method set successfully',
+                'message' => __('messages.delivery.method_set'),
                 'data' => $delivery->load(['order', 'platformCourier']),
             ]);
         } catch (\Exception $e) {
@@ -150,7 +150,7 @@ class DeliveryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Status updated',
+                'message' => __('messages.delivery.status_updated'),
                 'data' => $delivery->fresh(['deliveryUpdates', 'platformCourier']),
             ]);
         } catch (\Exception $e) {
@@ -201,7 +201,7 @@ class DeliveryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Proof uploaded successfully',
+                'message' => __('messages.delivery.proof_uploaded'),
                 'data' => $delivery->fresh(),
             ]);
         } catch (\Exception $e) {
@@ -242,7 +242,7 @@ class DeliveryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Courier assigned successfully',
+                'message' => __('messages.delivery.courier_assigned'),
                 'data' => $delivery->fresh(['platformCourier']),
             ]);
         } catch (\Exception $e) {

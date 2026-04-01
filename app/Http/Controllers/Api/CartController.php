@@ -112,7 +112,6 @@ class CartController extends Controller
                     ]
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Cart index error: ' . $e->getMessage(), [
                 'user_id' => Auth::id(),
@@ -221,7 +220,6 @@ class CartController extends Controller
                 'message' => $message,
                 'data' => $cartItem
             ]);
-
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
@@ -306,10 +304,9 @@ class CartController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Cart updated successfully',
+                'message' => __('messages.cart.updated'),
                 'data' => $cartItem
             ]);
-
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
@@ -318,7 +315,7 @@ class CartController extends Controller
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cart item not found'
+                'message' => __('messages.cart.item_not_found')
             ], 404);
         } catch (\Exception $e) {
             Log::error('Cart update error: ' . $e->getMessage());
@@ -361,11 +358,10 @@ class CartController extends Controller
                 'success' => true,
                 'message' => 'Item removed from cart successfully'
             ]);
-
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cart item not found'
+                'message' => __('messages.cart.item_not_found')
             ], 404);
         } catch (\Exception $e) {
             Log::error('Cart destroy error: ' . $e->getMessage(), [
@@ -399,9 +395,8 @@ class CartController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Cart cleared successfully'
+                'message' => __('messages.cart.cleared')
             ]);
-
         } catch (\Exception $e) {
             Log::error('Cart clear error: ' . $e->getMessage());
             return response()->json([
@@ -434,7 +429,6 @@ class CartController extends Controller
                     'count' => $count
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Cart count error: ' . $e->getMessage());
             return response()->json([

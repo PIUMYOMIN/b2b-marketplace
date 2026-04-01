@@ -9,27 +9,33 @@ use Symfony\Component\HttpFoundation\Response;
 class SetLocale
 {
     /**
-     * Handle an incoming request.
+     * Resolve the request locale and set it on the application.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * Priority:
+     *   1. ?lang= query parameter  (explicit override — useful for testing)
+     *   2. Accept-Language header  (standard browser/axios header set by the frontend)
+     *   3. Default to 'en'
+     *
+     * Supported locales: en, my
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $header = $request->header('Accept-Language');
-        $locale = $request->query('lang', $request->getPreferredLanguage(['en', 'my']));
+        $supported = ['en', 'my'];
 
-        \Log::info('========== SET LOCALE MIDDLEWARE ==========');
-        \Log::info('Accept-Language header: ' . ($header ?? 'null'));
-        \Log::info('lang query param: ' . ($request->query('lang') ?? 'null'));
-        \Log::info('Computed locale: ' . $locale);
-        \Log::info('Setting locale to: ' . $locale);
+        // 1. Explicit query param takes priority
+        $locale = $request->query('lang');
 
-        if (in_array($locale, ['en', 'my'])) {
-            app()->setLocale($locale);
+        // 2. Fall back to Accept-Language header
+        if (!$locale || !in_array($locale, $supported)) {
+            $locale = $request->getPreferredLanguage($supported);
         }
 
-        \Log::info('Locale after set: ' . app()->getLocale());
-        \Log::info('==========================================');
+        // 3. Hard fallback
+        if (!in_array($locale, $supported)) {
+            $locale = 'en';
+        }
+
+        app()->setLocale($locale);
 
         return $next($request);
     }

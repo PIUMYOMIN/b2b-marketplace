@@ -323,7 +323,7 @@ class ProductController extends Controller
         }
 
         if (!$product) {
-            return response()->json(['success' => false, 'message' => 'Product not found'], 404);
+            return response()->json(['success' => false, 'message' => __('messages.products.not_found')], 404);
         }
 
         $product->load(['category', 'seller.sellerProfile'])
@@ -510,9 +510,8 @@ class ProductController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => new ProductResource($product),
-                'message' => 'Product created successfully'
+                'message' => __('messages.products.created')
             ], 201);
-
         } catch (\Exception $e) {
             \Log::error('Product creation error: ' . $e->getMessage());
             return response()->json([
@@ -581,7 +580,6 @@ class ProductController extends Controller
                 'data' => $imageData,
                 'message' => 'Image uploaded successfully'
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Image upload error: ' . $e->getMessage());
             return response()->json([
@@ -834,9 +832,8 @@ class ProductController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => new ProductResource($product->fresh()),
-                'message' => 'Product updated successfully'
+                'message' => __('messages.products.updated')
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Product update error: ' . $e->getMessage());
             return response()->json([
@@ -854,7 +851,7 @@ class ProductController extends Controller
         if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to delete this product'
+                'message' => __('messages.products.unauthorized_delete')
             ], 403);
         }
 
@@ -863,9 +860,8 @@ class ProductController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Product deleted successfully'
+                'message' => __('messages.products.deleted')
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -969,7 +965,6 @@ class ProductController extends Controller
                     'last_page' => $products->lastPage(),
                 ]
             ]);
-
         } catch (\Exception $e) {
             \Log::error('My Products Error: ' . $e->getMessage());
             return response()->json([
@@ -1260,7 +1255,7 @@ class ProductController extends Controller
         if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to update this product',
+                'message' => __('messages.products.unauthorized_update'),
             ], 403);
         }
 
@@ -1327,7 +1322,7 @@ class ProductController extends Controller
         if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to update this product'
+                'message' => __('messages.products.unauthorized_update')
             ], 403);
         }
 
@@ -1369,7 +1364,6 @@ class ProductController extends Controller
                 'data' => $newImage,
                 'message' => 'Image uploaded successfully'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -1387,7 +1381,7 @@ class ProductController extends Controller
         if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to update this product'
+                'message' => __('messages.products.unauthorized_update')
             ], 403);
         }
 
@@ -1427,7 +1421,6 @@ class ProductController extends Controller
                 'success' => true,
                 'message' => 'Image deleted successfully'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -1445,7 +1438,7 @@ class ProductController extends Controller
         if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to update this product'
+                'message' => __('messages.products.unauthorized_update')
             ], 403);
         }
 
@@ -1475,7 +1468,6 @@ class ProductController extends Controller
                 'success' => true,
                 'message' => 'Primary image updated successfully'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -1494,7 +1486,7 @@ class ProductController extends Controller
         if (!$product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Product not found'
+                'message' => __('messages.products.not_found')
             ], 404);
         }
 
@@ -1556,7 +1548,6 @@ class ProductController extends Controller
                 'data' => new ProductResource($product->fresh()),
                 'message' => 'Product discount updated successfully'
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Product discount error: ' . $e->getMessage());
             return response()->json([
@@ -1575,7 +1566,7 @@ class ProductController extends Controller
         if (!$product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Product not found'
+                'message' => __('messages.products.not_found')
             ], 404);
         }
         // Authorization check - only seller or admin can update
@@ -1603,7 +1594,6 @@ class ProductController extends Controller
                 'success' => true,
                 'message' => 'Discount removed from product successfully'
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Remove discount error: ' . $e->getMessage());
             return response()->json([

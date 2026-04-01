@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers\Api;
+
 use App\Models\Order;
 use App\Notifications\SellerRejected;
 use App\Notifications\SellerApproved;
@@ -157,7 +158,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access this endpoint'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -167,7 +168,7 @@ class SellerController extends Controller
             if (!$store) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -189,7 +190,6 @@ class SellerController extends Controller
                     'performance' => $performance
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in seller dashboard: ' . $e->getMessage());
             return response()->json([
@@ -339,7 +339,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller' && !$user->hasRole('seller')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access this endpoint',
+                    'message' => __('messages.seller.not_a_seller'),
                 ], 403);
             }
 
@@ -348,7 +348,7 @@ class SellerController extends Controller
             if ($existing) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Profile already exists',
+                    'message' => __('messages.seller.profile_initialised'),
                     'data' => [
                         'seller_profile' => $existing,
                         'current_step' => $this->getCurrentStep($existing),
@@ -377,13 +377,12 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Seller profile initialised',
+                'message' => __('messages.seller.profile_initialised'),
                 'data' => [
                     'seller_profile' => $profile,
                     'current_step' => 'store-basic',
                 ],
             ], 201);
-
         } catch (\Exception $e) {
             Log::error('Failed to initialise seller profile: ' . $e->getMessage());
             return response()->json([
@@ -407,7 +406,7 @@ class SellerController extends Controller
         $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
 
         if (!$sellerProfile) {
-            return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+            return response()->json(['success' => false, 'message' => __('messages.seller.profile_not_found')], 404);
         }
 
         $path = $this->saveStoreLogo($request->file('image'), $sellerProfile->id);
@@ -428,12 +427,12 @@ class SellerController extends Controller
     }
 
     /**
- * Save store logo file and return the storage path.
- *
- * @param \Illuminate\Http\UploadedFile $file
- * @param int $sellerProfileId
- * @return string|null
- */
+     * Save store logo file and return the storage path.
+     *
+     * @param \Illuminate\Http\UploadedFile $file
+     * @param int $sellerProfileId
+     * @return string|null
+     */
     private function saveStoreLogo($file, $sellerProfileId)
     {
         try {
@@ -467,7 +466,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -496,13 +495,12 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Store banner uploaded successfully',
+                'message' => __('messages.store.banner_uploaded'),
                 'data' => [
                     'url' => url('storage/' . $path),
                     'path' => $path
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to upload store banner: ' . $e->getMessage());
             return response()->json([
@@ -549,8 +547,8 @@ class SellerController extends Controller
     }
 
     /**
- * Get my store details (authenticated seller)
- */
+     * Get my store details (authenticated seller)
+     */
     public function myStore(Request $request)
     {
         $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
@@ -558,7 +556,7 @@ class SellerController extends Controller
         if (!$sellerProfile) {
             return response()->json([
                 'success' => false,
-                'message' => 'Seller profile not found'
+                'message' => __('messages.seller.profile_not_found')
             ], 404);
         }
 
@@ -621,7 +619,7 @@ class SellerController extends Controller
         if (!in_array($seller->status, ['approved', 'active'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Seller profile not found'
+                'message' => __('messages.seller.profile_not_found')
             ], 404);
         }
 
@@ -715,7 +713,7 @@ class SellerController extends Controller
             if ($user->id !== $seller->user_id && (!isset($user->type) || $user->type !== 'admin')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized to update this seller profile'
+                    'message' => __('messages.seller.unauthorized_update')
                 ], 403);
             }
 
@@ -809,9 +807,8 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $seller->fresh(),
-                'message' => 'Seller profile updated successfully'
+                'message' => __('messages.seller.profile_updated')
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update seller profile: ' . $e->getMessage());
             return response()->json([
@@ -830,7 +827,7 @@ class SellerController extends Controller
             $user = $request->user();
             $seller = SellerProfile::where('user_id', $user->id)->first();
             if (!$seller) {
-                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+                return response()->json(['success' => false, 'message' => __('messages.seller.profile_not_found')], 404);
             }
 
             $validator = Validator::make($request->all(), [
@@ -857,10 +854,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Store logo updated successfully',
+                'message' => __('messages.store.logo_updated'),
                 'data' => ['url' => url('storage/' . $path), 'path' => $path]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Update logo failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to update logo'], 500);
@@ -876,7 +872,7 @@ class SellerController extends Controller
             $user = $request->user();
             $seller = SellerProfile::where('user_id', $user->id)->first();
             if (!$seller) {
-                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+                return response()->json(['success' => false, 'message' => __('messages.seller.profile_not_found')], 404);
             }
 
             if ($seller->store_logo && Storage::disk('public')->exists($seller->store_logo)) {
@@ -886,8 +882,7 @@ class SellerController extends Controller
             $seller->store_logo = null;
             $seller->save();
 
-            return response()->json(['success' => true, 'message' => 'Store logo removed successfully']);
-
+            return response()->json(['success' => true, 'message' => __('messages.store.logo_removed')]);
         } catch (\Exception $e) {
             Log::error('Remove logo failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to remove logo'], 500);
@@ -904,7 +899,7 @@ class SellerController extends Controller
             $user = $request->user();
             $seller = SellerProfile::where('user_id', $user->id)->first();
             if (!$seller) {
-                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+                return response()->json(['success' => false, 'message' => __('messages.seller.profile_not_found')], 404);
             }
 
             $validator = Validator::make($request->all(), [
@@ -931,10 +926,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Store banner updated successfully',
+                'message' => __('messages.store.banner_updated'),
                 'data' => ['url' => url('storage/' . $path), 'path' => $path]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Update banner failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to update banner'], 500);
@@ -950,7 +944,7 @@ class SellerController extends Controller
             $user = $request->user();
             $seller = SellerProfile::where('user_id', $user->id)->first();
             if (!$seller) {
-                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+                return response()->json(['success' => false, 'message' => __('messages.seller.profile_not_found')], 404);
             }
 
             if ($seller->store_banner && Storage::disk('public')->exists($seller->store_banner)) {
@@ -960,8 +954,7 @@ class SellerController extends Controller
             $seller->store_banner = null;
             $seller->save();
 
-            return response()->json(['success' => true, 'message' => 'Store banner removed successfully']);
-
+            return response()->json(['success' => true, 'message' => __('messages.store.banner_removed')]);
         } catch (\Exception $e) {
             Log::error('Remove banner failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to remove banner'], 500);
@@ -978,7 +971,7 @@ class SellerController extends Controller
             $seller = SellerProfile::where('user_id', $user->id)->first();
 
             if (!$seller) {
-                return response()->json(['success' => false, 'message' => 'Seller profile not found'], 404);
+                return response()->json(['success' => false, 'message' => __('messages.seller.profile_not_found')], 404);
             }
 
             // Log raw request data
@@ -1076,9 +1069,8 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $seller->fresh(),
-                'message' => 'Store profile updated successfully'
+                'message' => __('messages.store.profile_updated')
             ]);
-
         } catch (\Exception $e) {
             \Log::error('updateMyStore exception', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['success' => false, 'message' => 'Update failed: ' . $e->getMessage()], 500);
@@ -1115,9 +1107,8 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Seller profile deleted successfully'
+                'message' => __('messages.seller.profile_deleted')
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -1165,7 +1156,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -1174,7 +1165,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -1253,10 +1244,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Seller onboarding completed successfully and submitted for approval',
+                'message' => __('messages.onboarding.completed'),
                 'data' => $sellerProfile->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to complete seller onboarding: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -1376,7 +1366,6 @@ class SellerController extends Controller
                     ] : null,
                 ],
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to get status'], 500);
@@ -1415,7 +1404,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -1425,7 +1414,7 @@ class SellerController extends Controller
                 return response()->json([
                     'success' => true,
                     'redirect_to' => '/seller/onboarding/store-basic',
-                    'message' => 'Seller profile not found. Redirect to onboarding.',
+                    'message' => __('messages.onboarding.redirect_to_onboarding'),
                     'data' => [
                         'has_profile' => false,
                         'profile_status' => 'not_created'
@@ -1458,7 +1447,7 @@ class SellerController extends Controller
                 return response()->json([
                     'success' => true,
                     'redirect_to' => '/seller/onboarding/documents',
-                    'message' => 'Documents required. Please upload required documents.',
+                    'message' => __('messages.documents.required'),
                     'data' => [
                         'has_profile' => true,
                         'profile_complete' => true,
@@ -1474,7 +1463,7 @@ class SellerController extends Controller
                 return response()->json([
                     'success' => true,
                     'redirect_to' => '/seller/onboarding/submit',
-                    'message' => 'Documents uploaded. Please review and submit for verification.',
+                    'message' => __('messages.documents.review_pending'),
                     'data' => [
                         'has_profile' => true,
                         'profile_complete' => true,
@@ -1522,7 +1511,6 @@ class SellerController extends Controller
                     'can_sell' => true
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error checking profile status: ' . $e->getMessage());
             return response()->json([
@@ -1584,7 +1572,7 @@ class SellerController extends Controller
             if (!$businessType) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Business type not found'
+                    'message' => __('messages.business_types.not_found')
                 ], 422);
             }
 
@@ -1686,7 +1674,7 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Store basic information updated successfully',
+                'message' => __('messages.store.basic_updated'),
                 'data' => [
                     'seller_profile' => $sellerProfile,
                     'next_step' => 'business-details',   // FIX: was missing — frontend hardcoded it
@@ -1708,7 +1696,6 @@ class SellerController extends Controller
                     ],
                 ],
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update store basic info: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -1734,7 +1721,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -1776,11 +1763,10 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Business details updated successfully',
+                'message' => __('messages.business_details.updated'),
                 'next_step' => 'address',  // Explicit next step
                 'data' => $sellerProfile->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update business details: ' . $e->getMessage());
             return response()->json([
@@ -1802,7 +1788,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -1871,11 +1857,10 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Address information updated successfully',
+                'message' => __('messages.address.updated'),
                 'next_step' => 'documents',   // FIX: was missing
                 'data' => $sellerProfile->fresh(),
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update address info: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -1897,7 +1882,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can upload documents'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -1908,7 +1893,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -1918,7 +1903,7 @@ class SellerController extends Controller
             if (!$businessType) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Business type not found. Please complete store basic information first.'
+                    'message' => __('messages.business_details.not_found')
                 ], 422);
             }
 
@@ -1995,7 +1980,7 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Document uploaded successfully',
+                'message' => __('messages.documents.uploaded'),
                 'data' => [
                     'type' => $documentType,
                     'url' => Storage::url($filePath),
@@ -2003,7 +1988,6 @@ class SellerController extends Controller
                     'uploaded_at' => now()->toISOString()
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Document upload failed: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -2108,7 +2092,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -2119,7 +2103,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -2177,7 +2161,6 @@ class SellerController extends Controller
                     'requirements_summary' => $this->getRequirementsSummary($businessType)
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get document requirements: ' . $e->getMessage());
             return response()->json([
@@ -2308,7 +2291,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -2317,7 +2300,7 @@ class SellerController extends Controller
             if (!$businessType) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Business type not found. Please complete store basic information.'
+                    'message' => __('messages.business_details.not_found')
                 ], 422);
             }
 
@@ -2371,7 +2354,6 @@ class SellerController extends Controller
                     ]
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to mark documents complete: ' . $e->getMessage());
             return response()->json([
@@ -2463,7 +2445,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -2472,7 +2454,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -2543,7 +2525,6 @@ class SellerController extends Controller
                 'success' => true,
                 'message' => 'Document deleted successfully'
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to delete document: ' . $e->getMessage());
             return response()->json([
@@ -2564,7 +2545,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -2575,7 +2556,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -2619,8 +2600,7 @@ class SellerController extends Controller
                 $documentStatus,
                 fn($status, $type) =>
                 $status === 'uploaded' &&
-                in_array($type, array_column(array_filter($requirements, fn($req) => $req['required']), 'type'))
-                ,
+                    in_array($type, array_column(array_filter($requirements, fn($req) => $req['required']), 'type')),
                 ARRAY_FILTER_USE_BOTH
             ));
 
@@ -2644,7 +2624,6 @@ class SellerController extends Controller
                     'verification_status' => $sellerProfile->verification_status
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get uploaded documents: ' . $e->getMessage());
             return response()->json([
@@ -2665,7 +2644,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -2676,7 +2655,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -2746,7 +2725,6 @@ class SellerController extends Controller
                     'document_status' => $sellerProfile->document_status
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to complete onboarding with documents: ' . $e->getMessage());
             return response()->json([
@@ -2767,7 +2745,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -2778,7 +2756,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -2786,7 +2764,7 @@ class SellerController extends Controller
             if (!$businessType) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Business type not found'
+                    'message' => __('messages.business_types.not_found')
                 ], 422);
             }
 
@@ -2808,7 +2786,6 @@ class SellerController extends Controller
                     'summary' => $this->getRequirementsSummary($businessType)
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Document validation failed: ' . $e->getMessage());
             return response()->json([
@@ -2830,7 +2807,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -2841,7 +2818,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -2962,7 +2939,6 @@ class SellerController extends Controller
                 'message' => 'Onboarding data retrieved successfully',
                 'data' => $data
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get onboarding data: ' . $e->getMessage());
             return response()->json([
@@ -3168,7 +3144,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -3238,7 +3214,6 @@ class SellerController extends Controller
                     'dashboard_access' => 'You can access your seller dashboard'
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to submit onboarding: ' . $e->getMessage());
             return response()->json([
@@ -3297,7 +3272,6 @@ class SellerController extends Controller
                 'next_step' => $this->getNextStep($step),
                 'progress' => $this->calculateProgress($sellerProfile)
             ]);
-
         } catch (\Exception $e) {
             Log::error('Save step failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to save step'], 500);
@@ -3337,7 +3311,7 @@ class SellerController extends Controller
             if ($user->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can access this endpoint'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -3421,7 +3395,6 @@ class SellerController extends Controller
                     'last_page' => $sellers->lastPage(),
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get verification review: ' . $e->getMessage());
             return response()->json([
@@ -3442,7 +3415,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -3451,7 +3424,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -3480,7 +3453,6 @@ class SellerController extends Controller
                     'badge_expires_at' => $sellerProfile->badge_expires_at
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get verification status: ' . $e->getMessage());
             return response()->json([
@@ -3502,7 +3474,7 @@ class SellerController extends Controller
             if ($user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'User is not a seller'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -3511,7 +3483,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -3534,7 +3506,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $history
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get verification history: ' . $e->getMessage());
             return response()->json([
@@ -3555,7 +3526,7 @@ class SellerController extends Controller
             if ($user->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can access this endpoint'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -3601,7 +3572,6 @@ class SellerController extends Controller
                     'last_page' => $sellers->lastPage(),
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get pending verification: ' . $e->getMessage());
             return response()->json([
@@ -3622,7 +3592,7 @@ class SellerController extends Controller
             if ($user->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can access this endpoint'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -3679,7 +3649,6 @@ class SellerController extends Controller
                     'last_page' => $sellers->lastPage(),
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get sellers with documents: ' . $e->getMessage());
             return response()->json([
@@ -3700,7 +3669,7 @@ class SellerController extends Controller
             if ($admin->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can access seller status'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -3718,7 +3687,6 @@ class SellerController extends Controller
                     'document_rejection_reason' => $sellerProfile->document_rejection_reason,
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get seller status: ' . $e->getMessage());
             return response()->json([
@@ -3739,7 +3707,7 @@ class SellerController extends Controller
             if ($admin->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can verify sellers'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -3749,7 +3717,7 @@ class SellerController extends Controller
             if (!$sellerProfile->hasCompleteProfile()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot verify seller with incomplete profile',
+                    'message' => __('messages.seller.cannot_verify_incomplete'),
                     'missing_fields' => $sellerProfile->getMissingFields()
                 ], 422);
             }
@@ -3758,7 +3726,7 @@ class SellerController extends Controller
             if (!$sellerProfile->hasRequiredDocuments()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot verify seller with missing documents',
+                    'message' => __('messages.seller.cannot_verify_missing_docs'),
                     'missing_documents' => $sellerProfile->getMissingDocuments()
                 ], 422);
             }
@@ -3804,10 +3772,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Seller verified successfully',
+                'message' => __('messages.seller.verified'),
                 'data' => $sellerProfile->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to verify seller: ' . $e->getMessage());
             return response()->json([
@@ -3828,7 +3795,7 @@ class SellerController extends Controller
             if ($admin->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can reject verification'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -3868,10 +3835,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Seller verification rejected',
+                'message' => __('messages.seller.verification_rejected'),
                 'data' => $sellerProfile->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to reject verification: ' . $e->getMessage());
             return response()->json([
@@ -3892,7 +3858,7 @@ class SellerController extends Controller
             if ($admin->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can access seller documents'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -3937,7 +3903,6 @@ class SellerController extends Controller
                     'missing_documents' => $sellerProfile->getMissingDocuments()
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get seller documents: ' . $e->getMessage());
             return response()->json([
@@ -3958,7 +3923,7 @@ class SellerController extends Controller
             if ($user->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can access this endpoint'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -4041,7 +4006,6 @@ class SellerController extends Controller
                     'pending_documents' => SellerProfile::whereIn('document_status', ['pending', 'under_review'])->count()
                 ]
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Failed to get sellers for verification review: ' . $e->getMessage());
             return response()->json([
@@ -4062,7 +4026,7 @@ class SellerController extends Controller
             if ($admin->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can update verification status'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -4109,10 +4073,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Verification status updated successfully',
+                'message' => __('messages.seller.verification_status_updated'),
                 'data' => $sellerProfile->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update verification status: ' . $e->getMessage());
             return response()->json([
@@ -4133,7 +4096,7 @@ class SellerController extends Controller
             if ($admin->type !== 'admin') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only admin can update seller status'
+                    'message' => __('messages.auth.admin_required')
                 ], 403);
             }
 
@@ -4185,10 +4148,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Seller status updated successfully',
+                'message' => __('messages.seller.status_updated'),
                 'data' => $sellerProfile->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update seller status: ' . $e->getMessage());
             return response()->json([
@@ -4199,8 +4161,8 @@ class SellerController extends Controller
     }
 
     /**
- * Get comprehensive sales summary with delivery stats (FIXED VERSION)
- */
+     * Get comprehensive sales summary with delivery stats (FIXED VERSION)
+     */
     public function salesSummary(Request $request)
     {
         try {
@@ -4209,7 +4171,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access this endpoint'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -4325,7 +4287,6 @@ class SellerController extends Controller
                 $repeatCustomers = count(array_filter($buyerOrderCounts, function ($count) {
                     return $count > 1;
                 }));
-
             } catch (\Exception $e) {
                 \Log::error('Repeat customers calculation error', ['error' => $e->getMessage()]);
                 $repeatCustomers = 0;
@@ -4364,7 +4325,6 @@ class SellerController extends Controller
                     ->orderBy('total_sold', 'desc')
                     ->limit(5)
                     ->get();
-
             } catch (\Exception $e) {
                 \Log::error('Top products query error', ['error' => $e->getMessage()]);
                 $topProducts = collect([]);
@@ -4435,7 +4395,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $summary
             ]);
-
         } catch (\Exception $e) {
             \Log::error('Error in seller salesSummary: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -4460,7 +4419,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access this endpoint'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -4511,7 +4470,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $stats
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in seller deliveryStats: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -4533,7 +4491,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access this endpoint'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -4584,7 +4542,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $recentOrders
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in seller recentOrders: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
@@ -4606,7 +4563,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access this endpoint'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -4646,7 +4603,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $topProducts
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in seller topProducts: ' . $e->getMessage());
             return response()->json([
@@ -4668,7 +4624,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access this endpoint'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -4725,7 +4681,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $metrics
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in seller performanceMetrics: ' . $e->getMessage());
             return response()->json([
@@ -4892,7 +4847,6 @@ class SellerController extends Controller
                 'requirements' => $requirements,
                 'next_step' => $this->getNextSetupStep($requirements)
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get setup requirements: ' . $e->getMessage());
             return response()->json(['success' => false], 500);
@@ -4930,7 +4884,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access shipping settings'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -4939,7 +4893,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -4957,7 +4911,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $shippingSetting
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get shipping settings: ' . $e->getMessage());
             return response()->json([
@@ -4978,7 +4931,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can update shipping settings'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -4987,7 +4940,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -5048,10 +5001,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Shipping settings updated successfully',
+                'message' => __('messages.delivery.settings_updated'),
                 'data' => $shippingSetting->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update shipping settings: ' . $e->getMessage());
             return response()->json([
@@ -5091,7 +5043,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller not found'
+                    'message' => __('messages.seller.not_found')
                 ], 404);
             }
 
@@ -5102,7 +5054,7 @@ class SellerController extends Controller
                     'success' => true,
                     'data' => [
                         'shipping_available' => false,
-                        'message' => 'Shipping not available from this seller'
+                        'message' => __('messages.delivery.not_available_seller')
                     ]
                 ]);
             }
@@ -5154,7 +5106,6 @@ class SellerController extends Controller
                     'currency' => 'MMK'
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to calculate shipping: ' . $e->getMessage());
             return response()->json([
@@ -5241,7 +5192,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access settings'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -5250,7 +5201,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -5309,7 +5260,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $settings
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get seller settings: ' . $e->getMessage());
             return response()->json([
@@ -5330,7 +5280,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can update settings'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -5339,7 +5289,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -5441,10 +5391,9 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Settings updated successfully',
+                'message' => __('messages.settings.updated'),
                 'data' => $sellerProfile->fresh()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update seller settings: ' . $e->getMessage());
             return response()->json([
@@ -5465,7 +5414,7 @@ class SellerController extends Controller
             if (!isset($user->type) || $user->type !== 'seller') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only sellers can access store stats'
+                    'message' => __('messages.seller.not_a_seller')
                 ], 403);
             }
 
@@ -5474,7 +5423,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -5517,7 +5466,6 @@ class SellerController extends Controller
                 'success' => true,
                 'data' => $stats
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to get store stats: ' . $e->getMessage());
             return response()->json([
@@ -5539,7 +5487,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -5562,9 +5510,8 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Business hours updated successfully'
+                'message' => __('messages.business_details.hours_updated')
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update business hours: ' . $e->getMessage());
             return response()->json([
@@ -5586,7 +5533,7 @@ class SellerController extends Controller
             if (!$sellerProfile) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Seller profile not found'
+                    'message' => __('messages.seller.profile_not_found')
                 ], 404);
             }
 
@@ -5609,9 +5556,8 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Store policies updated successfully'
+                'message' => __('messages.store.policies_updated')
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to update store policies: ' . $e->getMessage());
             return response()->json([
@@ -5714,7 +5660,6 @@ class SellerController extends Controller
                     'active_30d' => $active30d,
                 ],
             ]);
-
         } catch (\Exception $e) {
             Log::error('Seller customers endpoint failed: ' . $e->getMessage());
             return response()->json([
@@ -5723,5 +5668,4 @@ class SellerController extends Controller
             ], 500);
         }
     }
-
 }

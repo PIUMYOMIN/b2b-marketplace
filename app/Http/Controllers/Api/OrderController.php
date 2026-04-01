@@ -17,6 +17,7 @@ use App\Models\Delivery;
 use App\Models\DeliveryUpdate;
 use App\Models\Commission;
 use App\Models\CommissionRule;
+use App\Models\SellerProfile;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -133,12 +134,25 @@ class OrderController extends Controller
             }
         }
 
-        // Calculate estimated total to show in the email
+        // Calculate estimated total to show in the email.
+        // Use the seller's delivery zone fee where available, falling back to 5,000 MMK.
         $subtotal = collect($request->items)->sum(function ($item) {
             $product = Product::find($item['product_id']);
             return $product ? $product->price * $item['quantity'] : 0;
         });
-        $total = $subtotal + 5000 + ($subtotal * 0.05); // shipping + tax
+
+        // Resolve shipping fee from the seller's delivery zones (best-effort — items may
+        // span multiple sellers, so we use the first seller found as an estimate).
+        $addr            = $request->shipping_address;
+        $firstSellerId   = Product::find($request->items[0]['product_id'])?->seller_id;
+        $sellerProfile   = $firstSellerId ? SellerProfile::where('user_id', $firstSellerId)->first() : null;
+        $matchedZone     = $sellerProfile?->activeDeliveryAreas()
+            ->byLocation($addr['country'] ?? 'Myanmar', $addr['state'] ?? null, $addr['city'] ?? null)
+            ->orderByDesc('sort_order')
+            ->first();
+        $estimatedShipping = $matchedZone ? $matchedZone->getShippingFeeForOrder($subtotal) : 5000;
+
+        $total = $subtotal + $estimatedShipping + ($subtotal * 0.05); // shipping + 5% tax
         $formattedTotal = number_format($total, 0) . ' MMK';
 
         // Generate a 6-digit OTP
@@ -187,17 +201,17 @@ class OrderController extends Controller
         $storedExpires = Cache::get("order_otp_expires_{$user->id}");
 
         if (!$storedOtp || !$storedExpires) {
-            return response()->json(['success' => false, 'message' => 'No OTP found. Please request a new code.'], 422);
+            return response()->json(['success' => false, 'message' => __('messages.orders.otp_not_found')], 422);
         }
 
         if (now()->gt(\Carbon\Carbon::parse($storedExpires))) {
             Cache::forget("order_otp_{$user->id}");
             Cache::forget("order_otp_expires_{$user->id}");
-            return response()->json(['success' => false, 'message' => 'This code has expired. Please request a new one.'], 422);
+            return response()->json(['success' => false, 'message' => __('messages.orders.otp_expired')], 422);
         }
 
         if ($request->otp !== $storedOtp) {
-            return response()->json(['success' => false, 'message' => 'Incorrect code. Please try again.'], 422);
+            return response()->json(['success' => false, 'message' => __('messages.orders.otp_incorrect')], 422);
         }
 
         // Mark verified in Cache with a 5-minute window for the order POST to arrive.
@@ -207,7 +221,7 @@ class OrderController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Code verified successfully.',
+            'message' => __('messages.orders.otp_verified'),
         ]);
     }
 
@@ -233,7 +247,7 @@ class OrderController extends Controller
             if (!$otpVerified) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Order not verified. Please complete the email OTP step.',
+                    'message' => __('messages.orders.otp_required'),
                     'code'    => 'OTP_REQUIRED',
                 ], 403);
             }
@@ -350,7 +364,24 @@ class OrderController extends Controller
             foreach ($itemsBySeller as $sellerId => $sellerItems) {
                 // Calculate seller-specific totals
                 $sellerSubtotal = collect($sellerItems)->sum('subtotal');
-                $sellerShippingFee = 5000;
+
+                // ── Resolve shipping fee from seller's delivery zones ──────────────
+                // Matches the buyer's destination (country → state → city, most specific
+                // zone wins via sort_order DESC). Falls back to 5,000 MMK if the seller
+                // has not configured any delivery zones or none match the destination.
+                $addr          = $request->shipping_address;
+                $sellerProfile = SellerProfile::where('user_id', $sellerId)->first();
+                $matchedZone   = $sellerProfile?->activeDeliveryAreas()
+                    ->byLocation(
+                        $addr['country'] ?? 'Myanmar',
+                        $addr['state']   ?? null,
+                        $addr['city']    ?? null
+                    )
+                    ->orderByDesc('sort_order')
+                    ->first();
+                $sellerShippingFee = $matchedZone
+                    ? $matchedZone->getShippingFeeForOrder($sellerSubtotal)
+                    : 5000;
                 $sellerTax = $sellerSubtotal * 0.05;
 
                 // Distribute coupon discount proportionally across seller orders.
@@ -501,14 +532,14 @@ class OrderController extends Controller
         if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to view this order'
+                'message' => __('messages.orders.view_unauthorized')
             ], 403);
         }
 
         if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized to view this order'
+                'message' => __('messages.orders.view_unauthorized')
             ], 403);
         }
 
@@ -625,11 +656,11 @@ class OrderController extends Controller
 
         // Authorization
         if ($user->hasRole('buyer') && (int) $order->buyer_id !== (int) $user->id) {
-            return response()->json(['success' => false, 'message' => 'Unauthorized to cancel this order'], 403);
+            return response()->json(['success' => false, 'message' => __('messages.orders.cancel_unauthorized')], 403);
         }
 
         if ($user->hasRole('seller') && (int) $order->seller_id !== (int) $user->id) {
-            return response()->json(['success' => false, 'message' => 'Unauthorized to cancel this order'], 403);
+            return response()->json(['success' => false, 'message' => __('messages.orders.cancel_unauthorized')], 403);
         }
 
         if (!in_array($order->status, [self::STATUS_PENDING, self::STATUS_CONFIRMED])) {
@@ -823,13 +854,22 @@ class OrderController extends Controller
         }
 
         $order->update([
-            'status' => self::STATUS_DELIVERED,
-            'delivered_at' => now()
+            'status'       => self::STATUS_DELIVERED,
+            'delivered_at' => now(),
         ]);
+
+        // Mark the commission record as collected — platform revenue is realised
+        // on delivery, not on order placement.
+        Commission::where('order_id', $order->id)
+            ->where('status', 'pending')
+            ->update([
+                'status'       => 'collected',
+                'collected_at' => now(),
+            ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Delivery confirmed successfully'
+            'message' => __('messages.orders.delivery_confirmed')
         ]);
     }
 
@@ -918,77 +958,81 @@ class OrderController extends Controller
     }
 
     /**
-     * GET /orders/checkout-fees
+     * GET /orders/checkout-fees?country=Myanmar&state=Yangon&city=Yangon
      *
-     * Returns the live platform fee rate (resolved from commission_rules table
-     * via CommissionRateResolver) and the flat shipping fee, so the checkout
-     * page can display accurate totals instead of hardcoded constants.
+     * Returns the live tax rate (fixed 5%) and the shipping fee resolved from
+     * the seller's delivery zones for the buyer's destination.
      *
-     * Resolution priority (highest → lowest):
-     *   1. Seller tier (account_level rule)
-     *   2. Business type rule
-     *   3. Category rule (first item's category)
-     *   4. Platform default rule
+     * For multi-seller carts, returns per-seller shipping fees so the frontend
+     * can display a breakdown. Falls back to 5,000 MMK per seller if no
+     * matching delivery zone is found.
      *
-     * For multi-seller carts the default rule is returned as a display estimate;
-     * the per-seller rate is applied precisely at order creation time.
+     * Also returns the commission rate (for admin/display only — not charged
+     * to the buyer; collected from the seller after delivery).
      */
     public function checkoutFees(Request $request): \Illuminate\Http\JsonResponse
     {
         try {
-            $user = $request->user();
+            $user    = $request->user();
+            $country = $request->input('country', 'Myanmar');
+            $state   = $request->input('state');
+            $city    = $request->input('city');
 
-            $platformFeeRate = 0.05;
-            $ruleType        = 'default';
-
-            // Try to load buyer's cart for a seller-specific rate lookup
             $cartItems = Cart::where('user_id', $user->id)
-                ->with('product:id,seller_id,category_id')
+                ->with('product:id,seller_id,category_id,price')
                 ->get();
+
+            $DEFAULT_SHIPPING = 5000;
+            $TAX_RATE         = 0.05;
+
+            $sellerShippingFees = [];
+            $totalShipping      = 0;
 
             if ($cartItems->isNotEmpty()) {
                 $sellerIds = $cartItems->pluck('product.seller_id')->filter()->unique();
 
-                if ($sellerIds->count() === 1) {
-                    $sellerId    = $sellerIds->first();
-                    $sellerItems = $cartItems->map(fn($c) => ['product' => $c->product])->values()->toArray();
-                    $resolved    = app(CommissionRateResolver::class)->resolveForSeller($sellerId, $sellerItems);
-                    $platformFeeRate = $resolved['rate'];
-                    $ruleType        = $resolved['rule_type'];
-                } else {
-                    // Multi-seller cart — use default rule as conservative estimate
-                    $rule = CommissionRule::active()->where('type', 'default')->first();
-                    if ($rule) {
-                        $platformFeeRate = (float) $rule->rate;
-                    }
+                foreach ($sellerIds as $sellerId) {
+                    $sellerItems    = $cartItems->filter(fn($c) => $c->product?->seller_id === $sellerId);
+                    $sellerSubtotal = $sellerItems->sum(fn($c) => ($c->product?->price ?? 0) * $c->quantity);
+
+                    $profile     = SellerProfile::where('user_id', $sellerId)->first();
+                    $matchedZone = $profile?->activeDeliveryAreas()
+                        ->byLocation($country, $state, $city)
+                        ->orderByDesc('sort_order')
+                        ->first();
+
+                    $fee = $matchedZone
+                        ? $matchedZone->getShippingFeeForOrder($sellerSubtotal)
+                        : $DEFAULT_SHIPPING;
+
+                    $sellerShippingFees[$sellerId] = $fee;
+                    $totalShipping += $fee;
                 }
             } else {
-                $rule = CommissionRule::active()->where('type', 'default')->first();
-                if ($rule) {
-                    $platformFeeRate = (float) $rule->rate;
-                }
+                $totalShipping = $DEFAULT_SHIPPING;
             }
 
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'platform_fee_rate' => $platformFeeRate,
-                    'platform_fee_pct'  => round($platformFeeRate * 100, 2),
-                    'shipping_fee'      => 5000,
-                    'rule_type'         => $ruleType,
+                    'tax_rate'           => $TAX_RATE,
+                    'tax_pct'            => 5.0,
+                    'shipping_fee'       => $totalShipping,              // total across all sellers
+                    'seller_shipping'    => $sellerShippingFees,         // per seller_id breakdown
+                    'default_shipping'   => $DEFAULT_SHIPPING,
                 ],
             ]);
         } catch (\Exception $e) {
             Log::error('checkoutFees failed: ' . $e->getMessage());
 
-            // Safe fallback so checkout never breaks
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'platform_fee_rate' => 0.05,
-                    'platform_fee_pct'  => 5.0,
-                    'shipping_fee'      => 5000,
-                    'rule_type'         => 'fallback',
+                    'tax_rate'         => 0.05,
+                    'tax_pct'          => 5.0,
+                    'shipping_fee'     => 5000,
+                    'seller_shipping'  => [],
+                    'default_shipping' => 5000,
                 ],
             ]);
         }

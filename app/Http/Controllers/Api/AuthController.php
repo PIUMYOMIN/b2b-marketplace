@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers\Api;
+
 use App\Http\Controllers\Controller;
 
 use Illuminate\Auth\Events\Registered;
@@ -43,7 +44,7 @@ class AuthController extends Controller
             if (!$this->isValidMyanmarPhone($phone)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid Myanmar phone number format'
+                    'message' => __('messages.auth.invalid_phone')
                 ], 422);
             }
 
@@ -118,7 +119,7 @@ class AuthController extends Controller
             try {
                 $user->notify(new WelcomeUser());
             } catch (\Exception $e) {
-                \Log::warning('Welcome email failed: ' . $e->getMessage());
+                Log::warning('Welcome email failed: ' . $e->getMessage());
             }
 
             // Generate API token
@@ -129,7 +130,7 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'User registered successfully. Please verify your email.',
+                'message' => __('messages.auth.register_success'),
                 'data' => [
                     'user' => $user,
                     'token' => $token,
@@ -188,7 +189,7 @@ class AuthController extends Controller
         if (!$this->isValidMyanmarPhone($phone)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid Myanmar phone number format'
+                'message' => __('messages.auth.invalid_phone')
             ], 422);
         }
 
@@ -197,14 +198,14 @@ class AuthController extends Controller
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid credentials'
+                'message' => __('messages.auth.invalid_credentials')
             ], 401);
         }
 
         if (!$user->is_active || $user->status !== 'active') {
             return response()->json([
                 'success' => false,
-                'message' => 'Your account is not active'
+                'message' => __('messages.auth.account_inactive')
             ], 403);
         }
 
@@ -217,7 +218,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Login successful',
+            'message' => __('messages.auth.login_success'),
             'data' => [
                 'user' => $user->load('roles'),
                 'token' => $token->plainTextToken
@@ -254,7 +255,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Logged out successfully'
+            'message' => __('messages.auth.logout_success')
         ]);
     }
 
@@ -276,7 +277,7 @@ class AuthController extends Controller
                         'is_seller' => false,
                         'onboarding_complete' => false,
                         'needs_onboarding' => false,
-                        'message' => 'User is not a seller'
+                        'message' => __('messages.seller.not_a_seller')
                     ]
                 ]);
             }
@@ -294,7 +295,7 @@ class AuthController extends Controller
                         'needs_onboarding' => true,
                         'current_step' => 'store-basic',
                         'profile_status' => 'not_created',
-                        'message' => 'Seller profile not created yet - start onboarding'
+                        'message' => __('messages.seller.profile_not_created')
                     ]
                 ]);
             }
@@ -321,12 +322,11 @@ class AuthController extends Controller
                         'Onboarding in progress - current step: ' . $currentStep
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in getOnboardingStatus: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get onboarding status'
+                'message' => __('messages.general.server_error')
             ], 500);
         }
     }
@@ -353,5 +353,4 @@ class AuthController extends Controller
             'data' => $types
         ]);
     }
-
 }

@@ -113,7 +113,7 @@ class CouponController extends Controller
         return response()->json([
             'success' => true,
             'data' => $coupon,
-            'message' => 'Coupon created successfully',
+            'message' => __('messages.coupons.created'),
         ], 201);
     }
 
@@ -184,7 +184,7 @@ class CouponController extends Controller
         return response()->json([
             'success' => true,
             'data' => $coupon->fresh(),
-            'message' => 'Coupon updated successfully',
+            'message' => __('messages.coupons.updated'),
         ]);
     }
 
@@ -200,7 +200,7 @@ class CouponController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Coupon status updated',
+            'message' => __('messages.coupons.status_updated'),
             'is_active' => $coupon->is_active,
         ]);
     }
@@ -217,7 +217,7 @@ class CouponController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Coupon deleted successfully',
+            'message' => __('messages.coupons.deleted'),
         ]);
     }
 
@@ -261,7 +261,7 @@ class CouponController extends Controller
         } else {
             return response()->json([
                 'success' => false,
-                'message' => 'Cart is empty — no products to apply coupon to.',
+                'message' => __('messages.coupons.cart_empty'),
             ], 422);
         }
 
@@ -270,7 +270,7 @@ class CouponController extends Controller
         if (!$coupon) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid coupon code',
+                'message' => __('messages.coupons.invalid'),
             ], 404);
         }
 
@@ -289,7 +289,7 @@ class CouponController extends Controller
         if (Auth::check() && $coupon->hasUserExhausted((int) Auth::id())) {
             return response()->json([
                 'success' => false,
-                'message' => 'You have already used this coupon',
+                'message' => __('messages.coupons.already_used'),
             ], 422);
         }
 
@@ -297,7 +297,7 @@ class CouponController extends Controller
         if ($coupon->min_order_amount && $request->subtotal < $coupon->min_order_amount) {
             return response()->json([
                 'success' => false,
-                'message' => 'Minimum order amount of ' . number_format($coupon->min_order_amount, 0) . ' MMK required',
+                'message' => __('messages.coupons.min_order', ['amount' => number_format($coupon->min_order_amount, 0)]),
             ], 422);
         }
 
@@ -319,7 +319,7 @@ class CouponController extends Controller
         if ($applicableProducts->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'This coupon does not apply to any of your selected products',
+                'message' => __('messages.coupons.not_applicable'),
             ], 422);
         }
 
@@ -339,7 +339,7 @@ class CouponController extends Controller
                 'discount_amount' => $discountAmount,
                 'final_amount' => max(0, $request->subtotal - $discountAmount),
             ],
-            'message' => 'Coupon applied successfully',
+            'message' => __('messages.coupons.applied'),
         ]);
     }
 

@@ -26,7 +26,7 @@ class NewsletterController extends Controller
         $sub = NewsletterSubscriber::firstOrNew(['email' => strtolower($request->email)]);
 
         if ($sub->isActive()) {
-            return response()->json(['success' => true, 'message' => 'You are already subscribed!']);
+            return response()->json(['success' => true, 'message' => __('messages.newsletter.already_subscribed')]);
         }
 
         // Re-subscribe if previously unsubscribed
@@ -41,7 +41,7 @@ class NewsletterController extends Controller
         // Send confirmation email
         Mail::to($sub->email)->queue(new \App\Mail\NewsletterConfirmMail($sub));
 
-        return response()->json(['success' => true, 'message' => 'Please check your email to confirm your subscription.']);
+        return response()->json(['success' => true, 'message' => __('messages.newsletter.confirm_sent')]);
     }
 
     /** GET /newsletter/confirm?token= */
@@ -52,7 +52,7 @@ class NewsletterController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid or expired confirmation link.'], 404);
         }
         $sub->update(['confirmed_at' => now(), 'confirm_token' => null]);
-        return response()->json(['success' => true, 'message' => 'Subscription confirmed! Welcome to Pyonea updates.']);
+        return response()->json(['success' => true, 'message' => __('messages.newsletter.confirmed')]);
     }
 
     /** GET /newsletter/unsubscribe?token= */
@@ -63,7 +63,7 @@ class NewsletterController extends Controller
             return response()->json(['success' => false, 'message' => 'Invalid unsubscribe link.'], 404);
         }
         $sub->update(['unsubscribed_at' => now()]);
-        return response()->json(['success' => true, 'message' => 'You have been unsubscribed. You will no longer receive newsletters from Pyonea.']);
+        return response()->json(['success' => true, 'message' => __('messages.newsletter.unsubscribed')]);
     }
 
     /** PUT /newsletter/preferences — authenticated users update their prefs */
@@ -78,7 +78,7 @@ class NewsletterController extends Controller
         $user = $request->user();
         $sub  = NewsletterSubscriber::where('email', $user->email)->first();
         if ($sub) $sub->update($validated);
-        return response()->json(['success' => true, 'message' => 'Preferences updated.']);
+        return response()->json(['success' => true, 'message' => __('messages.newsletter.preferences_updated')]);
     }
 
     // ── ADMIN ─────────────────────────────────────────────────────────────

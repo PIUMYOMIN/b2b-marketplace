@@ -143,7 +143,7 @@ class DeliveryAreaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Delivery area created successfully',
+                'message' => __('messages.delivery.area_created'),
                 'data' => $deliveryArea
             ]);
 
@@ -170,7 +170,7 @@ class DeliveryAreaController extends Controller
             if ($deliveryArea->user_id !== $user->id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized to update this delivery area'
+                    'message' => __('messages.delivery.unauthorized_update')
                 ], 403);
             }
 
@@ -229,7 +229,7 @@ class DeliveryAreaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Delivery area updated successfully',
+                'message' => __('messages.delivery.area_updated'),
                 'data' => $deliveryArea
             ]);
 
@@ -255,7 +255,7 @@ class DeliveryAreaController extends Controller
             if ($deliveryArea->user_id !== $user->id) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unauthorized to delete this delivery area'
+                    'message' => __('messages.delivery.unauthorized_delete')
                 ], 403);
             }
 
@@ -268,7 +268,7 @@ class DeliveryAreaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Delivery area deleted successfully'
+                'message' => __('messages.delivery.area_deleted')
             ]);
 
         } catch (\Exception $e) {
@@ -348,7 +348,7 @@ class DeliveryAreaController extends Controller
                     'success' => true,
                     'data' => [
                         'is_deliverable' => false,
-                        'message' => 'Delivery not available to this location'
+                        'message' => __('messages.delivery.not_available')
                     ]
                 ]);
             }
@@ -471,7 +471,7 @@ class DeliveryAreaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Delivery zones saved successfully',
+                'message' => __('messages.delivery.zones_saved'),
                 'data' => $saved,
                 'count' => $saved->count(),
             ]);
