@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\CouponController;
 use App\Http\Controllers\Api\DeliveryAreaController;
 use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
+use App\Http\Controllers\Api\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
