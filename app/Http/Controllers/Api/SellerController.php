@@ -984,7 +984,7 @@ class SellerController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'store_name' => 'sometimes|string|max:255|unique:seller_profiles,store_name,' . $seller->id,
-                'business_type' => 'sometimes|in:individual,company,retail,wholesale,manufacturer,service',
+                'business_type' => 'sometimes|nullable|exists:business_types,slug_en',
                 'business_registration_number' => 'nullable|string|max:255',
                 'tax_id' => 'nullable|string|max:255',
                 'store_description' => 'nullable|string|max:2000',
@@ -1056,6 +1056,15 @@ class SellerController extends Controller
             if (isset($validated['store_name']) && $validated['store_name'] !== $seller->store_name) {
                 $validated['store_slug'] = SellerProfile::generateUniqueSlug($validated['store_name']);
                 \Log::info('Slug regenerated', ['new_slug' => $validated['store_slug']]);
+            }
+
+            // Resolve business_type slug → id/slug fields
+            if (isset($validated['business_type'])) {
+                $bizType = \App\Models\BusinessType::where('slug_en', $validated['business_type'])->first();
+                if ($bizType) {
+                    $validated['business_type_id']   = $bizType->id;
+                    $validated['business_type']       = $bizType->slug_en;
+                }
             }
 
             // Perform update
@@ -3920,7 +3929,7 @@ class SellerController extends Controller
         try {
             $user = $request->user();
 
-            if ($user->type !== 'admin' && !$user->hasRole('admin')) {
+            if ($user->type !== 'admin') {
                 return response()->json([
                     'success' => false,
                     'message' => __('messages.auth.admin_required')
