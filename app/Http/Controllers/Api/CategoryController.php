@@ -26,15 +26,26 @@ class CategoryController extends Controller
             ->with('children')
             ->get();
 
-        // Calculate product count including all descendants for each root category
+        // Per-child product count (drives the animated list on the card)
         foreach ($categories as $category) {
-            $categoryIds = $category->descendants()->pluck('id')->push($category->id);
-            $category->products_count = Product::whereIn('category_id', $categoryIds)
+            foreach ($category->children as $child) {
+                $child->products_count = Product::where('category_id', $child->id)
+                    ->where('is_active', true)
+                    ->count();
+                $child->children_count = 0;
+            }
+
+            // Root total = all descendants (any active product counts)
+            $allIds = $category->descendants()->pluck('id')->push($category->id);
+            $category->products_count = Product::whereIn('category_id', $allIds)
                 ->where('is_active', true)
                 ->count();
 
             $category->children_count = $category->children->count();
         }
+
+        // Only return roots that have at least one product in the tree
+        $categories = $categories->filter(fn ($c) => $c->products_count > 0)->values();
 
         return response()->json([
             'success' => true,
