@@ -3920,7 +3920,7 @@ class SellerController extends Controller
         try {
             $user = $request->user();
 
-            if ($user->type !== 'admin') {
+            if ($user->type !== 'admin' && !$user->hasRole('admin')) {
                 return response()->json([
                     'success' => false,
                     'message' => __('messages.auth.admin_required')

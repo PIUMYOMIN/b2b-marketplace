@@ -49,7 +49,7 @@ class DeliveryController extends Controller
             }
 
             // ── List mode ──────────────────────────────────────────────────
-            $query = Delivery::with(['order', 'platformCourier'])
+            $query = Delivery::with(['order', 'platformCourier', 'deliveryUpdates'])
                 ->orderBy('created_at', 'desc');
 
             if ($isSeller) {
@@ -151,7 +151,7 @@ class DeliveryController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => __('messages.delivery.status_updated'),
-                'data' => $delivery->fresh(['deliveryUpdates', 'platformCourier']),
+                'data' => $delivery->load(['order', 'deliveryUpdates', 'platformCourier']),
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to update delivery status: ' . $e->getMessage());
