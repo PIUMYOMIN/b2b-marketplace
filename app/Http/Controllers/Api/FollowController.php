@@ -13,14 +13,22 @@ class FollowController extends Controller
     /**
      * Follow a seller
      */
-    public function followSeller(Request $request, $sellerId)
+    public function followSeller(Request $request, $sellerParam)
     {
         try {
             $user = $request->user();
-            $seller = User::findOrFail($sellerId);
 
-            // Check if seller is actually a seller
-            if ($seller->type !== 'seller') {
+            // Accept both numeric ID and store_slug
+            if (is_numeric($sellerParam)) {
+                $seller = User::findOrFail($sellerParam);
+            } else {
+                $seller = User::whereHas('sellerProfile', fn ($q) =>
+                    $q->where('store_slug', $sellerParam)
+                )->firstOrFail();
+            }
+
+            $isSeller = $seller->type === 'seller' || $seller->hasRole('seller');
+            if (!$isSeller) {
                 return response()->json([
                     'success' => false,
                     'message' => 'User is not a seller'
@@ -68,14 +76,20 @@ class FollowController extends Controller
     /**
      * Unfollow a seller
      */
-    public function unfollowSeller(Request $request, $sellerId)
+    public function unfollowSeller(Request $request, $sellerParam)
     {
         try {
             $user = $request->user();
-            $seller = User::findOrFail($sellerId);
+            if (is_numeric($sellerParam)) {
+                $seller = User::findOrFail($sellerParam);
+            } else {
+                $seller = User::whereHas('sellerProfile', fn ($q) =>
+                    $q->where('store_slug', $sellerParam)
+                )->firstOrFail();
+            }
 
             // Check if actually following
-            if (!$user->isFollowing($sellerId)) {
+            if (!$user->isFollowing($seller->id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Not following this seller'
@@ -83,7 +97,7 @@ class FollowController extends Controller
             }
 
             // Remove follow relationship
-            $user->unfollow($sellerId);
+            $user->unfollow($seller->id);
 
             return response()->json([
                 'success' => true,
@@ -119,8 +133,12 @@ class FollowController extends Controller
                 $query->where('store_slug', $slug);
             })->firstOrFail();
 
-            // Validate seller role
-            if (!$seller->hasRole('seller')) {
+            // Validate seller — check type field OR Spatie role (guard-safe)
+            $isSeller = $seller->type === 'seller'
+                || $seller->hasRole('seller')
+                || ($seller->sellerProfile && $seller->sellerProfile->exists());
+
+            if (!$isSeller) {
                 return response()->json([
                     'success' => false,
                     'message' => 'User is not a seller'
@@ -170,13 +188,19 @@ class FollowController extends Controller
     /**
      * Check if user is following a seller
      */
-    public function checkFollowStatus(Request $request, $sellerId)
+    public function checkFollowStatus(Request $request, $sellerParam)
     {
         try {
             $user = $request->user();
-            $seller = User::findOrFail($sellerId);
+            if (is_numeric($sellerParam)) {
+                $seller = User::findOrFail($sellerParam);
+            } else {
+                $seller = User::whereHas('sellerProfile', fn ($q) =>
+                    $q->where('store_slug', $sellerParam)
+                )->firstOrFail();
+            }
 
-            $isFollowing = $user->isFollowing($sellerId);
+            $isFollowing = $user->isFollowing($seller->id);
 
             return response()->json([
                 'success' => true,
@@ -227,10 +251,16 @@ class FollowController extends Controller
     /**
      * Get seller's followers
      */
-    public function getSellerFollowers(Request $request, $sellerId)
+    public function getSellerFollowers(Request $request, $sellerParam)
     {
         try {
-            $seller = User::findOrFail($sellerId);
+            if (is_numeric($sellerParam)) {
+                $seller = User::findOrFail($sellerParam);
+            } else {
+                $seller = User::whereHas('sellerProfile', fn ($q) =>
+                    $q->where('store_slug', $sellerParam)
+                )->firstOrFail();
+            }
 
             // Check if user is the seller or admin
             $user = $request->user();
