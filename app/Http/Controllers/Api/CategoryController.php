@@ -406,6 +406,27 @@ class CategoryController extends Controller
     }
 
     /**
+     * GET /categories/all
+     * All active root categories with children — no product-count filter.
+     * Used by seller product forms, discount forms, etc.
+     */
+    public function all()
+    {
+        $categories = Category::whereNull('parent_id')
+            ->where('is_active', true)
+            ->with(['children' => function ($q) {
+                $q->where('is_active', true)->orderBy('name_en');
+            }])
+            ->orderBy('name_en')
+            ->get();
+    
+        return response()->json([
+            'success' => true,
+            'data'    => CategoryResource::collection($categories),
+        ]);
+    }
+
+    /**
      * Remove the specified category (admin only).
      */
     public function destroy(Category $category)
