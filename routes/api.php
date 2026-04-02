@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ContactMessageController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductReviewController;
@@ -130,7 +131,6 @@ Route::group([
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
             Route::get('/commission-summary', [DashboardController::class, 'commissionSummary']);
             Route::get('/revenue/export', [RevenueExportController::class, 'adminExport']);
-            Route::get('/categories', [CategoryController::class, 'indexAdmin'])->middleware('role:admin');
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
@@ -429,6 +429,15 @@ Route::group([
 
         // Notification preferences (all auth users)
         Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
+
+        // ── In-app notifications (Laravel DB notifications) ───────────────
+        Route::prefix('notifications')->group(function () {
+            Route::get('/', [NotificationController::class, 'index']);
+            Route::post('/{id}/read', [NotificationController::class, 'markRead']);
+            Route::post('/read-all', [NotificationController::class, 'markAllRead']);
+            Route::delete('/{id}', [NotificationController::class, 'destroy']);
+            Route::delete('/', [NotificationController::class, 'destroyAll']);
+        });
 
         // Business Types
         Route::group(['prefix' => 'business-types'], function () {
