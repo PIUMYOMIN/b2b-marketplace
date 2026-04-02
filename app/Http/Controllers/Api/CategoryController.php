@@ -26,10 +26,55 @@ class CategoryController extends Controller
             ->with('children')
             ->get();
 
-        // Calculate product count including all descendants for each root category
+        // Per-child product count (drives the animated list on the card)
         foreach ($categories as $category) {
-            $categoryIds = $category->descendants()->pluck('id')->push($category->id);
-            $category->products_count = Product::whereIn('category_id', $categoryIds)
+            foreach ($category->children as $child) {
+                $child->products_count = Product::where('category_id', $child->id)
+                    ->where('is_active', true)
+                    ->count();
+                $child->children_count = 0;
+            }
+
+            // Root total = all descendants (any active product counts)
+            $allIds = $category->descendants()->pluck('id')->push($category->id);
+            $category->products_count = Product::whereIn('category_id', $allIds)
+                ->where('is_active', true)
+                ->count();
+
+            $category->children_count = $category->children->count();
+        }
+
+        // Only return roots that have at least one product in the tree
+        $categories = $categories->filter(fn ($c) => $c->products_count > 0)->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => CategoryResource::collection($categories)
+        ]);
+    }
+
+
+    /**
+     * Admin-only listing: ALL active root categories with children,
+     * regardless of product count. Used by the admin category management UI.
+     */
+    public function adminIndex()
+    {
+        $categories = Category::whereNull('parent_id')
+            ->where('is_active', true)
+            ->with('children')
+            ->get();
+
+        foreach ($categories as $category) {
+            foreach ($category->children as $child) {
+                $child->products_count = Product::where('category_id', $child->id)
+                    ->where('is_active', true)
+                    ->count();
+                $child->children_count = 0;
+            }
+
+            $allIds = $category->descendants()->pluck('id')->push($category->id);
+            $category->products_count = Product::whereIn('category_id', $allIds)
                 ->where('is_active', true)
                 ->count();
 
@@ -42,7 +87,43 @@ class CategoryController extends Controller
         ]);
     }
 
+
     /**
+     * Admin-only: return ALL root categories (including empty ones) with
+     * per-child product counts so the admin can manage the full tree.
+     * GET /admin/categories  (role:admin)
+     */
+    public function indexAdmin()
+    {
+        $categories = Category::whereNull('parent_id')
+            ->with('children')
+            ->orderBy('name_en')
+            ->get();
+
+        foreach ($categories as $category) {
+            foreach ($category->children as $child) {
+                $child->products_count = Product::where('category_id', $child->id)
+                    ->where('is_active', true)
+                    ->count();
+                $child->children_count = 0;
+            }
+
+            $allIds = $category->descendants()->pluck('id')->push($category->id);
+            $category->products_count = Product::whereIn('category_id', $allIds)
+                ->where('is_active', true)
+                ->count();
+
+            $category->children_count = $category->children->count();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => CategoryResource::collection($categories),
+            'meta'    => ['total' => $categories->count()],
+        ]);
+    }
+
+        /**
      * Store a newly created category (admin only).
      */
     public function store(Request $request)
