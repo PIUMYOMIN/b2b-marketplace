@@ -130,6 +130,7 @@ Route::group([
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
             Route::get('/commission-summary', [DashboardController::class, 'commissionSummary']);
             Route::get('/revenue/export', [RevenueExportController::class, 'adminExport']);
+            Route::get('/categories', [CategoryController::class, 'indexAdmin'])->middleware('role:admin');
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
@@ -501,7 +502,6 @@ Route::group([
 
         // Categories
         Route::prefix('categories')->group(function () {
-            Route::get('/',         [CategoryController::class, 'indexAdmin'])->middleware('role:admin');
             Route::post('/', [CategoryController::class, 'store'])->middleware('role:admin');
             Route::put('/{id}', [CategoryController::class, 'update'])->middleware('role:admin');
             Route::delete('/{category}', [CategoryController::class, 'destroy'])->middleware('role:admin');
