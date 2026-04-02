@@ -430,6 +430,15 @@ Route::group([
         // Notification preferences (all auth users)
         Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
 
+        // ── In-app notifications (Laravel DB notifications) ───────────────
+        Route::prefix('notifications')->group(function () {
+            Route::get('/', [NotificationController::class, 'index']);
+            Route::post('/{id}/read', [NotificationController::class, 'markRead']);
+            Route::post('/read-all', [NotificationController::class, 'markAllRead']);
+            Route::delete('/{id}', [NotificationController::class, 'destroy']);
+            Route::delete('/', [NotificationController::class, 'destroyAll']);
+        });
+
         // Business Types
         Route::group(['prefix' => 'business-types'], function () {
             Route::get('/', [BusinessTypeController::class, 'index']);
