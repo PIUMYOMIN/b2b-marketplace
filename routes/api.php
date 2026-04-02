@@ -27,6 +27,8 @@ use App\Http\Controllers\Api\DeliveryAreaController;
 use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\AnnouncementController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -73,6 +75,9 @@ Route::group([
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
     Route::get('/newsletter/confirm', [NewsletterController::class, 'confirm']);
     Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
+
+    // Announcements (public — visible to all visitors)
+    Route::get('/announcements', [AnnouncementController::class, 'index']);
 
     //Order Tracking
     Route::get('/track/{orderNumber}', [OrderTrackingController::class, 'track'])
@@ -148,12 +153,23 @@ Route::group([
             });
 
             // Commission Rules (admin CRUD)
+            // Announcement management (admin only)
+            Route::prefix('announcements')->middleware('role:admin')->group(function () {
+                Route::get('/', [AnnouncementController::class, 'adminIndex']);
+                Route::post('/', [AnnouncementController::class, 'store']);
+                Route::put('/{id}', [AnnouncementController::class, 'update']);
+                Route::delete('/{id}', [AnnouncementController::class, 'destroy']);
+                Route::patch('/{id}/toggle', [AnnouncementController::class, 'toggle']);
+            });
+
+            // Commission Rules (admin CRUD)
             Route::prefix('commission-rules')->group(function () {
                 Route::get('/', [CommissionRuleController::class, 'index']);
                 Route::post('/', [CommissionRuleController::class, 'store']);
                 Route::put('/{id}', [CommissionRuleController::class, 'update']);
                 Route::delete('/{id}', [CommissionRuleController::class, 'destroy']);
             });
+
             Route::get('/user-growth', [DashboardController::class, 'userGrowthLast30Days']);
             Route::get('/seller-sales-summary', [DashboardController::class, 'sellerSalesSummary']);
             Route::get('/seller-top-products', [DashboardController::class, 'sellerTopProducts']);
