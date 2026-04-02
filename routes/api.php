@@ -101,6 +101,7 @@ Route::group([
     // Categories
     Route::prefix('categories')->group(function () {
         Route::get('/', [CategoryController::class, 'index']);
+        Route::get('/all', [CategoryController::class, 'all']); // All active — no product-count filter
         Route::get('/for-filter', [CategoryController::class, 'forFilter']);
         Route::get('/{category}/descendants', [CategoryController::class, 'descendants']);
         Route::get('/{category}', [CategoryController::class, 'show']);
