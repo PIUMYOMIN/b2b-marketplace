@@ -54,39 +54,6 @@ class CategoryController extends Controller
     }
 
 
-    /**
-     * Admin-only listing: ALL active root categories with children,
-     * regardless of product count. Used by the admin category management UI.
-     */
-    public function adminIndex()
-    {
-        $categories = Category::whereNull('parent_id')
-            ->where('is_active', true)
-            ->with('children')
-            ->get();
-
-        foreach ($categories as $category) {
-            foreach ($category->children as $child) {
-                $child->products_count = Product::where('category_id', $child->id)
-                    ->where('is_active', true)
-                    ->count();
-                $child->children_count = 0;
-            }
-
-            $allIds = $category->descendants()->pluck('id')->push($category->id);
-            $category->products_count = Product::whereIn('category_id', $allIds)
-                ->where('is_active', true)
-                ->count();
-
-            $category->children_count = $category->children->count();
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => CategoryResource::collection($categories)
-        ]);
-    }
-
 
     /**
      * Admin-only: return ALL root categories (including empty ones) with
