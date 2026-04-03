@@ -49,7 +49,7 @@ class DeliveryController extends Controller
             }
 
             // ── List mode ──────────────────────────────────────────────────
-            $query = Delivery::with(['order', 'platformCourier', 'deliveryUpdates'])
+            $query = Delivery::with(['order', 'supplier', 'platformCourier', 'deliveryUpdates'])
                 ->orderBy('created_at', 'desc');
 
             if ($isSeller) {
