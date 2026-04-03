@@ -82,7 +82,8 @@ class DashboardController extends Controller
 
         $query = SellerProfile::with(['user', 'reviews'])
             ->withAvg('reviews', 'rating')
-            ->withCount('reviews');
+            ->withCount('reviews')
+            ->withCount('products');
 
         // Filter by status if provided
         if ($request->has('status') && !empty($request->status)) {
