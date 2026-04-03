@@ -669,8 +669,11 @@ class SellerController extends Controller
         try {
             if ($seller->user && method_exists($seller->user, 'followers')) {
                 $followersCount = $seller->user->followers()->count();
-                if (auth()->check() && method_exists(auth()->user(), 'isFollowing')) {
-                    $isFollowing = auth()->user()->isFollowing($seller->user->id);
+                // Use sanctum guard explicitly — this route is public so auth()->check()
+                // doesn't parse the Bearer token automatically. Guard-specific check does.
+                $authUser = Auth::guard('sanctum')->user();
+                if ($authUser && method_exists($authUser, 'isFollowing')) {
+                    $isFollowing = $authUser->isFollowing($seller->user->id);
                 }
             }
         } catch (\Exception $e) {

@@ -104,11 +104,11 @@ class CartController extends Controller
                     'subtotal' => $subtotal,
                     'total_items' => $totalItems,
                     'summary' => [
-                        'subtotal' => $subtotal,
-                        'shipping_fee' => 5000,
-                        'tax_rate' => 0.05,
-                        'tax' => $subtotal * 0.05,
-                        'total' => $subtotal + 5000 + ($subtotal * 0.05)
+                        'subtotal'          => $subtotal,
+                        'shipping_fee'      => 5000,       // estimated; finalised at checkout by delivery zone
+                        'platform_fee_rate' => 0.05,
+                        'platform_fee'      => round($subtotal * 0.05, 2),
+                        'total'             => round($subtotal + 5000 + ($subtotal * 0.05), 2)
                     ]
                 ]
             ]);

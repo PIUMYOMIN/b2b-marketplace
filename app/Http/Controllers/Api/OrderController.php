@@ -1015,11 +1015,15 @@ class OrderController extends Controller
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'tax_rate'           => $TAX_RATE,
-                    'tax_pct'            => 5.0,
-                    'shipping_fee'       => $totalShipping,              // total across all sellers
-                    'seller_shipping'    => $sellerShippingFees,         // per seller_id breakdown
-                    'default_shipping'   => $DEFAULT_SHIPPING,
+                    'shipping_fee'        => $totalShipping,
+                    'seller_shipping'     => $sellerShippingFees,
+                    'default_shipping'    => $DEFAULT_SHIPPING,
+                    // Platform commission fee (named consistently for frontend)
+                    'platform_fee_rate'   => $TAX_RATE,
+                    'platform_fee_pct'    => round($TAX_RATE * 100, 2),
+                    // Legacy aliases kept for backward compatibility
+                    'tax_rate'            => $TAX_RATE,
+                    'tax_pct'             => round($TAX_RATE * 100, 2),
                 ],
             ]);
         } catch (\Exception $e) {
@@ -1028,8 +1032,13 @@ class OrderController extends Controller
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'tax_rate'         => 0.05,
-                    'tax_pct'          => 5.0,
+                    'shipping_fee'      => 5000,
+                    'seller_shipping'   => [],
+                    'default_shipping'  => 5000,
+                    'platform_fee_rate' => 0.05,
+                    'platform_fee_pct'  => 5.0,
+                    'tax_rate'          => 0.05,
+                    'tax_pct'           => 5.0,
                     'shipping_fee'     => 5000,
                     'seller_shipping'  => [],
                     'default_shipping' => 5000,
