@@ -28,7 +28,9 @@ class UserController extends Controller
         $search = $request->input('search');
         $role = $request->input('role');
 
-        $query = User::with('roles') // Make sure this line is present
+        $status = $request->input('status'); // 'active' | 'inactive' | null
+
+        $query = User::with('roles')
             ->when($search, function ($query) use ($search) {
                 $query->where('name', 'like', "%$search%")
                     ->orWhere('email', 'like', "%$search%")
@@ -38,6 +40,10 @@ class UserController extends Controller
                 $query->whereHas('roles', function ($q) use ($role) {
                     $q->where('name', $role);
                 });
+            })
+            ->when($status !== null && $status !== '', function ($query) use ($status) {
+                $isActive = $status === 'active';
+                $query->where('is_active', $isActive);
             });
 
         $users = $query->paginate($perPage);
