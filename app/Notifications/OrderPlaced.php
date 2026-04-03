@@ -1,35 +1,53 @@
 <?php
+
 namespace App\Notifications;
+
 use App\Models\Order;
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class OrderPlaced extends Notification
 {
-    use Queueable;
-    public function __construct(public Order $order)
+    // No Queueable — send synchronously so buyer gets confirmation immediately
+
+    public function __construct(public Order $order) {}
+
+    public function via($notifiable): array
     {
+        $channels = ['database'];
+        if (!empty($notifiable->email) && $this->shouldSendMail($notifiable)) {
+            $channels[] = 'mail';
+        }
+        return $channels;
     }
-    public function via($n): array
-    {
-        return $this->shouldSend($n) ? ['mail', 'database'] : ['database'];
-    }
-    public function toMail($n)
+
+    public function toMail($notifiable): MailMessage
     {
         return (new MailMessage)
             ->subject("Order Confirmed — #{$this->order->order_number}")
-            ->view('emails.order-placed', ['order' => $this->order->load('items', 'buyer', 'delivery')]);
+            ->view('emails.order-placed', [
+                'order' => $this->order->load('items', 'buyer', 'delivery'),
+            ]);
     }
-    public function toArray($n): array
+
+    public function toArray($notifiable): array
     {
-        return ['type' => 'order_placed', 'order_id' => $this->order->id, 'order_number' => $this->order->order_number, 'message' => "Your order #{$this->order->order_number} has been placed successfully."];
+        return [
+            'type'         => 'order_placed',
+            'order_id'     => $this->order->id,
+            'order_number' => $this->order->order_number,
+            'message'      => "Your order #{$this->order->order_number} has been placed successfully.",
+        ];
     }
-    public function shouldSend($user): bool
+
+    private function shouldSendMail($user): bool
     {
-        $prefs = is_array($user->notification_preferences)
-            ? $user->notification_preferences
-            : json_decode($user->notification_preferences ?? '[]', true);
+        $prefs = $user->notification_preferences;
+        if (is_string($prefs)) {
+            $prefs = json_decode($prefs, true) ?: [];
+        } elseif (!is_array($prefs)) {
+            $prefs = [];
+        }
         return $prefs['order_updates'] ?? true;
     }
 }

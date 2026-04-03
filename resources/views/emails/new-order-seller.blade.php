@@ -2,12 +2,12 @@
 @extends('emails.layout')
 @section('content')
 <p class="greeting">🛒 New Order Received!</p>
-<p class="text">Hi {{ $seller->name }}, you have a new order in your store. Please process it promptly.</p>
+<p class="text">Hi {{ $notifiable->name ?? 'Seller' }}, you have a new order in your store. Please process it promptly.</p>
 
 <div class="info-box">
   <p><strong>Order #{{ $order->order_number }}</strong></p>
   <p>Placed {{ $order->created_at->diffForHumans() }}</p>
-  <p>Payment: <strong>{{ ucfirst($order->payment_method) }}</strong> &nbsp;·&nbsp; Status: <strong>{{ ucfirst($order->payment_status) }}</strong></p>
+  <p>Payment: <strong>{{ ucfirst($order->payment_method ?? 'N/A') }}</strong> &nbsp;·&nbsp; Status: <strong>{{ ucfirst($order->payment_status ?? 'pending') }}</strong></p>
 </div>
 
 <table class="data-table">

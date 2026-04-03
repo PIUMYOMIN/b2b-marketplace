@@ -1,19 +1,21 @@
 <?php
 namespace App\Notifications;
 use App\Models\ProductReview;
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class NewProductReview extends Notification
 {
-    use Queueable;
     public function __construct(public ProductReview $review)
     {
     }
-    public function via($n): array
+    public function via($notifiable): array
     {
-        return $this->shouldSend($n) ? ['mail', 'database'] : ['database'];
+        $channels = ['database'];
+        if (!empty($notifiable->email) && $this->shouldSend($notifiable)) {
+            $channels[] = 'mail';
+        }
+        return $channels;
     }
     public function toMail($n)
     {

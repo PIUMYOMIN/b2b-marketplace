@@ -1,14 +1,19 @@
 <?php
 namespace App\Notifications;
 use App\Models\SellerProfile;
-use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class SellerRejected extends Notification {
-    use Queueable;
     public function __construct(public SellerProfile $profile, public ?string $reason = null) {}
-    public function via($n): array { return ['mail','database']; }
+    public function via($notifiable): array
+    {
+        $channels = ['database'];
+        if (!empty($notifiable->email)) {
+            $channels[] = 'mail';
+        }
+        return $channels;
+    }
     public function toMail($n) {
         return (new MailMessage)
             ->subject('Pyonea Seller Application Update')
