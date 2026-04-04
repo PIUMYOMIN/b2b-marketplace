@@ -102,7 +102,7 @@
     "@type": "Store",
     "name": "{{ $seller['store_name'] }}",
     "description": "{{ addslashes($seller['store_description'] ?? '') }}",
-    "url": "https://pyonea.com/shops/{{ $seller['slug'] ?? '' }}",
+    "url": "https://pyonea.com/sellers/{{ $seller['slug'] ?? '' }}",
     "logo": "{{ $seller['store_logo'] ?? '' }}"
     @if (!empty($seller['address']))
     ,"address": {
