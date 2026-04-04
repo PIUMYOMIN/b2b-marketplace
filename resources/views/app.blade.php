@@ -148,7 +148,7 @@
 
   <!-- Icons & PWA -->
   <link rel="icon" href="/favicon.ico">
-  <link rel="apple-touch-icon" href="/og-image.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#16a34a" />
 
