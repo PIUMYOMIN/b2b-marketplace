@@ -55,13 +55,13 @@ class OrderController extends Controller
                 ->get();
         } else if ($user->hasRole('buyer')) {
             // For buyers, show their own orders
-            $orders = Order::with(['items', 'seller'])
+            $orders = Order::with(['items', 'seller.sellerProfile'])
                 ->where('buyer_id', $user->id)
                 ->orderBy('created_at', 'desc')
                 ->get();
         } else {
             // For admins, show all orders
-            $orders = Order::with(['items', 'buyer', 'seller'])
+            $orders = Order::with(['items', 'buyer', 'seller.sellerProfile'])
                 ->orderBy('created_at', 'desc')
                 ->get();
         }
@@ -89,6 +89,12 @@ class OrderController extends Controller
                 return $item;
             });
 
+            // Flatten store_name so frontend reads order.store_name directly
+            $sellerProfile = $order->seller?->sellerProfile;
+            $order->store_name   = $sellerProfile?->store_name;
+            $order->store_slug   = $sellerProfile?->store_slug;
+            $order->store_logo   = $sellerProfile?->store_logo;
+
             return $order;
         });
 
@@ -102,11 +108,7 @@ class OrderController extends Controller
 
     /**
      * POST /orders/request-otp
-     *
-     * Validates the cart + shipping fields, calculates the total,
-     * then emails a 6-digit OTP to the authenticated buyer.
-     * The OTP is stored temporarily on a draft order (status=pending, otp_verified=false).
-     * The actual order creation is completed in store() after OTP verification.
+     * Validates the order details and sends a 6-digit OTP to the buyer's email.
      */
     public function requestOtp(Request $request)
     {
@@ -159,15 +161,6 @@ class OrderController extends Controller
         $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $ttl = now()->addMinutes(10);
 
-        // Store OTP in the Laravel Cache (database driver, table: cache).
-        //
-        // WHY NOT session(): This API runs under Laravel 12's `api` middleware
-        // group defined in bootstrap/app.php. That group does NOT include
-        // StartSession, so session() always returns a fresh empty store on
-        // every request — the OTP written in requestOtp() is invisible to
-        // verifyOtp(), producing "No OTP found" every time. Cache persists
-        // across stateless Bearer-token requests because it's backed by the
-        // database, not the HTTP session.
         Cache::put("order_otp_{$user->id}",          $otp,                 $ttl);
         Cache::put("order_otp_expires_{$user->id}",  $ttl->toISOString(),  $ttl);
 
@@ -365,10 +358,6 @@ class OrderController extends Controller
                 // Calculate seller-specific totals
                 $sellerSubtotal = collect($sellerItems)->sum('subtotal');
 
-                // ── Resolve shipping fee from seller's delivery zones ──────────────
-                // Matches the buyer's destination (country → state → city, most specific
-                // zone wins via sort_order DESC). Falls back to 5,000 MMK if the seller
-                // has not configured any delivery zones or none match the destination.
                 $addr          = $request->shipping_address;
                 $sellerProfile = SellerProfile::where('user_id', $sellerId)->first();
                 $matchedZone   = $sellerProfile?->activeDeliveryAreas()
@@ -723,8 +712,10 @@ class OrderController extends Controller
     /**
      * Confirm order (for sellers)
      */
-    public function confirm(Order $order)
+    public function confirm($id)
     {
+        $order = Order::findOrFail($id);
+
         $user = Auth::user();
         if ($user->hasRole('seller') && (int) $order->seller_id !== (int) $user->id) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
@@ -737,15 +728,10 @@ class OrderController extends Controller
         $order->status = 'confirmed';
         $order->save();
 
-        // FIX: store() already creates a Delivery record when the order is placed.
-        // Creating a second one here caused duplicate delivery rows and confusing
-        // tracking state. We just update the existing one to 'awaiting_pickup'.
         $delivery = Delivery::where('order_id', $order->id)->first();
         if ($delivery) {
             $delivery->update(['status' => 'awaiting_pickup']);
 
-            // FIX: DeliveryUpdate was used here without being imported — fatal error.
-            // Import added at the top of this file.
             DeliveryUpdate::create([
                 'delivery_id' => $delivery->id,
                 'user_id' => Auth::id(),
@@ -1043,29 +1029,5 @@ class OrderController extends Controller
                 ],
             ]);
         }
-    }
-
-    /**
-     * PATCH /orders/{order}/status — admin-only status update
-     * Handles statuses not covered by confirm/ship/cancel (processing, delivered, etc.)
-     */
-    public function updateStatus(Request $request, Order $order)
-    {
-        $user = Auth::user();
-        if (!$user->hasRole('admin') && $user->type !== 'admin') {
-            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
-        }
-
-        $validated = $request->validate([
-            'status' => 'required|in:pending,confirmed,processing,shipped,delivered,cancelled',
-        ]);
-
-        $order->update(['status' => $validated['status']]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Order status updated.',
-            'data'    => $order->fresh(),
-        ]);
     }
 }
