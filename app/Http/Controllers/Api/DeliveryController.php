@@ -124,9 +124,11 @@ class DeliveryController extends Controller
         try {
             $user = $request->user();
 
-            $canUpdate = $delivery->supplier_id === $user->id
-                || $delivery->platform_courier_id === $user->id
-                || $user->hasRole('admin');
+            // Use loose comparison (==) — supplier_id from DB may be string, $user->id is int
+            $canUpdate = (int) $delivery->supplier_id === (int) $user->id
+                || ($delivery->platform_courier_id && (int) $delivery->platform_courier_id === (int) $user->id)
+                || $user->hasRole('admin')
+                || $user->type === 'admin';
 
             if (!$canUpdate) {
                 return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
@@ -168,9 +170,11 @@ class DeliveryController extends Controller
         try {
             $user = $request->user();
 
-            $canUpdate = $delivery->supplier_id === $user->id
-                || $delivery->platform_courier_id === $user->id
-                || $user->hasRole('admin');
+            // Use loose comparison (==) — supplier_id from DB may be string, $user->id is int
+            $canUpdate = (int) $delivery->supplier_id === (int) $user->id
+                || ($delivery->platform_courier_id && (int) $delivery->platform_courier_id === (int) $user->id)
+                || $user->hasRole('admin')
+                || $user->type === 'admin';
 
             if (!$canUpdate) {
                 return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
@@ -219,7 +223,7 @@ class DeliveryController extends Controller
         try {
             $user = $request->user();
 
-            if (!$user->hasRole('admin') && $delivery->supplier_id !== $user->id) {
+            if (!$user->hasRole('admin') && (int) $delivery->supplier_id !== (int) $user->id) {
                 return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
             }
 
