@@ -69,7 +69,7 @@ class AuthController extends Controller
                 'status' => 'active',
                 'is_active' => true,
                 'referred_by' => isset($validated['ref_code'])
-                    ? \App\Models\User::where('ref_code', $validated['ref_code'])->value('id')
+                    ? User::where('ref_code', $validated['ref_code'])->value('id')
                     : null,
             ]);
 
