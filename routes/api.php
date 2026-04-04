@@ -115,7 +115,7 @@ Route::group([
     // Reviews
     Route::prefix('reviews')->group(function () {
         Route::get('/products/{product}', [ProductReviewController::class, 'productReviews']);
-        Route::get('/shops/{slug}', [SellerReviewController::class, 'sellerReviews']);
+        Route::get('/sellers/{slug}', [SellerReviewController::class, 'sellerReviews']);
     });
 
     // --------------------
