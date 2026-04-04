@@ -37,6 +37,7 @@ class AuthController extends Controller
             'city' => 'nullable|string',
             'state' => 'nullable|string',
             'recaptcha_token' => ['required', new Recaptcha],
+            'ref_code' => 'nullable|string|max:12',
         ]);
 
         return DB::transaction(function () use ($validated) {
@@ -67,6 +68,9 @@ class AuthController extends Controller
                 'user_id' => $nextUserId,
                 'status' => 'active',
                 'is_active' => true,
+                'referred_by' => isset($validated['ref_code'])
+                    ? \App\Models\User::where('ref_code', $validated['ref_code'])->value('id')
+                    : null,
             ]);
 
             // Assign role
@@ -194,6 +198,7 @@ class AuthController extends Controller
             'password' => 'required',
             'remember' => 'nullable|boolean',
             'recaptcha_token' => ['required', new Recaptcha],
+            'ref_code' => 'nullable|string|max:12',
         ]);
 
         $phone = $this->normalizeMyanmarPhone($request->phone);
