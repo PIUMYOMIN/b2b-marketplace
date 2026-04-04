@@ -142,6 +142,15 @@ Route::group([
             Route::get('/commission-summary', [DashboardController::class, 'commissionSummary']);
             Route::get('/revenue/export', [RevenueExportController::class, 'adminExport']);
             Route::get('/revenue-breakdown', [DashboardController::class, 'revenueBreakdown']);
+            Route::patch('/deliveries/{id}/confirm-fee', [DashboardController::class, 'adminConfirmDeliveryFee']);
+            // Pending fee submissions list
+            Route::get('/delivery-fees/pending', function () {
+                $fees = \App\Models\Delivery::whereNotNull('fee_submitted_at')
+                    ->whereNull('fee_confirmed_at')
+                    ->with(['order', 'supplier'])
+                    ->orderByDesc('fee_submitted_at')->get();
+                return response()->json(['success' => true, 'data' => $fees]);
+            })->middleware('role:admin');
             Route::get('/categories', [CategoryController::class, 'indexAdmin'])->middleware('role:admin');
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
@@ -391,6 +400,9 @@ Route::group([
                 Route::put('/{id}', [DeliveryAreaController::class, 'update']);
                 Route::delete('/{id}', [DeliveryAreaController::class, 'destroy']);
             });
+
+            // Delivery fee submission (seller → admin)
+            Route::patch('/deliveries/{id}/submit-fee', [DashboardController::class, 'sellerSubmitDeliveryFee']);
 
             // Shipping settings (separate from general settings)
             Route::prefix('shipping')->group(function () {

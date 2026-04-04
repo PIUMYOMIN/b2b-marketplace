@@ -137,9 +137,10 @@ class ProductReviewController extends Controller
      */
     public function store(Request $request, $product)
     {
+        $productId = is_object($product) ? $product->id : (int) $product;
+
         $validator = Validator::make($request->all(), [
-            'product_id' => 'required|exists:products,id',
-            'rating' => 'required|integer|min:1|max:5',
+            'rating'  => 'required|integer|min:1|max:5',
             'comment' => 'required|string|max:1000',
         ]);
 
@@ -151,10 +152,16 @@ class ProductReviewController extends Controller
             ], 422);
         }
 
+        // Verify product exists
+        $productModel = \App\Models\Product::find($productId);
+        if (!$productModel) {
+            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
+        }
+
         try {
             // Check if user already reviewed this product
             $existingReview = ProductReview::where('user_id', auth()->id())
-                ->where('product_id', $request->product_id)
+                ->where('product_id', $productId)
                 ->first();
 
             if ($existingReview) {
@@ -166,7 +173,7 @@ class ProductReviewController extends Controller
 
             $review = ProductReview::create([
                 'user_id' => auth()->id(),
-                'product_id' => $request->product_id,
+                'product_id' => $productId,
                 'rating' => $request->rating,
                 'comment' => $request->comment,
                 'status' => 'approved'
@@ -512,7 +519,7 @@ class ProductReviewController extends Controller
 
             $review = ProductReview::create([
                 'user_id' => auth()->id(),
-                'product_id' => $request->product_id,
+                'product_id' => $productId,
                 'rating' => $request->rating,
                 'comment' => $request->comment,
                 'status' => 'pending'

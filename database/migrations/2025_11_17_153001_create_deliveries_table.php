@@ -76,6 +76,15 @@ return new class extends Migration
             $table->boolean('delivery_cost_paid')->default(false);
             $table->timestamp('delivery_cost_paid_at')->nullable();
 
+            // ── Delivery fee confirmation flow ──────────────────────────────
+            // Step 1: Seller submits proof of payment to admin
+            $table->string('fee_submission_note')->nullable();
+            $table->timestamp('fee_submitted_at')->nullable();
+            // Step 2: Admin confirms receipt of the delivery fee
+            $table->timestamp('fee_confirmed_at')->nullable();
+            $table->foreignId('fee_confirmed_by')->nullable()->constrained('users')->onDelete('set null');
+            $table->string('fee_confirmation_note')->nullable();
+
             $table->timestamps();
             $table->softDeletes();
         });

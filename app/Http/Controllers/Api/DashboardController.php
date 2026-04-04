@@ -10,6 +10,8 @@ use App\Models\OrderItem;
 use App\Models\Commission;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
+use App\Models\BusinessType;
+use App\Models\Delivery;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
@@ -175,28 +177,59 @@ class DashboardController extends Controller
      */
     public function stats()
     {
+        // Commission stats
+        $totalCommission   = Commission::sum('amount');
+        $pendingComm       = Commission::where('status', 'pending')->sum('amount');
+        $collectedComm     = Commission::whereIn('status', ['collected', 'paid'])->sum('amount');
+
+        // Delivery fee stats
+        $totalDeliveryFees     = Delivery::where('delivery_method', 'platform')->sum('platform_delivery_fee');
+        $confirmedDeliveryFees = Delivery::where('delivery_method', 'platform')
+                                    ->whereNotNull('fee_confirmed_at')->sum('platform_delivery_fee');
+        $pendingDeliveryFees   = $totalDeliveryFees - $confirmedDeliveryFees;
+        $submittedPendingFees  = Delivery::where('delivery_method', 'platform')
+                                    ->whereNotNull('fee_submitted_at')
+                                    ->whereNull('fee_confirmed_at')
+                                    ->sum('platform_delivery_fee');
+
         return response()->json([
             'success' => true,
             'data' => [
-                'total_users' => User::count(),
-                'active_users' => User::where('status', 'active')->count(),
-                'total_products' => Product::count(),
-                'active_products' => Product::where('is_active', true)->count(),
-                'total_orders' => Order::count(),
-                'pending_orders' => Order::where('status', 'pending')->count(),
-                'completed_orders' => Order::where('status', 'delivered')->count(),
-                // GMV — total value of all orders
-                'total_revenue'       => Order::sum('total_amount'),
-                // Platform commission revenue (from orders)
-                'commission_revenue'  => Order::whereNotNull('commission_amount')->sum('commission_amount'),
-                // Platform delivery fees collected
-                'delivery_fee_revenue'=> \App\Models\Delivery::where('delivery_method', 'platform')->sum('platform_delivery_fee'),
-                // Total platform revenue = commissions + delivery fees
-                'platform_revenue'    => Order::whereNotNull('commission_amount')->sum('commission_amount')
-                                        + \App\Models\Delivery::where('delivery_method', 'platform')->sum('platform_delivery_fee'),
-                // Commission records breakdown
-                'pending_commissions' => Commission::where('status', 'pending')->sum('amount'),
-                'paid_commissions'    => Commission::where('status', 'paid')->sum('amount')
+                // Users
+                'total_users'           => User::count(),
+                'active_users'          => User::where('status', 'active')->count(),
+                'total_sellers'         => User::where('type', 'seller')->count(),
+                'total_buyers'          => User::where('type', 'buyer')->count(),
+                // Products
+                'total_products'        => Product::count(),
+                'active_products'       => Product::where('is_active', true)->count(),
+                // Orders
+                'total_orders'          => Order::count(),
+                'pending_orders'        => Order::where('status', 'pending')->count(),
+                'completed_orders'      => Order::where('status', 'delivered')->count(),
+                'cancelled_orders'      => Order::where('status', 'cancelled')->count(),
+                // Revenue (GMV)
+                'total_revenue'         => Order::sum('total_amount'),
+                'confirmed_revenue'     => Order::where('status', 'delivered')->sum('total_amount'),
+                // Commission
+                'total_commission'      => $totalCommission,
+                'commission_revenue'    => Order::whereNotNull('commission_amount')->sum('commission_amount'),
+                'pending_commissions'   => $pendingComm,
+                'collected_commissions' => $collectedComm,
+                'paid_commissions'      => Commission::where('status', 'paid')->sum('amount'),
+                // Delivery fees
+                'total_delivery_fees'      => $totalDeliveryFees,
+                'confirmed_delivery_fees'  => $confirmedDeliveryFees,
+                'pending_delivery_fees'    => $pendingDeliveryFees,
+                'submitted_delivery_fees'  => $submittedPendingFees,
+                // Platform revenue
+                'delivery_fee_revenue'  => $totalDeliveryFees,
+                'platform_revenue'      => Order::whereNotNull('commission_amount')->sum('commission_amount') + $totalDeliveryFees,
+                // Business
+                'total_business_types'  => BusinessType::count(),
+                'active_business_types' => BusinessType::where('is_active', true)->count(),
+                'total_sellers_approved'=> SellerProfile::whereIn('status', ['approved', 'active'])->count(),
+                'sellers_pending'       => SellerProfile::where('status', 'pending')->count(),
             ]
         ]);
     }
@@ -259,6 +292,52 @@ class DashboardController extends Controller
             'success' => true,
             'data'    => $results,
         ]);
+    }
+
+
+    /**
+     * PATCH /seller/deliveries/{id}/submit-fee
+     * Seller submits delivery fee payment proof to admin.
+     */
+    public function sellerSubmitDeliveryFee(Request $request, $deliveryId)
+    {
+        $user = $request->user();
+        if ($user->type !== 'seller') {
+            return response()->json(['success' => false, 'message' => 'Sellers only.'], 403);
+        }
+        $delivery = \App\Models\Delivery::where('id', $deliveryId)
+            ->where('supplier_id', $user->id)
+            ->firstOrFail();
+
+        $request->validate(['note' => 'nullable|string|max:500']);
+
+        $delivery->update([
+            'fee_submitted_at'   => now(),
+            'fee_submission_note'=> $request->note ?? 'Delivery fee paid.',
+        ]);
+        return response()->json(['success' => true, 'message' => 'Fee submission sent to admin.', 'data' => $delivery->fresh()]);
+    }
+
+    /**
+     * PATCH /admin/deliveries/{id}/confirm-fee
+     * Admin confirms delivery fee received from seller.
+     */
+    public function adminConfirmDeliveryFee(Request $request, $deliveryId)
+    {
+        $user = $request->user();
+        if ($user->type !== 'admin' && !$user->hasRole('admin')) {
+            return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+        }
+        $delivery = \App\Models\Delivery::findOrFail($deliveryId);
+        $request->validate(['note' => 'nullable|string|max:500']);
+
+        $delivery->update([
+            'fee_confirmed_at'      => now(),
+            'fee_confirmed_by'      => $user->id,
+            'fee_confirmation_note' => $request->note ?? 'Confirmed by admin.',
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Delivery fee confirmed.', 'data' => $delivery->fresh()]);
     }
 
     public function salesReport(Request $request)
