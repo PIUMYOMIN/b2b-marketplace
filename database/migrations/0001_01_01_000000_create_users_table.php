@@ -11,6 +11,9 @@ return new class extends Migration {
             $table->id();
             $table->string('name');
             $table->string('user_id')->unique();
+            $table->string('ref_code', 12)->nullable()->unique();
+            $table->unsignedBigInteger('referred_by')->nullable();
+            $table->foreign('referred_by')->references('id')->on('users')->onDelete('set null');
             $table->string('email')->unique()->nullable();
             $table->string('phone')->unique();
             $table->date('date_of_birth')->nullable();

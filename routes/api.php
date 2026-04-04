@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
+use App\Http\Controllers\Api\ReferralController;
 
 
 /*
@@ -75,6 +76,9 @@ Route::group([
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
     Route::get('/newsletter/confirm', [NewsletterController::class, 'confirm']);
     Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
+
+    // Referral — validate code (public)
+    Route::post('/referral/validate', [ReferralController::class, 'validate']);
 
     // Announcements (public — visible to all visitors)
     Route::get('/announcements', [AnnouncementController::class, 'index']);
@@ -137,6 +141,7 @@ Route::group([
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
             Route::get('/commission-summary', [DashboardController::class, 'commissionSummary']);
             Route::get('/revenue/export', [RevenueExportController::class, 'adminExport']);
+            Route::get('/revenue-breakdown', [DashboardController::class, 'revenueBreakdown']);
             Route::get('/categories', [CategoryController::class, 'indexAdmin'])->middleware('role:admin');
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
@@ -153,6 +158,12 @@ Route::group([
             });
 
             // Commission Rules (admin CRUD)
+            // Referral analytics (admin only)
+            Route::get('/referrals', [ReferralController::class, 'adminIndex'])->middleware('role:admin');
+
+            // Referral analytics (admin only)
+            Route::get('/referrals', [ReferralController::class, 'adminIndex'])->middleware('role:admin');
+
             // Announcement management (admin only)
             Route::prefix('announcements')->middleware('role:admin')->group(function () {
                 Route::get('/', [AnnouncementController::class, 'adminIndex']);
@@ -445,6 +456,9 @@ Route::group([
             });
         });
 
+        // Referral link (authenticated users)
+        Route::get('/referral/my-link', [ReferralController::class, 'myLink']);
+
         // Notification preferences (all auth users)
         Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
 
@@ -552,6 +566,10 @@ Route::group([
                 Route::post('/{order}/process', [OrderController::class, 'process']);
                 Route::post('/{order}/ship', [OrderController::class, 'ship']);
             });
+
+            // Admin-only order status update (generic — covers all statuses)
+            Route::patch('/{order}/status', [OrderController::class, 'updateStatus'])
+                ->middleware('role:admin');
 
             // Buyer order management
             Route::middleware('role:buyer|admin')->group(function () {

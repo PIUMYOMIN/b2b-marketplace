@@ -185,10 +185,79 @@ class DashboardController extends Controller
                 'total_orders' => Order::count(),
                 'pending_orders' => Order::where('status', 'pending')->count(),
                 'completed_orders' => Order::where('status', 'delivered')->count(),
-                'total_revenue' => Order::sum('total_amount'),
+                // GMV — total value of all orders
+                'total_revenue'       => Order::sum('total_amount'),
+                // Platform commission revenue (from orders)
+                'commission_revenue'  => Order::whereNotNull('commission_amount')->sum('commission_amount'),
+                // Platform delivery fees collected
+                'delivery_fee_revenue'=> \App\Models\Delivery::where('delivery_method', 'platform')->sum('platform_delivery_fee'),
+                // Total platform revenue = commissions + delivery fees
+                'platform_revenue'    => Order::whereNotNull('commission_amount')->sum('commission_amount')
+                                        + \App\Models\Delivery::where('delivery_method', 'platform')->sum('platform_delivery_fee'),
+                // Commission records breakdown
                 'pending_commissions' => Commission::where('status', 'pending')->sum('amount'),
-                'paid_commissions' => Commission::where('status', 'paid')->sum('amount')
+                'paid_commissions'    => Commission::where('status', 'paid')->sum('amount')
             ]
+        ]);
+    }
+
+
+    /**
+     * GET /admin/revenue-breakdown
+     * Monthly breakdown of platform revenue: commission_amount (from orders)
+     * + platform_delivery_fee (from deliveries with delivery_method=platform).
+     * This is the actual revenue Pyonea earns, separate from GMV.
+     */
+    public function revenueBreakdown()
+    {
+        $start = Carbon::now()->subMonths(11)->startOfMonth();
+        $end   = Carbon::now()->endOfMonth();
+
+        // Monthly commission from delivered orders
+        $commissions = Order::whereBetween('created_at', [$start, $end])
+            ->where('status', 'delivered')
+            ->whereNotNull('commission_amount')
+            ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month, SUM(commission_amount) as commission')
+            ->groupBy('month')
+            ->get()
+            ->keyBy('month');
+
+        // Monthly platform delivery fees
+        $deliveryFees = \App\Models\Delivery::whereBetween('created_at', [$start, $end])
+            ->where('delivery_method', 'platform')
+            ->where('status', 'delivered')
+            ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month, SUM(platform_delivery_fee) as delivery_fee')
+            ->groupBy('month')
+            ->get()
+            ->keyBy('month');
+
+        // Monthly GMV (for reference)
+        $gmv = Order::whereBetween('created_at', [$start, $end])
+            ->where('status', 'delivered')
+            ->selectRaw('DATE_FORMAT(created_at, "%Y-%m") as month, SUM(total_amount) as gmv')
+            ->groupBy('month')
+            ->get()
+            ->keyBy('month');
+
+        $results = [];
+        $current = clone $start;
+        while ($current <= $end) {
+            $month = $current->format('Y-m');
+            $comm  = (float) ($commissions[$month]->commission ?? 0);
+            $dFee  = (float) ($deliveryFees[$month]->delivery_fee ?? 0);
+            $results[] = [
+                'month'        => $month,
+                'commission'   => $comm,
+                'delivery_fee' => $dFee,
+                'platform'     => $comm + $dFee,   // total platform revenue
+                'gmv'          => (float) ($gmv[$month]->gmv ?? 0),
+            ];
+            $current->addMonth();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => $results,
         ]);
     }
 
