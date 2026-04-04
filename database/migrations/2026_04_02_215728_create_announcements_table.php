@@ -13,17 +13,16 @@ return new class extends Migration
             $table->string('title');
             $table->text('content')->nullable();
             $table->string('type')->default('announcement');
-            // types: announcement | promotion | newsletter | advertisement | sponsorship
-            $table->string('image')->nullable();           // uploaded image path
-            $table->string('cta_label')->nullable();       // e.g. "Shop Now"
-            $table->string('cta_url')->nullable();         // link destination
-            $table->string('cta_style')->default('primary'); // primary | outline
-            $table->string('badge_label')->nullable();     // e.g. "🔥 New", "Limited"
-            $table->string('badge_color')->default('green'); // green|red|blue|yellow|purple
-            $table->string('target_audience')->default('all'); // all | guests | buyers | sellers
+            $table->string('image')->nullable();
+            $table->string('cta_label')->nullable();
+            $table->string('cta_url')->nullable();
+            $table->string('cta_style')->default('primary');
+            $table->string('badge_label')->nullable();
+            $table->string('badge_color')->default('green');
+            $table->string('target_audience')->default('all');
             $table->boolean('is_active')->default(true);
-            $table->boolean('show_once')->default(true);   // show only once per day per browser
-            $table->integer('delay_seconds')->default(1);  // delay before showing
+            $table->boolean('show_once')->default(true);
+            $table->integer('delay_seconds')->default(1);
             $table->timestamp('starts_at')->nullable();
             $table->timestamp('ends_at')->nullable();
             $table->integer('sort_order')->default(0);
