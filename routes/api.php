@@ -228,8 +228,10 @@ Route::group([
             });
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
+                Route::get('/', [BusinessTypeController::class, 'adminIndex']);
                 Route::post('/', [BusinessTypeController::class, 'store']);
                 Route::put('/{id}', [BusinessTypeController::class, 'update']);
+                Route::patch('/{id}/toggle', [BusinessTypeController::class, 'toggleStatus']);
                 Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
             });
 

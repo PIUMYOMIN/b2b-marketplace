@@ -13,45 +13,65 @@ class BusinessTypeController extends Controller
     /**
      * Get all active business types
      */
+    /** Shared formatter for a BusinessType → array */
+    private function formatType(BusinessType $type): array
+    {
+        return [
+            'id'                            => $type->id,
+            'name_en'                       => $type->name_en,
+            'name_mm'                       => $type->name_mm,
+            'slug_en'                       => $type->slug_en,
+            'slug_mm'                       => $type->slug_mm,
+            'description_en'                => $type->description_en,
+            'description_mm'                => $type->description_mm,
+            'requires_registration'         => (bool) $type->requires_registration,
+            'requires_tax_document'         => (bool) $type->requires_tax_document,
+            'requires_identity_document'    => (bool) $type->requires_identity_document,
+            'requires_business_certificate' => (bool) $type->requires_business_certificate,
+            'additional_requirements'       => $type->additional_requirements,
+            'is_individual'                 => $type->isIndividualType(),
+            // is_active as boolean (not string) so frontend toggle works correctly
+            'is_active'                     => (bool) $type->is_active,
+            'sort_order'                    => $type->sort_order,
+            'icon'                          => $type->icon,
+            'color'                         => $type->color,
+            'document_requirements'         => $type->getDocumentRequirements(),
+            'sellers_count'                 => $type->sellers_count ?? null,
+        ];
+    }
+
+    /**
+     * GET /business-types — public, active only (used by seller onboarding)
+     */
     public function index(Request $request)
     {
         try {
-            $businessTypes = BusinessType::active()
-                ->ordered()
-                ->get()
-                ->map(function ($type) {
-                    return [
-                        'id' => $type->id,
-                        'name_en' => $type->name_en,
-                        'name_mm' => $type->name_mm,
-                        'slug_en' => $type->slug_en,
-                        'slug_mm' => $type->slug_mm,
-                        'description_en' => $type->description_en,
-                        'description_mm' => $type->description_mm,
-                        'requires_registration' => $type->requires_registration,
-                        'requires_tax_document' => $type->requires_tax_document,
-                        'requires_identity_document' => $type->requires_identity_document,
-                        'requires_business_certificate' => $type->requires_business_certificate,
-                        'is_individual' => $type->isIndividualType(),
-                        'status' => $type->is_active ? 'Active' : 'Inactive',
-                        'sort_order' => $type->sort_order,
-                        'icon' => $type->icon,
-                        'color' => $type->color,
-                        'document_requirements' => $type->getDocumentRequirements()
-                    ];
-                });
+            $businessTypes = BusinessType::active()->ordered()->get()
+                ->map(fn($t) => $this->formatType($t));
 
-            return response()->json([
-                'success' => true,
-                'data' => $businessTypes
-            ]);
-
+            return response()->json(['success' => true, 'data' => $businessTypes]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch business types: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch business types'
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Failed to fetch business types'], 500);
+        }
+    }
+
+    /**
+     * GET /admin/business-types — admin: ALL types including inactive
+     */
+    public function adminIndex(Request $request)
+    {
+        try {
+            $query = BusinessType::withCount([
+                'sellerProfiles as sellers_count' => fn($q) => $q->whereIn('status', ['approved', 'active'])
+            ])->ordered();
+
+            $businessTypes = $query->get()->map(fn($t) => $this->formatType($t));
+
+            return response()->json(['success' => true, 'data' => $businessTypes]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to fetch all business types: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to fetch business types'], 500);
         }
     }
 
@@ -156,6 +176,21 @@ class BusinessTypeController extends Controller
     /**
      * Delete business type (Admin only)
      */
+
+    /**
+     * PATCH /admin/business-types/{id}/toggle — toggle active status
+     */
+    public function toggleStatus($id)
+    {
+        $type = BusinessType::findOrFail($id);
+        $type->update(['is_active' => !$type->is_active]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Status updated.',
+            'data'    => $this->formatType($type->fresh()),
+        ]);
+    }
+
     public function destroy($id)
     {
         try {
