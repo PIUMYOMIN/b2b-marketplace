@@ -4502,18 +4502,11 @@ class SellerController extends Controller
         try {
             $user = $request->user();
 
-            if (!isset($user->type) || $user->type !== 'seller') {
-                return response()->json([
-                    'success' => false,
-                    'message' => __('messages.seller.not_a_seller')
-                ], 403);
-            }
-
             $limit = $request->input('limit', 10);
 
-            // Get recent orders with order items and buyer info - FIXED: Use proper Eloquent
+            // Get recent orders with order items and buyer info
             $recentOrders = Order::where('seller_id', $user->id)
-                ->with(['buyer:id,name,email', 'items.product:id,name'])
+                ->with(['buyer:id,name,email', 'items.product:id,name_en,name_mm'])
                 ->select([
                     'id',
                     'order_number',
@@ -4544,7 +4537,9 @@ class SellerController extends Controller
                         'items_count' => $order->items->count(),
                         'products' => $order->items->take(2)->map(function ($item) {
                             return [
-                                'name' => $item->product->name ?? $item->product_name,
+                                'name' => $item->product
+                                    ? ($item->product->name_en ?? $item->product->name_mm ?? $item->product_name)
+                                    : $item->product_name,
                                 'quantity' => $item->quantity,
                                 'price' => $item->price
                             ];

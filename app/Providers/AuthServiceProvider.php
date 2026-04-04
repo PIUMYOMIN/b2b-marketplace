@@ -5,10 +5,10 @@ namespace App\Providers;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 
-// ✅ Add these two lines
 use App\Models\User;
 use Spatie\Permission\Models\Role;
 use App\Policies\UserPolicy;
+use App\Policies\RolePolicy;
 
 class AuthServiceProvider extends ServiceProvider
 {
