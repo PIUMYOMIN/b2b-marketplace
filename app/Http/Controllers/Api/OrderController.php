@@ -713,9 +713,9 @@ class OrderController extends Controller
     /**
      * Confirm order (for sellers)
      */
-    public function confirm($id)
+    public function confirm(Order $order)
     {
-        $order = Order::findOrFail($id);
+        // FIX: route uses {order} model binding — removed findOrFail($id)
 
         $user = Auth::user();
         if ($user->hasRole('seller') && (int) $order->seller_id !== (int) $user->id) {
@@ -1039,4 +1039,24 @@ class OrderController extends Controller
             ]);
         }
     }
+    /**
+     * PATCH /orders/{order}/status — admin-only generic status update.
+     */
+    public function updateStatus(Request $request, Order $order)
+    {
+        $user = Auth::user();
+        if (!$user->hasRole('admin') && $user->type !== 'admin') {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+        $validated = $request->validate([
+            'status' => 'required|in:pending,confirmed,processing,shipped,delivered,cancelled',
+        ]);
+        $order->update(['status' => $validated['status']]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Order status updated.',
+            'data'    => $order->fresh(),
+        ]);
+    }
+
 }
