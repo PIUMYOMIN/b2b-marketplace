@@ -93,18 +93,6 @@ Route::group([
 
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
-        // Public: seller delivery areas (used by ProductCard swipe-up ticker)
-        Route::get('/{seller}/delivery-areas', function (\App\Models\SellerProfile $seller) {
-            $areas = $seller->activeDeliveryAreas()
-                ->select(['state', 'city', 'area_type', 'shipping_fee', 'is_deliverable'])
-                ->get();
-            $states = $areas->pluck('state')->filter()->unique()->values();
-            return response()->json(['success' => true, 'data' => [
-                'states'     => $states,
-                'areas'      => $areas,
-                'nationwide' => $states->isEmpty(),
-            ]]);
-        });
         Route::get('/', [SellerController::class, 'index']);
         Route::get('/{seller}', [SellerController::class, 'show']);
         Route::get('/{seller}/products', [SellerController::class, 'sellerProducts']);
@@ -415,9 +403,6 @@ Route::group([
                 Route::delete('/{id}', [DeliveryAreaController::class, 'destroy']);
             });
 
-            // Delivery fee submission (seller → admin)
-            Route::patch('/deliveries/{id}/submit-fee', [DashboardController::class, 'sellerSubmitDeliveryFee']);
-
             // Shipping settings (separate from general settings)
             Route::prefix('shipping')->group(function () {
                 Route::get('/settings', [SellerController::class, 'getShippingSettings']);
@@ -510,6 +495,8 @@ Route::group([
             Route::post('/{delivery}/status', [DeliveryController::class, 'updateStatus']);
             Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
             Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
+            // Seller submits delivery fee payment to admin
+            Route::patch('/{id}/submit-fee', [DashboardController::class, 'sellerSubmitDeliveryFee']);
         });
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
