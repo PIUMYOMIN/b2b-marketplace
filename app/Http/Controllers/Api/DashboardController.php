@@ -724,57 +724,53 @@ class DashboardController extends Controller
                 ->count();
 
             // Sales data (you'll need to adjust this based on your Order model structure)
+            // seller_id is on orders table — no order_items join needed
             $salesData = DB::table('orders')
-                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
-                ->where('order_items.seller_id', $user->id)
-                ->whereBetween('orders.created_at', [$startDate, $endDate])
+                ->where('seller_id', $user->id)
+                ->whereBetween('created_at', [$startDate, $endDate])
                 ->select(
-                    DB::raw('COUNT(DISTINCT orders.id) as total_orders'),
-                    DB::raw('SUM(order_items.quantity) as total_items_sold'),
-                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue'),
-                    DB::raw('AVG(order_items.price * order_items.quantity) as average_order_value')
+                    DB::raw('COUNT(*) as total_orders'),
+                    DB::raw('COALESCE(SUM(total_amount), 0) as total_revenue'),
+                    DB::raw('COALESCE(AVG(total_amount), 0) as average_order_value')
                 )
                 ->first();
 
-            // Order status counts
+            // Order status counts (direct on orders)
             $orderStatusCounts = DB::table('orders')
-                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
-                ->where('order_items.seller_id', $user->id)
-                ->whereBetween('orders.created_at', [$startDate, $endDate])
-                ->select(
-                    'orders.status',
-                    DB::raw('COUNT(DISTINCT orders.id) as count')
-                )
-                ->groupBy('orders.status')
+                ->where('seller_id', $user->id)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->select('status', DB::raw('COUNT(*) as count'))
+                ->groupBy('status')
                 ->get()
                 ->pluck('count', 'status');
 
             // Recent sales trend (last 7 days)
             $recentSalesTrend = DB::table('orders')
-                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
-                ->where('order_items.seller_id', $user->id)
-                ->where('orders.created_at', '>=', Carbon::now()->subDays(7))
+                ->where('seller_id', $user->id)
+                ->where('created_at', '>=', Carbon::now()->subDays(7))
                 ->select(
-                    DB::raw('DATE(orders.created_at) as date'),
-                    DB::raw('SUM(order_items.price * order_items.quantity) as revenue'),
-                    DB::raw('COUNT(DISTINCT orders.id) as orders_count')
+                    DB::raw('DATE(created_at) as date'),
+                    DB::raw('COALESCE(SUM(total_amount), 0) as revenue'),
+                    DB::raw('COUNT(*) as orders_count')
                 )
                 ->groupBy('date')
                 ->orderBy('date')
                 ->get();
 
             // Top selling products
+            // Join through orders to get seller_id (order_items has no seller_id)
             $topProducts = DB::table('order_items')
+                ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->join('products', 'order_items.product_id', '=', 'products.id')
-                ->where('order_items.seller_id', $user->id)
-                ->whereBetween('order_items.created_at', [$startDate, $endDate])
+                ->where('orders.seller_id', $user->id)
+                ->whereBetween('orders.created_at', [$startDate, $endDate])
                 ->select(
                     'products.id',
-                    'products.name',
-                    DB::raw('SUM(order_items.quantity) as total_sold'),
-                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue')
+                    'products.name_en as name',
+                    DB::raw('COALESCE(SUM(order_items.quantity), 0) as total_sold'),
+                    DB::raw('COALESCE(SUM(order_items.price * order_items.quantity), 0) as total_revenue')
                 )
-                ->groupBy('products.id', 'products.name')
+                ->groupBy('products.id', 'products.name_en')
                 ->orderBy('total_sold', 'desc')
                 ->limit(5)
                 ->get();
@@ -834,20 +830,21 @@ class DashboardController extends Controller
             $limit = $request->input('limit', 5);
             $days = $request->input('days', 30);
 
+            // Join through orders for seller_id — order_items has no seller_id column
             $topProducts = DB::table('order_items')
+                ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->join('products', 'order_items.product_id', '=', 'products.id')
-                ->where('order_items.seller_id', $user->id)
-                ->where('order_items.created_at', '>=', Carbon::now()->subDays($days))
+                ->where('orders.seller_id', $user->id)
+                ->where('orders.created_at', '>=', Carbon::now()->subDays($days))
                 ->select(
                     'products.id',
-                    'products.name',
+                    'products.name_en as name',
                     'products.price',
                     'products.images',
-                    DB::raw('SUM(order_items.quantity) as total_sold'),
-                    DB::raw('SUM(order_items.price * order_items.quantity) as total_revenue'),
-                    DB::raw('AVG(order_items.rating) as average_rating')
+                    DB::raw('COALESCE(SUM(order_items.quantity), 0) as total_sold'),
+                    DB::raw('COALESCE(SUM(order_items.price * order_items.quantity), 0) as total_revenue')
                 )
-                ->groupBy('products.id', 'products.name', 'products.price', 'products.images')
+                ->groupBy('products.id', 'products.name_en', 'products.price', 'products.images')
                 ->orderBy('total_sold', 'desc')
                 ->limit($limit)
                 ->get();
@@ -900,19 +897,18 @@ class DashboardController extends Controller
             $limit = $request->input('limit', 10);
 
             // Adjust this query based on your Order and OrderItem models
+            // seller_id is directly on orders — no order_items join needed
             $recentOrders = DB::table('orders')
-                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
-                ->where('order_items.seller_id', $user->id)
+                ->where('orders.seller_id', $user->id)
                 ->select(
                     'orders.id',
                     'orders.order_number',
                     'orders.status',
                     'orders.total_amount',
                     'orders.created_at',
-                    DB::raw('SUM(order_items.quantity) as total_items'),
-                    DB::raw('GROUP_CONCAT(order_items.product_name) as product_names')
+                    DB::raw('(SELECT COALESCE(SUM(oi.quantity),0) FROM order_items oi WHERE oi.order_id = orders.id) as total_items'),
+                    DB::raw('(SELECT GROUP_CONCAT(oi.product_name SEPARATOR ", ") FROM order_items oi WHERE oi.order_id = orders.id LIMIT 3) as product_names')
                 )
-                ->groupBy('orders.id', 'orders.order_number', 'orders.status', 'orders.total_amount', 'orders.created_at')
                 ->orderBy('orders.created_at', 'desc')
                 ->limit($limit)
                 ->get();

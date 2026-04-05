@@ -93,6 +93,18 @@ Route::group([
 
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
+        // Public: seller delivery areas (used by ProductCard swipe-up ticker)
+        Route::get('/{seller}/delivery-areas', function (\App\Models\SellerProfile $seller) {
+            $areas = $seller->activeDeliveryAreas()
+                ->select(['state', 'city', 'area_type', 'shipping_fee', 'is_deliverable'])
+                ->get();
+            $states = $areas->pluck('state')->filter()->unique()->values();
+            return response()->json(['success' => true, 'data' => [
+                'states'     => $states,
+                'areas'      => $areas,
+                'nationwide' => $states->isEmpty(),
+            ]]);
+        });
         Route::get('/', [SellerController::class, 'index']);
         Route::get('/{seller}', [SellerController::class, 'show']);
         Route::get('/{seller}/products', [SellerController::class, 'sellerProducts']);
