@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\CommissionRateResolver;
 use App\Notifications\OrderPlaced;
+use App\Notifications\OrderDeliveredThankYou;
 use App\Notifications\NewOrderForSeller;
 use App\Models\User as UserModel;
 use App\Models\Coupon;
@@ -850,6 +851,14 @@ class OrderController extends Controller
                 'status'       => 'collected',
                 'collected_at' => now(),
             ]);
+
+        // Send thank-you email to the buyer — fires synchronously so buyer gets it right away
+        try {
+            $order->load('items', 'buyer', 'seller.sellerProfile');
+            $order->buyer->notify(new OrderDeliveredThankYou($order));
+        } catch (\Exception $notifEx) {
+            \Log::warning('OrderDeliveredThankYou notification failed: ' . $notifEx->getMessage());
+        }
 
         return response()->json([
             'success' => true,
