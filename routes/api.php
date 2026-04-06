@@ -167,6 +167,8 @@ Route::group([
                 Route::get('/campaigns/{id}/preview', [NewsletterController::class, 'previewCampaign']);
             });
 
+            Route::get('/financial-report', [RevenueExportController::class, 'adminReport']);
+
             // Commission Rules (admin CRUD)
             // Referral analytics (admin only)
             Route::get('/referrals', [ReferralController::class, 'adminIndex'])->middleware('role:admin');
@@ -301,6 +303,8 @@ Route::group([
             Route::delete('/banner', [SellerController::class, 'removeBanner']);
 
             Route::post('/init-profile', [SellerController::class, 'initProfile']);
+
+            Route::get('/financial-report', [RevenueExportController::class, 'sellerReport']);
 
             Route::prefix('onboarding')->group(function () {
                 // Onboarding Status
