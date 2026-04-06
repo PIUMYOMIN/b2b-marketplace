@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\ReferralController;
+use App\Http\Controllers\Api\WalletController;
 
 
 /*
