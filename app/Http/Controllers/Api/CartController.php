@@ -72,21 +72,37 @@ class CartController extends Controller
                         : ($cachedData['image'] ?? '/placeholder-product.jpg');
 
                     return [
-                        'id' => $item->id,
-                        'product_id' => $item->product_id,
-                        'name' => $productName,
-                        'price' => $productPrice,
-                        'quantity' => (int) $item->quantity,
-                        'image' => $image,
-                        'category' => $categoryName,
-                        'stock' => $stock,
-                        'min_order' => $product && !$product->trashed() ? ($product->min_order ?? 1) : 1,
-                        'is_available'     => $isAvailable,
-                        'is_quantity_valid' => $isAvailable && $item->quantity <= $stock,
-                        'subtotal'          => $productPrice * $item->quantity,
-                        'seller_id'         => $product?->sellerProfile?->user_id,
-                        'seller_name'       => $product?->sellerProfile?->store_name,
-                        'seller_slug'       => $product?->sellerProfile?->store_slug,
+                        'id'                 => $item->id,
+                        'product_id'         => $item->product_id,
+                        'name'               => $productName,
+                        'price'              => $productPrice,
+                        // Effective checkout price (discounted when a sale is active)
+                        'selling_price'      => ($product && !$product->trashed())
+                                                    ? (float) $product->selling_price
+                                                    : $productPrice,
+                        'is_currently_on_sale' => ($product && !$product->trashed())
+                                                    ? (bool) $product->is_currently_on_sale
+                                                    : false,
+                        'discount_percentage'  => ($product && !$product->trashed())
+                                                    ? (float) $product->discount_percentage
+                                                    : 0.0,
+                        'discount_saved'       => ($product && !$product->trashed())
+                                                    ? (float) $product->discount_saved
+                                                    : 0.0,
+                        'quantity'           => (int) $item->quantity,
+                        'image'              => $image,
+                        'category'           => $categoryName,
+                        'stock'              => $stock,
+                        'min_order'          => $product && !$product->trashed() ? ($product->min_order ?? 1) : 1,
+                        'is_available'       => $isAvailable,
+                        'is_quantity_valid'  => $isAvailable && $item->quantity <= $stock,
+                        // subtotal always uses selling_price so the cart total is accurate
+                        'subtotal'           => (($product && !$product->trashed())
+                                                    ? (float) $product->selling_price
+                                                    : $productPrice) * $item->quantity,
+                        'seller_id'          => $product?->sellerProfile?->user_id,
+                        'seller_name'        => $product?->sellerProfile?->store_name,
+                        'seller_slug'        => $product?->sellerProfile?->store_slug,
                     ];
                 })
                 ->filter(function ($item) {
@@ -104,11 +120,11 @@ class CartController extends Controller
                     'subtotal' => $subtotal,
                     'total_items' => $totalItems,
                     'summary' => [
-                        'subtotal'          => $subtotal,
-                        'shipping_fee'      => 5000,       // estimated; finalised at checkout by delivery zone
-                        'platform_fee_rate' => 0.05,
-                        'platform_fee'      => round($subtotal * 0.05, 2),
-                        'total'             => round($subtotal + 5000 + ($subtotal * 0.05), 2)
+                        'subtotal'     => $subtotal,
+                        'shipping_fee' => 5000,       // estimated; finalised at checkout by delivery zone
+                        'tax_rate'     => 0.05,
+                        'tax'          => round($subtotal * 0.05, 2),
+                        'total'        => round($subtotal + 5000 + ($subtotal * 0.05), 2),
                     ]
                 ]
             ]);

@@ -648,20 +648,8 @@ class OrderController extends Controller
         if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
             return response()->json(['success' => false, 'message' => 'Unauthorized to confirm delivery for this order'], 403);
         }
-
-        // If the seller already uploaded delivery proof, the order is already delivered
-        // and the full pipeline has already run. Return success — idempotent.
-        if ($order->status === self::STATUS_DELIVERED) {
-            return response()->json([
-                'success' => true,
-                'message' => __('messages.orders.delivery_confirmed'),
-            ]);
-        }
-
-        // Gate: order must be at shipped (or out_for_delivery on delivery side)
-        // to proceed. Any other status is invalid.
-        if (!in_array($order->status, [self::STATUS_SHIPPED, self::STATUS_PROCESSING, self::STATUS_CONFIRMED])) {
-            return response()->json(['success' => false, 'message' => 'Order cannot be confirmed in its current status.'], 400);
+        if ($order->status !== self::STATUS_SHIPPED) {
+            return response()->json(['success' => false, 'message' => 'Order must be shipped before confirming delivery'], 400);
         }
 
         DB::beginTransaction();

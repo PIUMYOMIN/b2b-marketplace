@@ -173,6 +173,22 @@ Route::group([
             // Referral analytics (admin only)
             Route::get('/referrals', [ReferralController::class, 'adminIndex'])->middleware('role:admin');
 
+            // All seller wallets overview
+            Route::get('wallets', [WalletController::class, 'adminIndex']);
+            Route::get('wallets/{seller}', [WalletController::class, 'adminSellerWallet']);
+        
+            // COD invoice management
+            Route::get('cod-invoices', [WalletController::class, 'adminCodInvoices']);
+            Route::post('cod-invoices/{invoice}/confirm-payment', [WalletController::class, 'adminConfirmCodPayment']);
+            Route::post('cod-invoices/{invoice}/waive', [WalletController::class, 'adminWaiveCodInvoice']);
+        
+            // Delivery fee tracking
+            Route::get('delivery-fees', [WalletController::class, 'deliveryFeeReport']);
+            Route::post('deliveries/{delivery}/collect-fee', [WalletController::class, 'collectDeliveryFee']);
+
+            // Order refund (admin only)
+            Route::post('orders/{order}/refund', [OrderController::class, 'refund']);
+
             // Announcement management (admin only)
             Route::prefix('announcements')->middleware('role:admin')->group(function () {
                 Route::get('/', [AnnouncementController::class, 'adminIndex']);
@@ -364,6 +380,13 @@ Route::group([
                 Route::get('/{id}/discounts', [ProductController::class, 'productDiscounts']);
                 Route::get('/reviews', [ProductReviewController::class, 'sellerReviews']);
             });
+
+            // Wallet summary + recent transactions
+            Route::get('wallet', [WalletController::class, 'sellerSummary']);
+
+            // COD commission invoices for this seller
+            Route::get('cod-invoices', [WalletController::class, 'sellerCodInvoices']);
+            Route::post('cod-invoices/{invoice}/submit-payment', [WalletController::class, 'submitCodPayment']);
 
             Route::prefix('discounts')->group(function () {
                 Route::get('/', [DiscountController::class, 'index']);
