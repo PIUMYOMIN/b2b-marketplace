@@ -23,6 +23,20 @@ return new class extends Migration
             // Platform logistics information (if using platform delivery)
             $table->foreignId('platform_courier_id')->nullable()->constrained('users')->onDelete('cascade');
             $table->decimal('platform_delivery_fee', 10, 2)->default(0);
+            $table->enum('delivery_fee_status', [
+                'not_applicable',
+                'outstanding',
+                'collected',
+            ])->default('not_applicable');
+            $table->timestamp('delivery_fee_collected_at')->nullable();
+            $table->foreignId('delivery_fee_collected_by')
+                ->nullable()
+                ->constrained('users')
+                ->onDelete('set null');
+
+            $table->string('delivery_fee_collection_ref')->nullable()
+                ->comment('Bank transfer ref or receipt number for this payment');
+
             $table->string('assigned_driver_name')->nullable();
             $table->string('assigned_driver_phone')->nullable();
             $table->string('assigned_vehicle_type')->nullable();
@@ -87,6 +101,12 @@ return new class extends Migration
 
             $table->timestamps();
             $table->softDeletes();
+
+            $table->index(['order_id']);
+            $table->index(['supplier_id']);
+            $table->index(['platform_courier_id']);
+            $table->index(['status']);
+            $table->index(['delivery_fee_status']);
         });
     }
 

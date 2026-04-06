@@ -70,6 +70,14 @@ return new class extends Migration
                 'refunded',
             ])->default('pending');
 
+            $table->enum('escrow_status', [
+                'not_applicable',
+                'held',
+                'released',
+                'reversed',
+                'refunded',
+            ])->default('not_applicable');
+
             // Addresses
             $table->json('shipping_address')->nullable();
             $table->json('billing_address')->nullable();
@@ -97,10 +105,12 @@ return new class extends Migration
             ])->default('none');
             $table->decimal('refund_amount', 10, 2)->default(0);
             $table->text('refund_reason')->nullable();
+            $table->foreignId('refund_approved_by')->nullable()->constrained('users')->onDelete('set null');
 
             $table->timestamps();
             $table->softDeletes();
 
+            $table->index(['escrow_status']);
             $table->index(['buyer_id', 'status']);
             $table->index(['seller_id', 'status']);
             $table->index('order_number');
