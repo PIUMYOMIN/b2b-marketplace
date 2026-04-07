@@ -106,6 +106,14 @@ class DeliveryController extends Controller
             $delivery->delivery_address     = $order->shipping_address ?? '';
             $delivery->status               = 'awaiting_pickup';
             $delivery->tracking_number      = $delivery->tracking_number ?? strtoupper(Str::random(12));
+
+            // Set delivery fee status based on method:
+            // 'platform' → fee will be collected from seller → mark outstanding
+            // 'supplier' → seller handles own delivery → not applicable
+            $delivery->delivery_fee_status  = $validated['delivery_method'] === 'platform'
+                ? 'outstanding'
+                : 'not_applicable';
+
             $delivery->save();
 
             return response()->json([
@@ -122,6 +130,11 @@ class DeliveryController extends Controller
     /**
      * Update delivery status.
      * POST /deliveries/{delivery}/status
+     *
+     * When status becomes 'delivered', the full order confirmation pipeline
+     * fires automatically — same as uploadDeliveryProof(). This covers the
+     * platform logistics flow where the admin marks the delivery as delivered
+     * from the PlatformLogistics dashboard (no proof image in that flow).
      */
     public function updateStatus(Request $request, Delivery $delivery)
     {
@@ -143,6 +156,8 @@ class DeliveryController extends Controller
                 'location' => 'nullable|string|max:200',
             ]);
 
+            DB::beginTransaction();
+
             $delivery->update(['status' => $validated['status']]);
 
             $delivery->deliveryUpdates()->create([
@@ -152,12 +167,99 @@ class DeliveryController extends Controller
                 'location' => $validated['location'] ?? null,
             ]);
 
+            // ── When delivery is marked delivered, run the full order
+            //    confirmation pipeline (commission, escrow/COD, order status).
+            //    This is the critical path for platform logistics: the admin
+            //    marks the delivery done and all financials must fire here.
+            $order = null;
+            if ($validated['status'] === 'delivered') {
+                $order = $delivery->order()->with(['buyer', 'seller.sellerProfile', 'items'])->first();
+
+                if ($order && $order->status !== Order::STATUS_DELIVERED) {
+
+                    $order->update([
+                        'status'       => Order::STATUS_DELIVERED,
+                        'delivered_at' => now(),
+                    ]);
+
+                    // Mark commission collected
+                    Commission::where('order_id', $order->id)
+                        ->where('status', 'pending')
+                        ->update(['status' => 'collected', 'collected_at' => now()]);
+
+                    $commission = Commission::where('order_id', $order->id)->first();
+
+                    if ($order->payment_method !== 'cash_on_delivery') {
+                        // Digital payment — release escrow, deduct commission, credit payout
+                        $wallet = SellerWallet::lockForSeller($order->seller_id);
+                        $wallet->releaseEscrow(
+                            escrowAmount:     (float) $order->total_amount,
+                            sellerPayout:     (float) ($commission?->seller_payout
+                                                ?? ($order->subtotal_amount - $order->commission_amount)),
+                            commissionAmount: (float) $order->commission_amount,
+                            orderId:          $order->id,
+                            actorId:          $user->id
+                        );
+                        $order->update(['escrow_status' => 'released']);
+                    } else {
+                        // COD — seller (or platform on behalf) collected cash.
+                        // Raise a commission invoice so platform gets paid.
+                        // Avoid duplicates if an invoice already exists for this order.
+                        $existingInvoice = CodCommissionInvoice::where('order_id', $order->id)->first();
+                        if (!$existingInvoice) {
+                            CodCommissionInvoice::create([
+                                'invoice_number'    => CodCommissionInvoice::generateInvoiceNumber(),
+                                'order_id'          => $order->id,
+                                'seller_id'         => $order->seller_id,
+                                'order_subtotal'    => $order->subtotal_amount,
+                                'commission_rate'   => $order->commission_rate,
+                                'commission_amount' => $order->commission_amount,
+                                'status'            => 'outstanding',
+                                'due_date'          => now()->addDays(7)->toDateString(),
+                                'seller_notes'      => "Commission owed for COD order #{$order->order_number}. "
+                                                     . "Delivered via platform logistics. "
+                                                     . "Please settle within 7 days via bank transfer.",
+                            ]);
+
+                            $wallet = SellerWallet::forSeller($order->seller_id);
+                            $wallet->increment('cod_commission_outstanding', $order->commission_amount);
+                            $wallet->transactions()->create([
+                                'order_id'               => $order->id,
+                                'type'                   => 'cod_invoice',
+                                'amount'                 => -(float) $order->commission_amount,
+                                'escrow_balance_after'   => $wallet->escrow_balance,
+                                'available_balance_after'=> $wallet->available_balance,
+                                'notes'                  => "COD commission invoice raised for order #{$order->order_number} "
+                                                         . "(platform logistics delivery). "
+                                                         . "Amount: {$order->commission_amount} MMK. "
+                                                         . "Due: " . now()->addDays(7)->toDateString(),
+                                'created_by'             => $user->id,
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            DB::commit();
+
+            // Send buyer thank-you email outside the transaction
+            if ($order) {
+                try {
+                    $order->load('items', 'buyer', 'seller.sellerProfile');
+                    $order->buyer->notify(new OrderDeliveredThankYou($order));
+                } catch (\Exception $mailEx) {
+                    Log::warning('OrderDeliveredThankYou failed after updateStatus: '
+                        . $mailEx->getMessage(), ['order_id' => $order->id]);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => __('messages.delivery.status_updated'),
                 'data'    => $delivery->load(['order', 'deliveryUpdates', 'platformCourier']),
             ]);
         } catch (\Exception $e) {
+            DB::rollBack();
             Log::error('Failed to update delivery status: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
