@@ -34,7 +34,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // ── Middleware aliases ─────────────────────────────────────────────────
         // ── Rate limiters ───────────────────────────────────────────────────
         // Named limiters used on sensitive routes. Applied via ->middleware('throttle:reviews')
-        $middleware->throttleWithRedis();  // use Redis if available, else DB
+        // Rate limiting storage: Redis when available. If login/API returns 500,
+        // verify php-redis + Redis server are working, or remove this line to use the default cache store.
+        $middleware->throttleWithRedis();
 
         \Illuminate\Support\Facades\RateLimiter::for('reviews', function ($request) {
             // Max 3 reviews per buyer per hour globally — prevents spam
