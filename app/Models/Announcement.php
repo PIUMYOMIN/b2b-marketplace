@@ -11,7 +11,7 @@ class Announcement extends Model
     use HasFactory;
 
     protected $fillable = [
-        'title', 'content', 'type', 'image',
+        'title', 'content', 'type', 'display_style', 'banner_link_url', 'banner_aspect_ratio', 'image',
         'cta_label', 'cta_url', 'cta_style',
         'badge_label', 'badge_color',
         'target_audience', 'is_active', 'show_once',

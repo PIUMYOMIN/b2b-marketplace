@@ -28,8 +28,6 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
-use App\Http\Controllers\Api\ReferralController;
-use App\Http\Controllers\Api\WalletController;
 
 
 /*
@@ -77,9 +75,6 @@ Route::group([
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
     Route::get('/newsletter/confirm', [NewsletterController::class, 'confirm']);
     Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
-
-    // Referral — validate code (public)
-    Route::post('/referral/validate', [ReferralController::class, 'validate']);
 
     // Announcements (public — visible to all visitors)
     Route::get('/announcements', [AnnouncementController::class, 'index']);
@@ -142,16 +137,6 @@ Route::group([
             Route::get('/recent-orders', [DashboardController::class, 'recentOrders']);
             Route::get('/commission-summary', [DashboardController::class, 'commissionSummary']);
             Route::get('/revenue/export', [RevenueExportController::class, 'adminExport']);
-            Route::get('/revenue-breakdown', [DashboardController::class, 'revenueBreakdown']);
-            Route::patch('/deliveries/{id}/confirm-fee', [DashboardController::class, 'adminConfirmDeliveryFee']);
-            // Pending fee submissions list
-            Route::get('/delivery-fees/pending', function () {
-                $fees = \App\Models\Delivery::whereNotNull('fee_submitted_at')
-                    ->whereNull('fee_confirmed_at')
-                    ->with(['order', 'supplier'])
-                    ->orderByDesc('fee_submitted_at')->get();
-                return response()->json(['success' => true, 'data' => $fees]);
-            })->middleware('role:admin');
             Route::get('/categories', [CategoryController::class, 'indexAdmin'])->middleware('role:admin');
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
@@ -167,31 +152,7 @@ Route::group([
                 Route::get('/campaigns/{id}/preview', [NewsletterController::class, 'previewCampaign']);
             });
 
-            Route::get('/financial-report', [RevenueExportController::class, 'adminReport']);
-
             // Commission Rules (admin CRUD)
-            // Referral analytics (admin only)
-            Route::get('/referrals', [ReferralController::class, 'adminIndex'])->middleware('role:admin');
-
-            // Referral analytics (admin only)
-            Route::get('/referrals', [ReferralController::class, 'adminIndex'])->middleware('role:admin');
-
-            // All seller wallets overview
-            Route::get('wallets', [WalletController::class, 'adminIndex']);
-            Route::get('wallets/{seller}', [WalletController::class, 'adminSellerWallet']);
-        
-            // COD invoice management
-            Route::get('cod-invoices', [WalletController::class, 'adminCodInvoices']);
-            Route::post('cod-invoices/{invoice}/confirm-payment', [WalletController::class, 'adminConfirmCodPayment']);
-            Route::post('cod-invoices/{invoice}/waive', [WalletController::class, 'adminWaiveCodInvoice']);
-        
-            // Delivery fee tracking
-            Route::get('delivery-fees', [WalletController::class, 'deliveryFeeReport']);
-            Route::post('deliveries/{delivery}/collect-fee', [WalletController::class, 'collectDeliveryFee']);
-
-            // Order refund (admin only)
-            Route::post('orders/{order}/refund', [OrderController::class, 'refund']);
-
             // Announcement management (admin only)
             Route::prefix('announcements')->middleware('role:admin')->group(function () {
                 Route::get('/', [AnnouncementController::class, 'adminIndex']);
@@ -247,10 +208,8 @@ Route::group([
             });
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
-                Route::get('/', [BusinessTypeController::class, 'adminIndex']);
                 Route::post('/', [BusinessTypeController::class, 'store']);
                 Route::put('/{id}', [BusinessTypeController::class, 'update']);
-                Route::patch('/{id}/toggle', [BusinessTypeController::class, 'toggleStatus']);
                 Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
             });
 
@@ -303,8 +262,6 @@ Route::group([
             Route::delete('/banner', [SellerController::class, 'removeBanner']);
 
             Route::post('/init-profile', [SellerController::class, 'initProfile']);
-
-            Route::get('/financial-report', [RevenueExportController::class, 'sellerReport']);
 
             Route::prefix('onboarding')->group(function () {
                 // Onboarding Status
@@ -386,13 +343,6 @@ Route::group([
                 Route::get('/reviews', [ProductReviewController::class, 'sellerReviews']);
             });
 
-            // Wallet summary + recent transactions
-            Route::get('wallet', [WalletController::class, 'sellerSummary']);
-
-            // COD commission invoices for this seller
-            Route::get('cod-invoices', [WalletController::class, 'sellerCodInvoices']);
-            Route::post('cod-invoices/{invoice}/submit-payment', [WalletController::class, 'submitCodPayment']);
-
             Route::prefix('discounts')->group(function () {
                 Route::get('/', [DiscountController::class, 'index']);
                 Route::post('/', [DiscountController::class, 'store']);
@@ -454,10 +404,11 @@ Route::group([
 
         Route::prefix('buyer')->middleware('role:buyer')->group(function () {
 
-            // ✅ Product reviews – buyers can submit
+            // ✅ Product reviews – buyers can submit (rate limited: 3/hour)
             Route::prefix('reviews')->group(function () {
                 Route::prefix('product')->group(function () {
-                    Route::post('/{product}', [ProductReviewController::class, 'store']);
+                    Route::post('/{product}', [ProductReviewController::class, 'store'])
+                        ->middleware('throttle:reviews');
                     Route::put('/{review}', [ProductReviewController::class, 'update']);
                     Route::delete('/{review}', [ProductReviewController::class, 'destroy']);
                 });
@@ -495,9 +446,6 @@ Route::group([
             });
         });
 
-        // Referral link (authenticated users)
-        Route::get('/referral/my-link', [ReferralController::class, 'myLink']);
-
         // Notification preferences (all auth users)
         Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
 
@@ -523,7 +471,6 @@ Route::group([
             Route::post('/{delivery}/status', [DeliveryController::class, 'updateStatus']);
             Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
             Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
-            // Seller submits delivery fee payment to admin
             Route::patch('/{id}/submit-fee', [DashboardController::class, 'sellerSubmitDeliveryFee']);
         });
 
@@ -596,7 +543,7 @@ Route::group([
             Route::get('/checkout-fees', [OrderController::class, 'checkoutFees'])->middleware('role:buyer|admin');
             Route::post('/request-otp', [OrderController::class, 'requestOtp'])->middleware('role:buyer|admin');
             Route::post('/verify-otp',  [OrderController::class, 'verifyOtp'])->middleware('role:buyer|admin');
-            Route::post('/', [OrderController::class, 'store'])->middleware('role:buyer|admin');
+            Route::post('/', [OrderController::class, 'store'])->middleware(['role:buyer|admin', 'throttle:checkout']);
             Route::get('/{order}', [OrderController::class, 'show']);
             Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
             Route::patch('/{order}/payment', [OrderController::class, 'updatePayment']);
@@ -607,10 +554,6 @@ Route::group([
                 Route::post('/{order}/process', [OrderController::class, 'process']);
                 Route::post('/{order}/ship', [OrderController::class, 'ship']);
             });
-
-            // Admin-only order status update (generic — covers all statuses)
-            Route::patch('/{order}/status', [OrderController::class, 'updateStatus'])
-                ->middleware('role:admin');
 
             // Buyer order management
             Route::middleware('role:buyer|admin')->group(function () {
@@ -628,7 +571,7 @@ Route::group([
         });
 
         // Follow routes
-        Route::prefix('follow')->middleware('auth:sanctum')->group(function () {
+        Route::prefix('follow')->middleware(['auth:sanctum', 'throttle:follows'])->group(function () {
             Route::post('/seller/{seller}', [FollowController::class, 'followSeller']);
             Route::delete('/seller/{seller}', [FollowController::class, 'unfollowSeller']);
             Route::post('/seller/{seller}/toggle', [FollowController::class, 'toggleFollow']);

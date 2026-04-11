@@ -13,6 +13,9 @@ return new class extends Migration
             $table->string('title');
             $table->text('content')->nullable();
             $table->string('type')->default('announcement');
+            $table->string('display_style')->default('popup_card');
+            $table->string('banner_link_url')->nullable();
+            $table->string('banner_aspect_ratio')->default('16:9');
             $table->string('image')->nullable();
             $table->string('cta_label')->nullable();
             $table->string('cta_url')->nullable();

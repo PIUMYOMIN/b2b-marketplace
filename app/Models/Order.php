@@ -192,6 +192,11 @@ class Order extends Model
     /**
      * Get the order items for the order.
      */
+    public function sellerOrders()
+    {
+        return $this->hasMany(\App\Models\SellerOrder::class);
+    }
+
     public function items()
     {
         return $this->hasMany(OrderItem::class);

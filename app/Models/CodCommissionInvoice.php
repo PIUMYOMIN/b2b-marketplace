@@ -1,96 +1,86 @@
 <?php
+// app/Models/CodCommissionInvoice.php
 
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Carbon\Carbon;
 
 class CodCommissionInvoice extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
-        'invoice_number',
-        'order_id',
-        'seller_id',
-        'order_subtotal',
-        'commission_rate',
-        'commission_amount',
-        'status',
-        'due_date',
-        'paid_at',
-        'payment_reference',
-        'payment_method',
-        'confirmed_by',
-        'confirmed_at',
-        'admin_notes',
-        'seller_notes',
+        'seller_id', 'order_id', 'invoice_number',
+        'order_subtotal', 'commission_rate', 'commission_amount',
+        'status', 'due_date',
+        'paid_at', 'warning_sent_at', 'suspended_at', 'admin_confirmed_at',
+        'confirmed_by', 'payment_reference', 'payment_method',
+        'seller_notes', 'admin_notes',
     ];
 
     protected $casts = [
-        'order_subtotal'    => 'decimal:2',
-        'commission_rate'   => 'decimal:4',
-        'commission_amount' => 'decimal:2',
-        'due_date'          => 'date',
-        'paid_at'           => 'datetime',
-        'confirmed_at'      => 'datetime',
+        'commission_rate'      => 'decimal:4',
+        'commission_amount'    => 'decimal:2',
+        'order_subtotal'       => 'decimal:2',
+        'due_date'             => 'date',
+        'paid_at'              => 'datetime',
+        'warning_sent_at'      => 'datetime',
+        'suspended_at'         => 'datetime',
+        'admin_confirmed_at'   => 'datetime',
     ];
 
     // ── Relationships ──────────────────────────────────────────────────────
 
-    public function order()
-    {
-        return $this->belongsTo(Order::class);
-    }
-
-    public function seller()
+    public function seller(): BelongsTo
     {
         return $this->belongsTo(User::class, 'seller_id');
     }
 
-    public function confirmedByAdmin()
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function confirmedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'confirmed_by');
     }
 
     // ── Scopes ─────────────────────────────────────────────────────────────
 
-    public function scopeOutstanding($q)
+    public function scopeOverdue($query)
     {
-        return $q->whereIn('status', ['outstanding', 'overdue']);
+        return $query->where('status', 'overdue');
     }
 
-    public function scopeOverdue($q)
+    public function scopeOutstanding($query)
     {
-        return $q->where('status', 'outstanding')
-                 ->where('due_date', '<', now()->toDateString());
+        return $query->where('status', 'outstanding');
+    }
+
+    public function scopePending($query)
+    {
+        return $query->whereIn('status', ['outstanding', 'overdue']);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    public function getIsOverdueAttribute(): bool
-    {
-        return $this->status === 'outstanding'
-            && $this->due_date->isPast();
-    }
-
-    public function getStatusLabelAttribute(): string
-    {
-        return match ($this->status) {
-            'outstanding' => $this->is_overdue ? 'Overdue' : 'Outstanding',
-            'paid'        => 'Paid',
-            'overdue'     => 'Overdue',
-            'waived'      => 'Waived',
-            default       => ucfirst($this->status),
-        };
-    }
-
     /**
-     * Generate the next sequential invoice number.
+     * Generate a unique invoice number: COD-{seller_id}-{year}-{padded_id}
+     * Called after create() once ID is available.
      */
-    public static function generateInvoiceNumber(): string
+    public static function generateNumber(int $sellerId, int $id): string
     {
-        $count = static::withTrashed()->count() + 1;
-        return 'COD-INV-' . date('Ymd') . '-' . str_pad($count, 5, '0', STR_PAD_LEFT);
+        return sprintf('COD-%d-%s-%04d', $sellerId, now()->format('Y'), $id);
     }
+
+    public function getDaysOverdueAttribute(): int
+    {
+        if (!$this->due_date || $this->status === 'paid') return 0;
+        return max(0, Carbon::today()->diffInDays($this->due_date, false) * -1);
+    }
+
+    public function isOverdue(): bool  { return $this->status === 'overdue'; }
+    public function isPaid(): bool     { return $this->status === 'paid'; }
+    public function isWaived(): bool   { return $this->status === 'waived'; }
 }

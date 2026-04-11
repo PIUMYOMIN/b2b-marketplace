@@ -36,8 +36,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'verification_code',
         'verification_code_expires_at',
         // Social / OAuth
-        'ref_code',
-        'referred_by',
         'social_id',
         'social_provider',
         // Identity documents
@@ -162,17 +160,13 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->status === 'suspended';
     }
 
+    // COD commission invoice relationship (for enforcement logic)
+    public function codInvoices()
+    {
+        return $this->hasMany(CodCommissionInvoice::class, 'seller_id');
+    }
+
     // Follow relationships
-    public function referredUsers()
-    {
-        return $this->hasMany(User::class, 'referred_by');
-    }
-
-    public function referrer()
-    {
-        return $this->belongsTo(User::class, 'referred_by');
-    }
-
     public function following()
     {
         return $this->hasMany(Follow::class, 'user_id');

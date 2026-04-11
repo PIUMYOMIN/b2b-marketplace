@@ -36,7 +36,7 @@ class FollowController extends Controller
             }
 
             // Prevent following yourself
-            if ($user->id === $seller->id) {
+            if ((int)$user->id === (int)$seller->id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Cannot follow yourself'
@@ -44,7 +44,7 @@ class FollowController extends Controller
             }
 
             // Check if already following
-            if ($user->isFollowing($sellerId)) {
+            if ($user->isFollowing($seller->id)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Already following this seller'
@@ -52,7 +52,7 @@ class FollowController extends Controller
             }
 
             // Create follow relationship
-            $follow = $user->follow($sellerId);
+            $follow = $user->follow($seller->id);
 
             return response()->json([
                 'success' => true,
@@ -146,7 +146,7 @@ class FollowController extends Controller
             }
 
             // Prevent self-follow
-            if ($user->id === $seller->id) {
+            if ((int)$user->id === (int)$seller->id) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Cannot follow yourself'
@@ -174,7 +174,7 @@ class FollowController extends Controller
         } catch (\Exception $e) {
             \Log::error('Toggle follow failed: ' . $e->getMessage(), [
                 'slug'     => $slug,
-                'user_id'  => $user->id ?? null,
+                'user_id'  => isset($user) ? $user->id : null,
                 'trace'    => $e->getTraceAsString()
             ]);
 

@@ -926,4 +926,41 @@ class DashboardController extends Controller
             ], 500);
         }
     }
+    /**
+     * GET /seller/commission-summary
+     */
+    public function sellerCommissionSummary(Request $request)
+    {
+        $user = $request->user();
+        if (!$user->hasRole('seller') && $user->type !== 'seller') {
+            return response()->json(['success' => false, 'message' => 'Sellers only.'], 403);
+        }
+        $totalCommission   = Commission::where('seller_id', $user->id)->sum('amount');
+        $pendingCommission = Commission::where('seller_id', $user->id)->where('status', 'pending')->sum('amount');
+        $paidCommission    = Commission::where('seller_id', $user->id)->whereIn('status', ['collected', 'paid'])->sum('amount');
+        $commissionRate    = Commission::where('seller_id', $user->id)->latest()->value('commission_rate') ?? 0.05;
+        $totalDeliveryFees    = \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->sum('platform_delivery_fee');
+        $pendingDeliveryFees  = \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNull('fee_confirmed_at')->sum('platform_delivery_fee');
+        $confirmedDeliveryFees= \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNotNull('fee_confirmed_at')->sum('platform_delivery_fee');
+        $submittedPending     = \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNotNull('fee_submitted_at')->whereNull('fee_confirmed_at')->sum('platform_delivery_fee');
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'commission' => [
+                    'total'    => (float) $totalCommission,
+                    'pending'  => (float) $pendingCommission,
+                    'paid'     => (float) $paidCommission,
+                    'rate'     => (float) $commissionRate,
+                    'rate_pct' => round($commissionRate * 100, 2),
+                ],
+                'delivery_fees' => [
+                    'total'     => (float) $totalDeliveryFees,
+                    'pending'   => (float) $pendingDeliveryFees,
+                    'confirmed' => (float) $confirmedDeliveryFees,
+                    'submitted_awaiting' => (float) $submittedPending,
+                ],
+            ],
+        ]);
+    }
+
 }

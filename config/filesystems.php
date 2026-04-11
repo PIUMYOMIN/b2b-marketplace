@@ -60,6 +60,24 @@ return [
             'report' => false,
         ],
 
+        // Wasabi S3-compatible storage — Singapore region (ap-southeast-1) is closest to Myanmar.
+        // Wasabi has no egress fees, making it cost-effective for image-heavy workloads.
+        // Set FILESYSTEM_DISK=wasabi once credentials are configured.
+        'wasabi' => [
+            'driver'                  => 's3',
+            'key'                     => env('WASABI_ACCESS_KEY_ID'),
+            'secret'                  => env('WASABI_SECRET_ACCESS_KEY'),
+            'region'                  => env('WASABI_DEFAULT_REGION', 'ap-southeast-1'),
+            'bucket'                  => env('WASABI_BUCKET'),
+            'endpoint'                => env('WASABI_ENDPOINT', 'https://s3.ap-southeast-1.wasabisys.com'),
+            'url'                     => env('WASABI_URL'),          // CDN or direct bucket URL
+            'use_path_style_endpoint' => true,
+            'throw'                   => false,
+            'report'                  => false,
+            'visibility'              => 'public',
+        ],
+
+
     ],
 
     /*

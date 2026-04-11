@@ -26,3 +26,24 @@ Schedule::command('sellers:promote-tiers')
     ->onFailure(function () {
         \Illuminate\Support\Facades\Log::error('sellers:promote-tiers scheduled job failed.');
     });
+
+// Process overdue COD commission invoices — daily at 08:00 Myanmar time (UTC+6:30 = 01:30 UTC)
+Schedule::command('cod:process-overdue')
+    ->dailyAt('01:30')
+    ->withoutOverlapping()
+    ->runInBackground()
+    ->onFailure(function () {
+        \Illuminate\Support\Facades\Log::error('cod:process-overdue scheduled job failed.');
+    });
+
+// Retry failed queue jobs — every hour
+Schedule::command('queue:retry all')
+    ->hourly()
+    ->withoutOverlapping();
+
+// Prune stale cache entries for OTP / idempotency (optional, keeps cache tidy)
+Schedule::command('cache:prune-stale-tags')
+    ->daily()
+    ->onFailure(function () {
+        // Non-critical — silently skip if tags not supported
+    });

@@ -76,7 +76,7 @@ class ProductReviewController extends Controller
                 $query->where('status', $request->status);
             }
             if ($request->has('product_id')) {
-                $query->where('product_id', $request->product_id);
+                $query->where('product_id', $productId);
             }
             if ($request->has('user_id')) {
                 $query->where('user_id', $request->user_id);
@@ -137,6 +137,7 @@ class ProductReviewController extends Controller
      */
     public function store(Request $request, $product)
     {
+        // Normalise $product param — could be model instance or raw id from route
         $productId = is_object($product) ? $product->id : (int) $product;
 
         $validator = Validator::make($request->all(), [
@@ -150,12 +151,6 @@ class ProductReviewController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
-        }
-
-        // Verify product exists
-        $productModel = \App\Models\Product::find($productId);
-        if (!$productModel) {
-            return response()->json(['success' => false, 'message' => 'Product not found.'], 404);
         }
 
         try {
@@ -189,9 +184,9 @@ class ProductReviewController extends Controller
             }
 
             // Update product rating statistics
-            $this->updateProductRating($request->product_id);
+            $this->updateProductRating($productId);
 
-            $updatedProduct = Product::find($request->product_id);
+            $updatedProduct = Product::find($productId);
 
             return response()->json([
                 'success' => true,
@@ -507,7 +502,7 @@ class ProductReviewController extends Controller
         try {
             // Check if user already reviewed this product
             $existingReview = ProductReview::where('user_id', auth()->id())
-                ->where('product_id', $request->product_id)
+                ->where('product_id', $productId)
                 ->first();
 
             if ($existingReview) {
@@ -526,7 +521,7 @@ class ProductReviewController extends Controller
             ]);
 
             // Update product rating statistics
-            $this->updateProductRating($request->product_id);
+            $this->updateProductRating($productId);
 
             return response()->json([
                 'success' => true,
