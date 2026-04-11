@@ -4,6 +4,7 @@ namespace App\Rules;
 
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -25,11 +26,21 @@ class Recaptcha implements ValidationRule
             return;
         }
 
-        $response = Http::timeout(10)->asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-            'secret' => config('services.recaptcha.secret_key'),
-            'response' => $value,
-            'remoteip' => request()->ip(),
-        ]);
+        try {
+            $response = Http::timeout(10)->asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+                'secret' => config('services.recaptcha.secret_key'),
+                'response' => $value,
+                'remoteip' => request()->ip(),
+            ]);
+        } catch (ConnectionException $e) {
+            Log::error('reCAPTCHA HTTP connection failed', ['message' => $e->getMessage()]);
+            $fail('Could not reach verification service. Check your connection and try again.');
+            return;
+        } catch (\Throwable $e) {
+            Log::error('reCAPTCHA HTTP error', ['message' => $e->getMessage()]);
+            $fail('Security verification temporarily unavailable. Please try again.');
+            return;
+        }
 
         $body = $response->json() ?? [];
 

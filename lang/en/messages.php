@@ -16,6 +16,7 @@ return [
         'admin_required'          => 'Unauthorized. Admin access required.',
         'email_already_verified'  => 'Email already verified.',
         'verification_sent'       => 'Verification email resent.',
+        'login_server_error'      => 'Unable to complete login. Please try again in a moment.',
     ],
 
     // ── Orders ────────────────────────────────────────────────────────────────

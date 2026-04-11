@@ -201,46 +201,60 @@ class AuthController extends Controller
             'ref_code' => 'nullable|string|max:12',
         ]);
 
-        $phone = $this->normalizeMyanmarPhone($request->phone);
+        try {
+            $phone = $this->normalizeMyanmarPhone($request->phone);
 
-        if (!$this->isValidMyanmarPhone($phone)) {
+            if (!$this->isValidMyanmarPhone($phone)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.auth.invalid_phone')
+                ], 422);
+            }
+
+            $user = User::where('phone', $phone)->first();
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.auth.invalid_credentials')
+                ], 401);
+            }
+
+            if (!$user->is_active || $user->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.auth.account_inactive')
+                ], 403);
+            }
+
+            // Set token expiration based on remember me
+            $expiration = $request->boolean('remember')
+                ? Carbon::now()->addDays(30)   // 30 days for "remember me"
+                : Carbon::now()->addHours(2);  // 2 hours for normal session
+
+            $token = $user->createToken('auth_token', ['*'], $expiration);
+
+            return response()->json([
+                'success' => true,
+                'message' => __('messages.auth.login_success'),
+                'data' => [
+                    'user' => $user->load('roles'),
+                    'token' => $token->plainTextToken
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('auth.login.failed', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => __('messages.auth.invalid_phone')
-            ], 422);
+                'message' => config('app.debug')
+                    ? $e->getMessage()
+                    : __('messages.auth.login_server_error'),
+            ], 500);
         }
-
-        $user = User::where('phone', $phone)->first();
-
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.auth.invalid_credentials')
-            ], 401);
-        }
-
-        if (!$user->is_active || $user->status !== 'active') {
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.auth.account_inactive')
-            ], 403);
-        }
-
-        // Set token expiration based on remember me
-        $expiration = $request->boolean('remember')
-            ? Carbon::now()->addDays(30)   // 30 days for "remember me"
-            : Carbon::now()->addHours(2);  // 2 hours for normal session
-
-        $token = $user->createToken('auth_token', ['*'], $expiration);
-
-        return response()->json([
-            'success' => true,
-            'message' => __('messages.auth.login_success'),
-            'data' => [
-                'user' => $user->load('roles'),
-                'token' => $token->plainTextToken
-            ]
-        ]);
     }
 
     public function refreshToken(Request $request)
