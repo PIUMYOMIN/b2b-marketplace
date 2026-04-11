@@ -25,7 +25,9 @@ class ShippingSetting extends Model
         'package_weight_unit',
         'default_package_weight',
         'shipping_policy',
-        'return_policy'
+        'return_policy',
+        'default_shipping_fee',
+        'shipping_notes',
     ];
 
     protected $casts = [
@@ -33,6 +35,7 @@ class ShippingSetting extends Model
         'free_shipping_enabled' => 'boolean',
         'international_shipping' => 'boolean',
         'free_shipping_threshold' => 'decimal:2',
+        'default_shipping_fee' => 'decimal:2',
         'default_package_weight' => 'decimal:2',
         'shipping_methods' => 'array',
         'delivery_areas' => 'array',

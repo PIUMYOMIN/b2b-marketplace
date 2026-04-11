@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
+use App\Http\Controllers\Api\ShippingSettingController;
 
 
 /*
@@ -383,9 +384,10 @@ Route::group([
 
             // Shipping settings (separate from general settings)
             Route::prefix('shipping')->group(function () {
-                Route::get('/settings', [SellerController::class, 'getShippingSettings']);
-                Route::put('/settings', [SellerController::class, 'updateShippingSettings']);
-                Route::post('/calculate', [SellerController::class, 'calculateShipping']);
+                Route::get('/settings', [ShippingSettingController::class, 'getShippingSettings']);
+                Route::put('/settings', [ShippingSettingController::class, 'updateShippingSettings']);
+                Route::post('/calculate', [ShippingSettingController::class, 'calculateShipping']);
+                Route::post('/toggle', [ShippingSettingController::class, 'toggleShipping']);
             });
 
             // Settings routes
