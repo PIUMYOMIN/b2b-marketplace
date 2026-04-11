@@ -18,6 +18,7 @@ use App\Notifications\NewUserRegistered;
 use Illuminate\Support\Facades\Notification;
 use Carbon\Carbon;
 use App\Rules\Recaptcha;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -193,15 +194,15 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        $request->validate([
-            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
-            'password' => 'required',
-            'remember' => 'nullable|boolean',
-            'recaptcha_token' => ['required', new Recaptcha],
-            'ref_code' => 'nullable|string|max:12',
-        ]);
-
         try {
+            $request->validate([
+                'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
+                'password' => 'required',
+                'remember' => 'nullable|boolean',
+                'recaptcha_token' => ['required', new Recaptcha],
+                'ref_code' => 'nullable|string|max:12',
+            ]);
+
             $phone = $this->normalizeMyanmarPhone($request->phone);
 
             if (!$this->isValidMyanmarPhone($phone)) {
@@ -242,6 +243,8 @@ class AuthController extends Controller
                     'token' => $token->plainTextToken
                 ]
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('auth.login.failed', [
                 'message' => $e->getMessage(),
