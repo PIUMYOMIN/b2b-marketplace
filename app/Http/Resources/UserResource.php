@@ -27,7 +27,7 @@ class UserResource extends JsonResource
             'profile_photo' => $this->profile_photo
                 ? (str_starts_with($this->profile_photo, 'http')
                     ? $this->profile_photo
-                    : url('storage/' . ltrim($this->profile_photo, '/')))
+                    : asset('storage/' . ltrim($this->profile_photo ?? '', '/')))
                 : null,
             'email_verified_at' => $this->email_verified_at,
             'roles' => $this->whenLoaded('roles', fn() => $this->roles->pluck('name'), []),
