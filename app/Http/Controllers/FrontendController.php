@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\File;
 use App\Models\Product;
 use App\Models\SellerProfile;
 use App\Models\Category;
+use Illuminate\Support\Str;
 
 class FrontendController extends Controller
 {
@@ -56,7 +57,7 @@ class FrontendController extends Controller
 
             if ($product) {
                 $metadata['pageTitle'] = $product->name . ' | Pyonea';
-                $metadata['pageDescription'] = str_limit($product->description, 150);
+                $metadata['pageDescription'] = Str::limit($product->description, 150);
                 $metadata['pageImage'] = $product->primary_image ?? $metadata['pageImage'];
                 $metadata['pageType'] = 'product';
                 $metadata['product'] = $this->formatProductForJsonLd($product);
@@ -77,7 +78,7 @@ class FrontendController extends Controller
 
             if ($seller) {
                 $metadata['pageTitle'] = $seller->store_name . ' | Pyonea';
-                $metadata['pageDescription'] = str_limit($seller->description, 150);
+                $metadata['pageDescription'] = Str::limit($seller->description, 150);
                 $metadata['pageImage'] = $seller->logo ?? $metadata['pageImage'];
                 $metadata['pageType'] = 'profile';
                 $metadata['seller'] = $this->formatSellerForJsonLd($seller);

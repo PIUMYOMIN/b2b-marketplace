@@ -15,4 +15,4 @@ Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 
 // SPA catch-all — FrontendController injects server-side meta tags per route
 Route::get('/{any?}', [FrontendController::class, 'index'])
-    ->where('any', '.*');
+    ->where('any', '^(?!api/).*$');

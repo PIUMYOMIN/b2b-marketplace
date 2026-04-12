@@ -154,13 +154,15 @@
 
   <!-- SPA Assets (resolved dynamically — hash changes on every build) -->
   @php
-    $distJs  = collect(glob(public_path('assets/index-*.js')))->first();
-    $distCss = collect(glob(public_path('assets/index-*.css')))->first();
+    $distJsFiles  = glob(public_path('assets/index-*.js'))  ?: [];
+    $distCssFiles = glob(public_path('assets/index-*.css')) ?: [];
+    $distJs       = count($distJsFiles)  > 0 ? $distJsFiles[0]  : null;
+    $distCss      = count($distCssFiles) > 0 ? $distCssFiles[0] : null;
   @endphp
-  @if($distJs)
+  @if(!empty($distJs))
     <script type="module" crossorigin src="/assets/{{ basename($distJs) }}"></script>
   @endif
-  @if($distCss)
+  @if(!empty($distCss))
     <link rel="stylesheet" crossorigin href="/assets/{{ basename($distCss) }}">
   @endif
 </head>
