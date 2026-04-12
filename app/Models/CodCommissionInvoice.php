@@ -80,6 +80,14 @@ class CodCommissionInvoice extends Model
         return max(0, Carbon::today()->diffInDays($this->due_date, false) * -1);
     }
 
+    public function generateInvoiceNumber(): void
+    {
+        if (!$this->invoice_number) {
+            $this->invoice_number = self::generateNumber($this->seller_id, $this->id);
+            $this->save();
+        }
+    }
+
     public function isOverdue(): bool  { return $this->status === 'overdue'; }
     public function isPaid(): bool     { return $this->status === 'paid'; }
     public function isWaived(): bool   { return $this->status === 'waived'; }
