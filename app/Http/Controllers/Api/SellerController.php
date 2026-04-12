@@ -623,6 +623,9 @@ class SellerController extends Controller
             ], 404);
         }
 
+        // Eager-load user once — prevents multiple lazy loads later in this method
+        $seller->load('user');
+
         // ✅ Load review statistics
         $seller->loadAvg('reviews', 'rating');
         $seller->loadCount('reviews');
@@ -692,13 +695,19 @@ class SellerController extends Controller
             'followers_count' => $followersCount
         ];
 
+        // is_own_store: true when the authenticated user is viewing their own store
+        // Used by the frontend to hide the follow button on your own profile
+        $authUser     = Auth::guard('sanctum')->user();
+        $isOwnStore   = $authUser && (int)$authUser->id === (int)$seller->user_id;
+
         return response()->json([
             'success' => true,
             'data' => [
-                'seller' => $sellerData,
-                'products' => $products,
-                'stats' => $stats,
-                'is_following' => $isFollowing
+                'seller'       => $sellerData,
+                'products'     => $products,
+                'stats'        => $stats,
+                'is_following' => $isFollowing,
+                'is_own_store' => $isOwnStore,
             ]
         ]);
     }

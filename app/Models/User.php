@@ -197,10 +197,10 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function follow($sellerId)
     {
-        if (!$this->isFollowing($sellerId)) {
-            return $this->following()->create(['seller_id' => $sellerId]);
-        }
-        return null;
+        return $this->following()->firstOrCreate(
+            ['seller_id' => $sellerId],
+            ['user_id'   => $this->id]
+        );
     }
 
     public function unfollow($sellerId)
