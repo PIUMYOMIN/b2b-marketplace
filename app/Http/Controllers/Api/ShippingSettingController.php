@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 
 class ShippingSettingController extends Controller
 {
@@ -115,24 +114,22 @@ class ShippingSettingController extends Controller
                 'shipping_rates.express.type' => 'nullable|in:flat_rate,weight_based,price_based',
                 'shipping_rates.express.amount' => 'nullable|numeric|min:0',
 
-                // International Shipping
+                // International Shipping (request may send _enabled; stored as international_shipping)
+                'international_shipping' => 'sometimes|boolean',
                 'international_shipping_enabled' => 'sometimes|boolean',
                 'international_rates' => 'nullable|array',
 
                 // Package Settings
                 'package_weight_unit' => 'sometimes|in:kg,g,lb,oz',
                 'default_package_weight' => 'sometimes|numeric|min:0.01|max:50',
-                'max_package_weight' => 'nullable|numeric|min:0.01|max:100',
-                'max_package_dimensions' => 'nullable|array',
 
                 // Policies
                 'shipping_policy' => 'nullable|string|max:5000',
                 'return_policy' => 'nullable|string|max:5000',
-                'cancellation_policy' => 'nullable|string|max:5000',
 
                 // Delivery Areas
                 'delivery_areas' => 'sometimes|array',
-                'delivery_areas.*.id' => 'nullable|exists:delivery_areas,id',
+                'delivery_areas.*.id' => 'nullable|exists:seller_delivery_areas,id',
                 'delivery_areas.*.city' => 'required|string|max:100',
                 'delivery_areas.*.state' => 'required|string|max:100',
                 'delivery_areas.*.country' => 'required|string|max:100',
@@ -160,7 +157,11 @@ class ShippingSettingController extends Controller
                 ShippingSetting::getDefaultSettings()
             );
 
-            // Update shipping settings
+            $intl = $validated['international_shipping']
+                ?? $validated['international_shipping_enabled']
+                ?? $shippingSetting->international_shipping;
+
+            // Update shipping settings (only columns on shipping_settings / model $fillable)
             $shippingSetting->update([
                 'enabled' => $validated['enabled'] ?? $shippingSetting->enabled,
                 'processing_time' => $validated['processing_time'] ?? $shippingSetting->processing_time,
@@ -169,15 +170,12 @@ class ShippingSettingController extends Controller
                 'free_shipping_threshold' => $validated['free_shipping_threshold'] ?? $shippingSetting->free_shipping_threshold,
                 'shipping_methods' => $validated['shipping_methods'] ?? $shippingSetting->shipping_methods,
                 'shipping_rates' => $validated['shipping_rates'] ?? $shippingSetting->shipping_rates,
-                'international_shipping_enabled' => $validated['international_shipping_enabled'] ?? $shippingSetting->international_shipping_enabled,
+                'international_shipping' => (bool) $intl,
                 'international_rates' => $validated['international_rates'] ?? $shippingSetting->international_rates,
                 'package_weight_unit' => $validated['package_weight_unit'] ?? $shippingSetting->package_weight_unit,
                 'default_package_weight' => $validated['default_package_weight'] ?? $shippingSetting->default_package_weight,
-                'max_package_weight' => $validated['max_package_weight'] ?? $shippingSetting->max_package_weight,
-                'max_package_dimensions' => $validated['max_package_dimensions'] ?? $shippingSetting->max_package_dimensions,
                 'shipping_policy' => $validated['shipping_policy'] ?? $shippingSetting->shipping_policy,
                 'return_policy' => $validated['return_policy'] ?? $shippingSetting->return_policy,
-                'cancellation_policy' => $validated['cancellation_policy'] ?? $shippingSetting->cancellation_policy,
             ]);
 
             // Update seller profile shipping_enabled flag
@@ -187,7 +185,7 @@ class ShippingSettingController extends Controller
 
             // Sync delivery areas if provided
             if (isset($validated['delivery_areas'])) {
-                $this->syncDeliveryAreas($sellerProfile->id, $validated['delivery_areas']);
+                $this->syncDeliveryAreas($sellerProfile->id, (int) $sellerProfile->user_id, $validated['delivery_areas']);
             }
 
             Log::info('Shipping settings updated', [
@@ -214,52 +212,28 @@ class ShippingSettingController extends Controller
     /**
      * Sync delivery areas for seller
      */
-    private function syncDeliveryAreas($sellerProfileId, $deliveryAreas)
+    private function syncDeliveryAreas(int $sellerProfileId, int $userId, array $deliveryAreas): void
     {
         $existingIds = [];
 
         foreach ($deliveryAreas as $area) {
-            if (isset($area['id'])) {
-                // Update existing delivery area
+            $row = $this->mapAreaPayloadToRow($area, $sellerProfileId, $userId);
+
+            if (!empty($area['id'])) {
                 $deliveryArea = DeliveryArea::where('id', $area['id'])
                     ->where('seller_profile_id', $sellerProfileId)
                     ->first();
 
                 if ($deliveryArea) {
-                    $deliveryArea->update([
-                        'city' => $area['city'],
-                        'state' => $area['state'],
-                        'country' => $area['country'],
-                        'zip_codes' => $area['zip_codes'] ?? null,
-                        'delivery_time' => $area['delivery_time'],
-                        'shipping_method' => $area['shipping_method'],
-                        'rate' => $area['rate'],
-                        'min_order_amount' => $area['min_order_amount'] ?? 0,
-                        'is_active' => $area['is_active'] ?? true,
-                        'sort_order' => $area['sort_order'] ?? 0,
-                    ]);
-                    $existingIds[] = $area['id'];
+                    $deliveryArea->update($row);
+                    $existingIds[] = (int) $deliveryArea->id;
                 }
             } else {
-                // Create new delivery area
-                $deliveryArea = DeliveryArea::create([
-                    'seller_profile_id' => $sellerProfileId,
-                    'city' => $area['city'],
-                    'state' => $area['state'],
-                    'country' => $area['country'],
-                    'zip_codes' => $area['zip_codes'] ?? null,
-                    'delivery_time' => $area['delivery_time'],
-                    'shipping_method' => $area['shipping_method'],
-                    'rate' => $area['rate'],
-                    'min_order_amount' => $area['min_order_amount'] ?? 0,
-                    'is_active' => $area['is_active'] ?? true,
-                    'sort_order' => $area['sort_order'] ?? 0,
-                ]);
-                $existingIds[] = $deliveryArea->id;
+                $deliveryArea = DeliveryArea::create($row);
+                $existingIds[] = (int) $deliveryArea->id;
             }
         }
 
-        // Delete delivery areas not in the current list
         DeliveryArea::where('seller_profile_id', $sellerProfileId)
             ->whereNotIn('id', $existingIds)
             ->delete();
@@ -278,9 +252,67 @@ class ShippingSettingController extends Controller
             'unique_cities' => $deliveryAreas->pluck('city')->unique()->count(),
             'unique_states' => $deliveryAreas->pluck('state')->unique()->count(),
             'unique_countries' => $deliveryAreas->pluck('country')->unique()->count(),
-            'average_rate' => $activeAreas->avg('rate') ?? 0,
-            'min_rate' => $activeAreas->min('rate') ?? 0,
-            'max_rate' => $activeAreas->max('rate') ?? 0,
+            'average_rate' => $activeAreas->avg('shipping_fee') ?? 0,
+            'min_rate' => $activeAreas->min('shipping_fee') ?? 0,
+            'max_rate' => $activeAreas->max('shipping_fee') ?? 0,
+        ];
+    }
+
+    /**
+     * Parse strings like "3-5 days" or "2" into [min, max] day integers.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function parseDeliveryTimeRange(?string $deliveryTime): array
+    {
+        if (!$deliveryTime) {
+            return [2, 5];
+        }
+        if (preg_match('/(\d+)\s*-\s*(\d+)/', $deliveryTime, $m)) {
+            return [(int) $m[1], (int) $m[2]];
+        }
+        if (preg_match('/(\d+)/', $deliveryTime, $m)) {
+            $n = (int) $m[1];
+
+            return [$n, $n];
+        }
+
+        return [2, 5];
+    }
+
+    /**
+     * Map simplified API fields to seller_delivery_areas columns.
+     */
+    private function mapAreaPayloadToRow(array $area, int $sellerProfileId, int $userId): array
+    {
+        $method = $area['shipping_method'] ?? 'standard';
+        [$minDays, $maxDays] = $this->parseDeliveryTimeRange($area['delivery_time'] ?? null);
+
+        $zip = $area['zip_codes'] ?? $area['postal_code'] ?? null;
+        if (is_string($zip) && str_contains($zip, ',')) {
+            $zip = trim(explode(',', $zip, 2)[0]);
+        }
+        $zip = $zip !== null && $zip !== '' ? substr($zip, 0, 20) : null;
+
+        $fee = $area['rate'] ?? $area['shipping_fee'] ?? 0;
+
+        return [
+            'seller_profile_id' => $sellerProfileId,
+            'user_id' => $userId,
+            'area_type' => 'city',
+            'country' => $area['country'],
+            'state' => $area['state'],
+            'city' => $area['city'],
+            'postal_code' => $zip,
+            'is_deliverable' => true,
+            'shipping_fee' => $fee,
+            'estimated_delivery_days_min' => $minDays,
+            'estimated_delivery_days_max' => max($minDays, $maxDays),
+            'standard_shipping_available' => in_array($method, ['standard', 'express', 'next_day', 'pickup'], true),
+            'express_shipping_available' => in_array($method, ['express', 'next_day'], true),
+            'pickup_available' => $method === 'pickup',
+            'is_active' => $area['is_active'] ?? true,
+            'sort_order' => $area['sort_order'] ?? 0,
         ];
     }
 
@@ -292,15 +324,21 @@ class ShippingSettingController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'seller_id' => 'required|exists:seller_profiles,user_id',
-                'items' => 'required|array',
-                'items.*.product_id' => 'required|exists:products,id',
-                'items.*.quantity' => 'required|integer|min:1',
+                'items' => 'nullable|array',
+                'items.*.product_id' => 'required_with:items|exists:products,id',
+                'items.*.quantity' => 'required_with:items|integer|min:1',
                 'items.*.weight' => 'nullable|numeric|min:0',
                 'items.*.dimensions' => 'nullable|array',
-                'delivery_address.city' => 'required|string|max:100',
-                'delivery_address.state' => 'required|string|max:100',
-                'delivery_address.country' => 'required|string|max:100',
+                'items_count' => 'nullable|integer|min:1',
+                'delivery_address' => 'nullable|array',
+                'delivery_address.city' => 'nullable|string|max:100',
+                'delivery_address.state' => 'nullable|string|max:100',
+                'delivery_address.country' => 'nullable|string|max:100',
                 'delivery_address.zip_code' => 'nullable|string|max:20',
+                'delivery_city' => 'nullable|string|max:100',
+                'delivery_state' => 'nullable|string|max:100',
+                'delivery_country' => 'nullable|string|max:100',
+                'delivery_zip_code' => 'nullable|string|max:20',
                 'shipping_method' => 'sometimes|in:standard,express,next_day,pickup',
                 'total_amount' => 'required|numeric|min:0',
             ]);
@@ -313,6 +351,23 @@ class ShippingSettingController extends Controller
             }
 
             $validated = $validator->validated();
+
+            $addr = $validated['delivery_address'] ?? [];
+            if (($addr['city'] ?? '') === '' && ($validated['delivery_city'] ?? '') !== '') {
+                $addr = [
+                    'city' => $validated['delivery_city'],
+                    'state' => $validated['delivery_state'] ?? '',
+                    'country' => $validated['delivery_country'] ?? '',
+                    'zip_code' => $validated['delivery_zip_code'] ?? null,
+                ];
+            }
+
+            if (($addr['city'] ?? '') === '' || ($addr['state'] ?? '') === '' || ($addr['country'] ?? '') === '') {
+                return response()->json([
+                    'success' => false,
+                    'errors' => ['delivery' => ['City, state, and country are required for shipping calculation.']],
+                ], 422);
+            }
 
             $sellerProfile = SellerProfile::where('user_id', $validated['seller_id'])->first();
 
@@ -348,9 +403,9 @@ class ShippingSettingController extends Controller
 
             // Check if delivery area is covered
             $deliveryArea = DeliveryArea::where('seller_profile_id', $sellerProfile->id)
-                ->where('city', $validated['delivery_address']['city'])
-                ->where('state', $validated['delivery_address']['state'])
-                ->where('country', $validated['delivery_address']['country'])
+                ->where('city', $addr['city'])
+                ->where('state', $addr['state'])
+                ->where('country', $addr['country'])
                 ->where('is_active', true)
                 ->first();
 
@@ -364,10 +419,9 @@ class ShippingSettingController extends Controller
                 ]);
             }
 
-            // Check zip code if specified
-            if ($deliveryArea->zip_codes && $validated['delivery_address']['zip_code']) {
-                $zipCodes = explode(',', $deliveryArea->zip_codes);
-                if (!in_array($validated['delivery_address']['zip_code'], $zipCodes)) {
+            if (!empty($addr['zip_code']) && $deliveryArea->postal_code) {
+                $zipCodes = array_map('trim', explode(',', $deliveryArea->postal_code));
+                if (!in_array($addr['zip_code'], $zipCodes, true)) {
                     return response()->json([
                         'success' => true,
                         'data' => [
@@ -378,23 +432,6 @@ class ShippingSettingController extends Controller
                 }
             }
 
-            // Check minimum order amount
-            if (
-                $deliveryArea->min_order_amount > 0 &&
-                $validated['total_amount'] < $deliveryArea->min_order_amount
-            ) {
-                return response()->json([
-                    'success' => true,
-                    'data' => [
-                        'shipping_available' => true,
-                        'minimum_order_required' => true,
-                        'minimum_amount' => $deliveryArea->min_order_amount,
-                        'current_amount' => $validated['total_amount'],
-                        'message' => 'Minimum order amount not met for shipping'
-                    ]
-                ]);
-            }
-
             // Check if free shipping applies
             $isFreeShipping = false;
             if ($shippingSetting->free_shipping_enabled && $shippingSetting->free_shipping_threshold) {
@@ -403,26 +440,37 @@ class ShippingSettingController extends Controller
                 }
             }
 
+            // Per-area free shipping threshold (optional)
+            if (
+                !$isFreeShipping
+                && $deliveryArea->free_shipping_threshold
+                && $validated['total_amount'] >= $deliveryArea->free_shipping_threshold
+            ) {
+                $isFreeShipping = true;
+            }
+
             // Calculate shipping cost
             $shippingCost = 0;
-            $shippingMethod = $validated['shipping_method'] ?? $deliveryArea->shipping_method;
+            $defaultMethod = $deliveryArea->pickup_available ? 'pickup' : 'standard';
+            if ($deliveryArea->express_shipping_available && !$deliveryArea->standard_shipping_available) {
+                $defaultMethod = 'express';
+            }
+            $shippingMethod = $validated['shipping_method'] ?? $defaultMethod;
 
             if (!$isFreeShipping) {
-                $shippingCost = $deliveryArea->rate;
+                $shippingCost = (float) $deliveryArea->shipping_fee;
 
                 // Apply additional calculations based on shipping method
                 if (isset($shippingSetting->shipping_rates[$shippingMethod])) {
                     $rateConfig = $shippingSetting->shipping_rates[$shippingMethod];
 
-                    if ($rateConfig['type'] === 'weight_based') {
-                        // Calculate total weight
+                    if (($rateConfig['type'] ?? '') === 'weight_based' && !empty($validated['items'])) {
                         $totalWeight = 0;
                         foreach ($validated['items'] as $item) {
                             $weight = $item['weight'] ?? $shippingSetting->default_package_weight;
                             $totalWeight += $weight * $item['quantity'];
                         }
 
-                        // Calculate weight-based cost
                         $shippingCost += $this->calculateWeightBasedCost($totalWeight, $rateConfig);
                     }
                 }
@@ -442,7 +490,8 @@ class ShippingSettingController extends Controller
                     'delivery_area' => [
                         'city' => $deliveryArea->city,
                         'state' => $deliveryArea->state,
-                        'country' => $deliveryArea->country
+                        'country' => $deliveryArea->country,
+                        'postal_code' => $deliveryArea->postal_code,
                     ],
                     'estimated_delivery' => $estimatedDelivery,
                     'currency' => 'MMK'
@@ -526,11 +575,11 @@ class ShippingSettingController extends Controller
                 break;
         }
 
-        // Parse delivery area time (e.g., "1-2 days", "3-5 business days")
         $areaDeliveryDays = 2;
-        if ($deliveryArea->delivery_time) {
-            preg_match('/(\d+)/', $deliveryArea->delivery_time, $matches);
-            $areaDeliveryDays = isset($matches[1]) ? (int) $matches[1] : 2;
+        if ($deliveryArea->estimated_delivery_days_max !== null) {
+            $areaDeliveryDays = (int) $deliveryArea->estimated_delivery_days_max;
+        } elseif ($deliveryArea->estimated_delivery_days_min !== null) {
+            $areaDeliveryDays = (int) $deliveryArea->estimated_delivery_days_min;
         }
 
         // Calculate total days
@@ -554,7 +603,8 @@ class ShippingSettingController extends Controller
             'business_days' => $daysAdded,
             'formatted' => $deliveryDate->format('F j, Y'),
             'processing_time' => $shippingSetting->processing_time,
-            'delivery_time' => $deliveryArea->delivery_time,
+            'estimated_delivery_days_min' => $deliveryArea->estimated_delivery_days_min,
+            'estimated_delivery_days_max' => $deliveryArea->estimated_delivery_days_max,
             'shipping_method' => $shippingMethod
         ];
     }
@@ -766,11 +816,13 @@ class ShippingSettingController extends Controller
                     return $stateAreas->map(function ($area) {
                         return [
                             'city' => $area->city,
-                            'zip_codes' => $area->zip_codes ? explode(',', $area->zip_codes) : [],
-                            'delivery_time' => $area->delivery_time,
-                            'rate' => $area->rate,
-                            'shipping_method' => $area->shipping_method,
-                            'min_order_amount' => $area->min_order_amount
+                            'postal_code' => $area->postal_code,
+                            'estimated_delivery_days_min' => $area->estimated_delivery_days_min,
+                            'estimated_delivery_days_max' => $area->estimated_delivery_days_max,
+                            'shipping_fee' => $area->shipping_fee,
+                            'standard_shipping_available' => $area->standard_shipping_available,
+                            'express_shipping_available' => $area->express_shipping_available,
+                            'pickup_available' => $area->pickup_available,
                         ];
                     });
                 });
@@ -849,9 +901,9 @@ class ShippingSettingController extends Controller
             }
 
             // Check zip code if specified
-            if ($deliveryArea->zip_codes && $validated['zip_code']) {
-                $zipCodes = explode(',', $deliveryArea->zip_codes);
-                if (!in_array($validated['zip_code'], $zipCodes)) {
+            if ($deliveryArea->postal_code && $validated['zip_code']) {
+                $zipCodes = array_map('trim', explode(',', $deliveryArea->postal_code));
+                if (!in_array($validated['zip_code'], $zipCodes, true)) {
                     return response()->json([
                         'success' => true,
                         'data' => [
@@ -870,15 +922,16 @@ class ShippingSettingController extends Controller
                         'city' => $deliveryArea->city,
                         'state' => $deliveryArea->state,
                         'country' => $deliveryArea->country,
-                        'delivery_time' => $deliveryArea->delivery_time,
-                        'rate' => $deliveryArea->rate,
-                        'shipping_method' => $deliveryArea->shipping_method,
-                        'min_order_amount' => $deliveryArea->min_order_amount
+                        'postal_code' => $deliveryArea->postal_code,
+                        'shipping_fee' => $deliveryArea->shipping_fee,
+                        'estimated_delivery_days_min' => $deliveryArea->estimated_delivery_days_min,
+                        'estimated_delivery_days_max' => $deliveryArea->estimated_delivery_days_max,
                     ],
                     'estimated_delivery' => $this->getEstimatedDelivery(
-                        ShippingSetting::where('seller_profile_id', $sellerProfile->id)->first(),
+                        ShippingSetting::firstWhere('seller_profile_id', $sellerProfile->id)
+                            ?? new ShippingSetting(ShippingSetting::getDefaultSettings()),
                         $deliveryArea,
-                        $deliveryArea->shipping_method
+                        $deliveryArea->pickup_available ? 'pickup' : 'standard'
                     )
                 ]
             ]);

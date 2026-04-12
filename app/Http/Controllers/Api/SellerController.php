@@ -4972,6 +4972,8 @@ class SellerController extends Controller
                 'international_rates' => 'nullable|array',
                 'package_weight_unit' => 'sometimes|in:kg,g,lb,oz',
                 'default_package_weight' => 'sometimes|numeric|min:0.01',
+                'default_shipping_fee' => 'nullable|numeric|min:0',
+                'shipping_notes' => 'nullable|string|max:500',
                 'shipping_policy' => 'nullable|string|max:2000',
                 'return_policy' => 'nullable|string|max:2000'
             ]);

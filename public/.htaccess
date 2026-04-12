@@ -1,6 +1,3 @@
-# /var/www/html/myanmar-b2b/public/.htaccess
-# Laravel backend — api.pyonea.com
-
 <IfModule mod_rewrite.c>
     Options +FollowSymLinks
     <IfModule mod_negotiation.c>
@@ -9,13 +6,7 @@
 
     RewriteEngine On
 
-    # ── CORS: handle OPTIONS preflight at Apache level ─────────────────────
-    # Apache must answer OPTIONS BEFORE the request reaches PHP.
-    # Without this, Apache returns 403 on preflight and PHP never runs.
-    RewriteCond %{REQUEST_METHOD} ^OPTIONS$
-    RewriteRule .* - [R=200,L]
-
-    # Handle Authorization Header (some Apache configs strip it)
+    # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
@@ -23,30 +14,13 @@
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
 
-    # Redirect Trailing Slashes
+    # Redirect Trailing Slashes If Not A Folder...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
 
-    # Route all requests to index.php
+    # Send Requests To Front Controller...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
-</IfModule>
-
-# ── CORS headers at Apache level ──────────────────────────────────────────
-# Belt-and-suspenders: these fire even if PHP returns a 500 error.
-# A 500 from Laravel has no CORS headers — the browser shows "CORS blocked"
-# even though the real error is something else entirely.
-<IfModule mod_headers.c>
-    # Dynamically echo back the Origin if it matches pyonea.com
-    SetEnvIf Origin "^https://(www\.)?pyonea\.com$" PYONEA_ORIGIN=$0
-    SetEnvIf Origin "^http://localhost:\d+$"        PYONEA_ORIGIN=$0
-    SetEnvIf Origin "^http://127\.0\.0\.1:\d+$"     PYONEA_ORIGIN=$0
-
-    Header always set Access-Control-Allow-Origin    "%{PYONEA_ORIGIN}e" env=PYONEA_ORIGIN
-    Header always set Access-Control-Allow-Methods   "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    Header always set Access-Control-Allow-Headers   "Content-Type, Authorization, Accept, X-Requested-With, X-Idempotency-Key, X-CSRF-TOKEN"
-    Header always set Access-Control-Max-Age         "86400"
-    Header always set Vary                           "Origin"
 </IfModule>

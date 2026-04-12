@@ -419,9 +419,6 @@ class OrderController extends Controller
 
                 // Resolve commission rate via priority chain:
                 // account_level (tier) → business_type → category → default (5%)
-                // Pass a stub Order with seller_id so the resolver can load the seller profile.
-                // Items are resolved from $sellerItems directly inside the resolver stub.
-                $stubOrder = new Order(['seller_id' => $sellerId]);
                 $resolved = app(CommissionRateResolver::class)->resolveForSeller($sellerId, $sellerItems);
                 $commissionRate = $resolved['rate'];
                 $taxRate = 0.05;
@@ -529,24 +526,15 @@ class OrderController extends Controller
             // This gives each seller an independent sub-order with their own
             // status, shipping, and order number — without splitting the buyer's receipt.
             foreach ($orders as $idx => $order) {
-                $sellerItems = collect($validatedItems)
-                    ->filter(fn($item) => (int)($item['seller_id'] ?? 0) === (int)$order->seller_id);
-
-                $sellerSubtotal  = $sellerItems->sum(fn($i) => $i['price'] * $i['quantity']);
-                $sellerShipFee   = $sellerShippingFees[$order->seller_id] ?? 0;
-                $sellerTax       = round($sellerSubtotal * $TAX_RATE, 2);
-                $sellerCommRate  = $commissionRates[$order->seller_id] ?? $TAX_RATE;
-                $sellerComm      = round($sellerSubtotal * $sellerCommRate, 2);
-
                 SellerOrder::firstOrCreate(
                     ['order_id' => $order->id, 'seller_id' => $order->seller_id],
                     [
                         'order_number'      => SellerOrder::generateNumber($order->order_number, $idx),
-                        'subtotal_amount'   => $sellerSubtotal,
-                        'shipping_fee'      => $sellerShipFee,
-                        'tax_amount'        => $sellerTax,
-                        'commission_amount' => $sellerComm,
-                        'total_amount'      => $sellerSubtotal + $sellerShipFee + $sellerTax,
+                        'subtotal_amount'   => $order->subtotal_amount,
+                        'shipping_fee'      => $order->shipping_fee,
+                        'tax_amount'        => $order->tax_amount,
+                        'commission_amount' => $order->commission_amount,
+                        'total_amount'      => $order->total_amount,
                         'delivery_method'   => 'seller',
                         'status'            => 'pending',
                         'payment_method'    => $request->input('payment_method'),
@@ -929,7 +917,7 @@ class OrderController extends Controller
                 'collected_at' => now(),
             ]);
 
-                try {
+        try {
             $order->load('items', 'buyer', 'seller.sellerProfile');
             $order->buyer->notify(new OrderDeliveredThankYou($order));
         } catch (\Exception $notifEx) {

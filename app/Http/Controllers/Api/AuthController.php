@@ -18,7 +18,6 @@ use App\Notifications\NewUserRegistered;
 use Illuminate\Support\Facades\Notification;
 use Carbon\Carbon;
 use App\Rules\Recaptcha;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -194,70 +193,54 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        try {
-            $request->validate([
-                'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
-                'password' => 'required',
-                'remember' => 'nullable|boolean',
-                'recaptcha_token' => ['required', new Recaptcha],
-                'ref_code' => 'nullable|string|max:12',
-            ]);
+        $request->validate([
+            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
+            'password' => 'required',
+            'remember' => 'nullable|boolean',
+            'recaptcha_token' => ['required', new Recaptcha],
+            'ref_code' => 'nullable|string|max:12',
+        ]);
 
-            $phone = $this->normalizeMyanmarPhone($request->phone);
+        $phone = $this->normalizeMyanmarPhone($request->phone);
 
-            if (!$this->isValidMyanmarPhone($phone)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => __('messages.auth.invalid_phone')
-                ], 422);
-            }
-
-            $user = User::where('phone', $phone)->first();
-
-            if (!$user || !Hash::check($request->password, $user->password)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => __('messages.auth.invalid_credentials')
-                ], 401);
-            }
-
-            if (!$user->is_active || $user->status !== 'active') {
-                return response()->json([
-                    'success' => false,
-                    'message' => __('messages.auth.account_inactive')
-                ], 403);
-            }
-
-            // Set token expiration based on remember me
-            $expiration = $request->boolean('remember')
-                ? Carbon::now()->addDays(30)   // 30 days for "remember me"
-                : Carbon::now()->addHours(2);  // 2 hours for normal session
-
-            $token = $user->createToken('auth_token', ['*'], $expiration);
-
-            return response()->json([
-                'success' => true,
-                'message' => __('messages.auth.login_success'),
-                'data' => [
-                    'user' => $user->load('roles'),
-                    'token' => $token->plainTextToken
-                ]
-            ]);
-        } catch (ValidationException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            Log::error('auth.login.failed', [
-                'message' => $e->getMessage(),
-                'exception' => get_class($e),
-            ]);
-
+        if (!$this->isValidMyanmarPhone($phone)) {
             return response()->json([
                 'success' => false,
-                'message' => config('app.debug')
-                    ? $e->getMessage()
-                    : __('messages.auth.login_server_error'),
-            ], 500);
+                'message' => __('messages.auth.invalid_phone')
+            ], 422);
         }
+
+        $user = User::where('phone', $phone)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.auth.invalid_credentials')
+            ], 401);
+        }
+
+        if (!$user->is_active || $user->status !== 'active') {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.auth.account_inactive')
+            ], 403);
+        }
+
+        // Set token expiration based on remember me
+        $expiration = $request->boolean('remember')
+            ? Carbon::now()->addDays(30)   // 30 days for "remember me"
+            : Carbon::now()->addHours(2);  // 2 hours for normal session
+
+        $token = $user->createToken('auth_token', ['*'], $expiration);
+
+        return response()->json([
+            'success' => true,
+            'message' => __('messages.auth.login_success'),
+            'data' => [
+                'user' => $user->load('roles'),
+                'token' => $token->plainTextToken
+            ]
+        ]);
     }
 
     public function refreshToken(Request $request)

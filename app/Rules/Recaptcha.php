@@ -4,9 +4,7 @@ namespace App\Rules;
 
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class Recaptcha implements ValidationRule
 {
@@ -15,41 +13,15 @@ class Recaptcha implements ValidationRule
      */
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (empty(config('services.recaptcha.secret_key'))) {
-            Log::error('reCAPTCHA secret_key is not configured (services.recaptcha.secret_key).');
-            $fail('Security verification is not configured. Please contact support.');
-            return;
-        }
+        $response = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+            'secret' => config('services.recaptcha.secret_key'),
+            'response' => $value,
+            'remoteip' => request()->ip(),
+        ]);
 
-        if (!is_string($value) || $value === '') {
-            $fail('The reCAPTCHA verification failed. Please try again.');
-            return;
-        }
-
-        try {
-            $response = Http::timeout(10)->asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-                'secret' => config('services.recaptcha.secret_key'),
-                'response' => $value,
-                'remoteip' => request()->ip(),
-            ]);
-        } catch (ConnectionException $e) {
-            Log::error('reCAPTCHA HTTP connection failed', ['message' => $e->getMessage()]);
-            $fail('Could not reach verification service. Check your connection and try again.');
-            return;
-        } catch (\Throwable $e) {
-            Log::error('reCAPTCHA HTTP error', ['message' => $e->getMessage()]);
-            $fail('Security verification temporarily unavailable. Please try again.');
-            return;
-        }
-
-        $body = $response->json() ?? [];
+        $body = $response->json();
 
         if (!($body['success'] ?? false)) {
-            $codes = $body['error-codes'] ?? [];
-            Log::warning('reCAPTCHA siteverify failed', [
-                'error_codes' => $codes,
-                'http_status' => $response->status(),
-            ]);
             $fail('The reCAPTCHA verification failed. Please try again.');
             return;
         }

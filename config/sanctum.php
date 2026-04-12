@@ -15,18 +15,11 @@ return [
     |
     */
 
-    /*
-     * NOTE: If SANCTUM_STATEFUL_DOMAINS is set to an empty string in .env,
-     * env() returns '' (not the default). explode(',', '') yields [''] which
-     * can confuse Sanctum domain checks. Filter empties; treat '' as "none".
-     */
-    'stateful' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', (string) (env('SANCTUM_STATEFUL_DOMAINS') ?? sprintf(
-            '%s%s',
-            'localhost,localhost:5176,127.0.0.1,127.0.0.1:8000,::1',
-            Sanctum::currentApplicationUrlWithPort(),
-        )))
+    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
+        '%s%s',
+        'localhost,localhost:5176,127.0.0.1,127.0.0.1:8000,::1',
+        Sanctum::currentApplicationUrlWithPort(),
+        // Sanctum::currentRequestHost(),
     ))),
 
     /*
