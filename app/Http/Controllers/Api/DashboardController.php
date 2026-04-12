@@ -1299,7 +1299,7 @@ class DashboardController extends Controller
             default => '%Y-%m-%d',
         };
 
-        $trOrder::whereBetween('created_at', [$start, $end])
+        $trendOrders = Order::whereBetween('created_at', [$start, $end])
             ->where('status', 'delivered')
             ->selectRaw("DATE_FORMAT(created_at, '{$groupFmt}') as period,
                 COUNT(*) as orders,
