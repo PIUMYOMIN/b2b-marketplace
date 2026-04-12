@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
+use App\Http\Controllers\Api\WalletController;
 
 
 /*
@@ -258,6 +259,24 @@ Route::group([
                 Route::put('/{id}/read', [ContactMessageController::class, 'markAsRead']);
                 Route::delete('/{id}', [ContactMessageController::class, 'destroy']);
             });
+
+            // ── Admin: platform delivery fee management ────────────────────────
+            Route::prefix('delivery-fees')->middleware('role:admin')->group(function () {
+                Route::get('/', [DashboardController::class, 'adminListDeliveryFees']);
+                Route::get('/pending', [DashboardController::class, 'adminPendingDeliveryFees']);
+            });
+
+            Route::prefix('deliveries')->middleware('role:admin')->group(function () {
+                Route::post('/{id}/collect-fee', [DashboardController::class, 'adminCollectDeliveryFee']);
+                Route::patch('/{id}/confirm-fee', [DashboardController::class, 'adminConfirmDeliveryFee']);
+            });
+
+            // ── Admin: COD commission invoice management ───────────────────────
+            Route::prefix('cod-invoices')->middleware('role:admin')->group(function () {
+                Route::get('/', [DashboardController::class, 'adminListCodInvoices']);
+                Route::post('/{id}/confirm-payment', [DashboardController::class, 'adminConfirmCodPayment']);
+                Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
+            });
         });
 
         Route::prefix('seller')->middleware('role:seller')->group(function () {
@@ -322,23 +341,6 @@ Route::group([
             Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
             Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
 
-            // ── Admin: platform delivery fee management ────────────────────────
-            Route::prefix('delivery-fees')->middleware('role:admin')->group(function () {
-                Route::get('/', [DashboardController::class, 'adminListDeliveryFees']);
-                Route::get('/pending', [DashboardController::class, 'adminPendingDeliveryFees']);
-            });
-
-            Route::prefix('deliveries')->middleware('role:admin')->group(function () {
-                Route::post('/{id}/collect-fee', [DashboardController::class, 'adminCollectDeliveryFee']);
-                Route::patch('/{id}/confirm-fee', [DashboardController::class, 'adminConfirmDeliveryFee']);
-            });
-
-            // ── Admin: COD commission invoice management ───────────────────────
-            Route::prefix('cod-invoices')->middleware('role:admin')->group(function () {
-                Route::get('/', [DashboardController::class, 'adminListCodInvoices']);
-                Route::post('/{id}/confirm-payment', [DashboardController::class, 'adminConfirmCodPayment']);
-                Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
-            });
             Route::get('/customers', [SellerController::class, 'customers']);
 
             // Revenue export
