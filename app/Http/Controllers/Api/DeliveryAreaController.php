@@ -630,4 +630,137 @@ class DeliveryAreaController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * GET /checkout-locations  (public, no auth)
+     *
+     * Returns the union of all states & cities configured by active verified sellers.
+     * Logic:
+     *   - If ANY active seller has a country-level zone  → all Myanmar states (nationwide)
+     *   - If sellers have only state/city zones          → return those states + cities
+     *   - If no zones configured at all                  → fall back to full Myanmar list
+     *
+     * The frontend uses this to populate State / City dropdowns in Checkout.
+     */
+    /**
+     * GET /checkout-locations  (public, unauthenticated)
+     *
+     * Returns states/cities the platform serves, derived from active seller delivery zones.
+     * Always returns data — falls back to full Myanmar list so checkout never breaks.
+     */
+    public function getCheckoutLocations(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $allStates = [
+            ['state' => 'Yangon Region',             'cities' => ['Yangon', 'Thanlyin', 'Hlegu', 'Pathein', 'Tharkayta', 'Dagon Seikkan']],
+            ['state' => 'Mandalay Region',           'cities' => ['Mandalay', 'Pyin Oo Lwin', 'Meikhtila', 'Kyaukse', 'Nyaung-U', 'Sagaing']],
+            ['state' => 'Naypyidaw Union Territory', 'cities' => ['Naypyidaw', 'Pyinmana', 'Lewe', 'Tatkon']],
+            ['state' => 'Sagaing Region',            'cities' => ['Sagaing', 'Monywa', 'Shwebo', 'Katha', 'Kalay']],
+            ['state' => 'Bago Region',               'cities' => ['Bago', 'Toungoo', 'Pyay', 'Taungoo', 'Thayarwady']],
+            ['state' => 'Magway Region',             'cities' => ['Magway', 'Pakokku', 'Yenangyaung', 'Chauk', 'Minbu']],
+            ['state' => 'Ayeyarwady Region',         'cities' => ['Pathein', 'Hinthada', 'Myaungmya', 'Maubin', 'Pyapon']],
+            ['state' => 'Tanintharyi Region',        'cities' => ['Dawei', 'Myeik', 'Kawthaung', 'Bokpyin']],
+            ['state' => 'Mon State',                 'cities' => ['Mawlamyine', 'Thaton', 'Ye', 'Kyaikto']],
+            ['state' => 'Karen State',               'cities' => ['Hpa-an', 'Myawaddy', 'Kawkareik', 'Hlaingbwe']],
+            ['state' => 'Karenni State',             'cities' => ['Loikaw', 'Demoso', 'Pruso']],
+            ['state' => 'Chin State',                'cities' => ['Hakha', 'Falam', 'Mindat', 'Tedim']],
+            ['state' => 'Kachin State',              'cities' => ['Myitkyina', 'Bhamo', 'Putao', 'Mogaung']],
+            ['state' => 'Shan State',                'cities' => ['Taunggyi', 'Lashio', 'Kengtung', 'Loilem', 'Hsipaw']],
+            ['state' => 'Rakhine State',             'cities' => ['Sittwe', 'Kyaukpyu', 'Thandwe', 'Maungdaw']],
+        ];
+
+        // Helper: index $allStates by state name for O(1) lookup
+        $statesIndex = collect($allStates)->keyBy('state');
+
+        try {
+            // Get IDs of verified, active seller profiles
+            $profileIds = SellerProfile::where('verification_status', 'verified')
+                ->whereIn('status', ['approved', 'active'])
+                ->pluck('id');
+
+            if ($profileIds->isEmpty()) {
+                // No verified sellers — return full list so checkout still works
+                return response()->json(['success' => true, 'data' => [
+                    'nationwide' => true,
+                    'states'     => $allStates,
+                    'source'     => 'fallback_no_verified_sellers',
+                ]]);
+            }
+
+            // If any verified seller has a country-level zone → nationwide delivery
+            $hasNationwide = DeliveryArea::whereIn('seller_profile_id', $profileIds)
+                ->where('area_type', 'country')
+                ->where('is_active', true)
+                ->where('is_deliverable', true)
+                ->exists();
+
+            if ($hasNationwide) {
+                return response()->json(['success' => true, 'data' => [
+                    'nationwide' => true,
+                    'states'     => $allStates,
+                    'source'     => 'nationwide_seller',
+                ]]);
+            }
+
+            // Pull all state/city/township zones from verified sellers
+            $areas = DeliveryArea::whereIn('seller_profile_id', $profileIds)
+                ->where('is_active', true)
+                ->where('is_deliverable', true)
+                ->whereIn('area_type', ['state', 'city', 'township'])
+                ->whereNotNull('state')
+                ->get(['state', 'city', 'area_type']);   // no ->distinct() to avoid SoftDeletes conflict
+
+            if ($areas->isEmpty()) {
+                return response()->json(['success' => true, 'data' => [
+                    'nationwide' => true,
+                    'states'     => $allStates,
+                    'source'     => 'fallback_no_zones_configured',
+                ]]);
+            }
+
+            // Build state → cities map in PHP (avoids DB-level distinct issues)
+            $stateMap = [];
+            foreach ($areas as $area) {
+                $stateName = $area->state;
+                if (!isset($stateMap[$stateName])) {
+                    $stateMap[$stateName] = [];
+                }
+                if ($area->area_type === 'state') {
+                    // State-level zone → expand to all known cities for that state
+                    // Use ->get() with a default to avoid PHP 8 null-access TypeError
+                    $knownCities = $statesIndex->get($stateName, ['state' => $stateName, 'cities' => []])['cities'];
+                    $stateMap[$stateName] = array_merge($stateMap[$stateName], $knownCities);
+                } elseif (!empty($area->city)) {
+                    $stateMap[$stateName][] = $area->city;
+                }
+            }
+
+            // Deduplicate and format
+            $result = [];
+            foreach ($stateMap as $stateName => $cities) {
+                $result[] = [
+                    'state'  => $stateName,
+                    'cities' => array_values(array_unique($cities)),
+                ];
+            }
+
+            // Sort alphabetically by state name
+            usort($result, fn($a, $b) => strcmp($a['state'], $b['state']));
+
+            return response()->json(['success' => true, 'data' => [
+                'nationwide' => false,
+                'states'     => $result,
+                'source'     => 'seller_zones',
+            ]]);
+
+        } catch (\Throwable $e) {
+            // Never return a 500 — always fall back to full Myanmar list
+            Log::error('getCheckoutLocations failed: ' . $e->getMessage());
+            return response()->json(['success' => true, 'data' => [
+                'nationwide' => true,
+                'states'     => $allStates,
+                'source'     => 'fallback_exception',
+            ]]);
+        }
+    }
+
 }
