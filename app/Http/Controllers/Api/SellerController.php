@@ -665,22 +665,22 @@ class SellerController extends Controller
             });
         }
 
-        // Get follow status and count
-        $isFollowing = false;
-        $followersCount = 0;
+        // ── Follow status & count ────────────────────────────────────────────
+        // Resolved once here and reused for both is_following and is_own_store.
+        // Auth::guard('sanctum') explicitly parses the Bearer token — needed because
+        // this route has no auth middleware (it is public).
+        $authUser = Auth::guard('sanctum')->user();
 
-        try {
-            if ($seller->user && method_exists($seller->user, 'followers')) {
-                $followersCount = $seller->user->followers()->count();
-                // Use sanctum guard explicitly — this route is public so auth()->check()
-                // doesn't parse the Bearer token automatically. Guard-specific check does.
-                $authUser = Auth::guard('sanctum')->user();
-                if ($authUser && method_exists($authUser, 'isFollowing')) {
-                    $isFollowing = $authUser->isFollowing($seller->user->id);
-                }
-            }
-        } catch (\Exception $e) {
-            \Log::warning('Follow functionality not available: ' . $e->getMessage());
+        // Direct DB count — avoids relationship chain exceptions entirely.
+        // Counts Follow rows where seller_id = the seller's User id.
+        $followersCount = \App\Models\Follow::where('seller_id', $seller->user_id)->count();
+
+        // Check follow status only when a buyer is viewing (not their own store)
+        $isFollowing = false;
+        if ($authUser && (int)$authUser->id !== (int)$seller->user_id) {
+            $isFollowing = \App\Models\Follow::where('user_id', $authUser->id)
+                ->where('seller_id', $seller->user_id)
+                ->exists();
         }
 
         // Get seller stats
@@ -696,9 +696,8 @@ class SellerController extends Controller
         ];
 
         // is_own_store: true when the authenticated user is viewing their own store
-        // Used by the frontend to hide the follow button on your own profile
-        $authUser     = Auth::guard('sanctum')->user();
-        $isOwnStore   = $authUser && (int)$authUser->id === (int)$seller->user_id;
+        // Uses $authUser resolved above (avoids a second guard resolution).
+        $isOwnStore = $authUser && (int)$authUser->id === (int)$seller->user_id;
 
         return response()->json([
             'success' => true,

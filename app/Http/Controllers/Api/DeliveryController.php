@@ -632,16 +632,20 @@ class DeliveryAreaController extends Controller
     }
 
     /**
-     * GET /public/checkout-locations
-     * Returns union of all states & cities covered by active sellers.
-     * If any seller has a country-level (nationwide) zone, all Myanmar
-     * states are available (that's the default fallback anyway).
-     * This is unauthenticated — called at checkout before login is required.
+     * GET /checkout-locations  (public, no auth)
+     *
+     * Returns the union of all states & cities configured by active verified sellers.
+     * Logic:
+     *   - If ANY active seller has a country-level zone  → all Myanmar states (nationwide)
+     *   - If sellers have only state/city zones          → return those states + cities
+     *   - If no zones configured at all                  → fall back to full Myanmar list
+     *
+     * The frontend uses this to populate State / City dropdowns in Checkout.
      */
     public function getCheckoutLocations(Request $request): \Illuminate\Http\JsonResponse
     {
-        // All Myanmar states with their cities — the canonical full list.
-        // Shown when: no sellers configured zones, or any seller covers nationwide.
+        // Canonical full Myanmar state list.
+        // Used as the source of truth when area_type = 'country' or 'state'.
         $allStates = [
             ['state' => 'Yangon Region',             'cities' => ['Yangon', 'Thanlyin', 'Hlegu', 'Pathein', 'Tharkayta', 'Dagon Seikkan']],
             ['state' => 'Mandalay Region',           'cities' => ['Mandalay', 'Pyin Oo Lwin', 'Meikhtila', 'Kyaukse', 'Nyaung-U', 'Sagaing']],
@@ -660,15 +664,28 @@ class DeliveryAreaController extends Controller
             ['state' => 'Rakhine State',             'cities' => ['Sittwe', 'Kyaukpyu', 'Thandwe', 'Maungdaw']],
         ];
 
-        // Check if ANY active seller has a country-level zone (= nationwide delivery)
-        $hasNationwide = \App\Models\DeliveryArea::whereHas('sellerProfile', fn($q) => $q->where('is_verified', true))
+        // Verified seller profile IDs
+        $verifiedProfileIds = \App\Models\SellerProfile::whereIn('verification_status', ['verified'])
+            ->whereIn('status', ['approved', 'active'])
+            ->pluck('id');
+
+        if ($verifiedProfileIds->isEmpty()) {
+            // No verified sellers yet — show full list as fallback so checkout works
+            return response()->json(['success' => true, 'data' => [
+                'nationwide' => true,
+                'states'     => $allStates,
+                'source'     => 'fallback_no_verified_sellers',
+            ]]);
+        }
+
+        // Check if ANY verified seller has a country-level (nationwide) active zone
+        $hasNationwide = DeliveryArea::whereIn('seller_profile_id', $verifiedProfileIds)
             ->where('area_type', 'country')
             ->where('is_active', true)
+            ->where('is_deliverable', true)
             ->exists();
 
         if ($hasNationwide) {
-            // At least one seller covers nationwide — show all Myanmar states so buyers
-            // aren't confused about which area to select.
             return response()->json(['success' => true, 'data' => [
                 'nationwide' => true,
                 'states'     => $allStates,
@@ -676,43 +693,54 @@ class DeliveryAreaController extends Controller
             ]]);
         }
 
-        // No nationwide seller — aggregate covered states & cities from all active zone configs.
-        $areas = \App\Models\DeliveryArea::whereHas('sellerProfile', fn($q) => $q->where('is_verified', true))
+        // Aggregate state/city zones from all verified active sellers
+        $areas = DeliveryArea::whereIn('seller_profile_id', $verifiedProfileIds)
             ->where('is_active', true)
-            ->whereIn('area_type', ['state', 'city'])
+            ->where('is_deliverable', true)
+            ->whereIn('area_type', ['state', 'city', 'township'])
             ->whereNotNull('state')
             ->select('state', 'city', 'area_type')
+            ->distinct()
             ->get();
 
         if ($areas->isEmpty()) {
-            // No zones configured at all — fall back to full Myanmar list
+            // Verified sellers exist but none have configured zones yet
             return response()->json(['success' => true, 'data' => [
                 'nationwide' => true,
                 'states'     => $allStates,
-                'source'     => 'fallback_default',
+                'source'     => 'fallback_no_zones_configured',
             ]]);
         }
 
-        // Build state→cities map from configured zones
+        // Build state → cities map
+        // For state-level zones, expand to all known cities in that state.
+        // For city/township zones, add the specific city only.
+        $allStatesLookup = collect($allStates)->keyBy('state');
         $stateMap = [];
+
         foreach ($areas as $area) {
             $state = $area->state;
             if (!isset($stateMap[$state])) {
                 $stateMap[$state] = [];
             }
+
             if ($area->area_type === 'state') {
-                // State-level zone — include all known cities for that state
-                $fullCities = collect($allStates)->firstWhere('state', $state)['cities'] ?? [];
-                $stateMap[$state] = array_unique(array_merge($stateMap[$state], $fullCities));
-            } elseif ($area->city) {
+                // State-level zone — expose all cities in that state
+                $knownCities = $allStatesLookup->get($state)['cities'] ?? [];
+                $stateMap[$state] = array_unique(array_merge($stateMap[$state], $knownCities));
+            } elseif (!empty($area->city)) {
                 $stateMap[$state][] = $area->city;
             }
         }
 
-        $states = collect($stateMap)->map(fn($cities, $state) => [
-            'state'  => $state,
-            'cities' => array_values(array_unique($cities)),
-        ])->values();
+        $states = collect($stateMap)
+            ->map(fn($cities, $state) => [
+                'state'  => $state,
+                'cities' => array_values(array_unique($cities)),
+            ])
+            ->values()
+            ->sortBy('state')
+            ->values();
 
         return response()->json(['success' => true, 'data' => [
             'nationwide' => false,
