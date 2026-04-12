@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
 use App\Models\SellerProfile;
 use App\Models\BusinessType;
 use App\Models\Delivery;
-use App\Models\adminListCodInvoices;
+use App\Models\CodCommissionInvoice;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
