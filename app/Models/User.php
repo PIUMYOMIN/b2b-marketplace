@@ -43,7 +43,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'identity_document_back',
         'identity_document_type',
         // Notification preferences
-        'notification_preferences',
+'notification_preferences',
+        'ref_code',
+        'referred_by',
     ];
 
     protected $hidden = [
@@ -227,6 +229,19 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->verification_code === $code
             && $this->verification_code_expires_at
             && now()->lt($this->verification_code_expires_at);
+    }
+
+    /**
+     * Referral relationships
+     */
+    public function referredUsers()
+    {
+        return $this->hasMany(User::class, 'referred_by');
+    }
+
+    public function referrer()
+    {
+        return $this->belongsTo(User::class, 'referred_by');
     }
 
 }

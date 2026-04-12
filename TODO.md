@@ -1,12 +1,16 @@
-# Financial Report 500 Error Fix - TODO
+# Fix Referral API 404 (/referral/my-link)
 
-## Approved Plan Steps:
-- [ ] Step 1: Create TODO.md (done)
-- [x] Step 2: Fix undefined `$trOrder` → `Order::` query in DashboardController.php financialReport() method
-- [x] Step 3: Verify route & model imports
-- [ ] Step 4: Test API endpoint locally
-- [x] Step 5: Clear caches (routes)
-- [ ] Step 6: Frontend verification (no more 500 errors)
-- [ ] Step 7: Complete task & cleanup TODO.md
+## Status: 🚀 In Progress
 
-**Status: Step 2 ✓ | Step 3: Verify imports & logic (Order model imported, query fixed)**
+### Steps:
+- ✅ **Step 1**: Add ReferralController import and routes to `routes/api.php` (syntax fixed)
+- ✅ **Step 2**: Update `app/Models/User.php` - add fillable fields + relationships
+- ⏭️ **Step 3**: Skipped - config/app.php already has frontend_url='https://pyonea.com'
+- ✅ **Step 4**: Clear route cache: `php artisan route:cache` (success)
+- ✅ **Step 5**: Verified routes: `php artisan route:list | findstr referral` shows /referral/my-link ✅
+- [ ] **Step 6**: Verify frontend (ReferralPanel.jsx) works
+
+**Notes**: 
+- DB schema already has `ref_code`/`referred_by` columns.
+- Controller fully implemented.
+

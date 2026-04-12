@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\WalletController;
+use App\Http\Controllers\Api\ReferralController;
 
 
 /*
@@ -75,7 +76,10 @@ Route::group([
     // Newsletter (public)
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
     Route::get('/newsletter/confirm', [NewsletterController::class, 'confirm']);
-    Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
+Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
+
+// Referral validation (public for register page)
+Route::post('/referral/validate', [ReferralController::class, 'validate']);
 
     // Announcements (public — visible to all visitors)
     Route::get('/announcements', [AnnouncementController::class, 'index']);
@@ -275,7 +279,12 @@ Route::group([
             Route::prefix('cod-invoices')->middleware('role:admin')->group(function () {
                 Route::get('/', [DashboardController::class, 'adminListCodInvoices']);
                 Route::post('/{id}/confirm-payment', [DashboardController::class, 'adminConfirmCodPayment']);
-                Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
+Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
+            });
+            
+// Admin referral stats
+            Route::middleware('role:admin')->group(function () {
+                Route::get('/referrals', [ReferralController::class, 'adminIndex']);
             });
         });
 
@@ -614,6 +623,9 @@ Route::group([
             Route::post('/verify', [PaymentController::class, 'verify']);
             Route::get('/history', [PaymentController::class, 'history']);
         });
+        
+// User referral link (auth required)
+        Route::get('/referral/my-link', [ReferralController::class, 'myLink']);
     });
 
     // --------------------
