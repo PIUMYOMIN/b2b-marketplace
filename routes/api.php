@@ -18,12 +18,12 @@ use App\Http\Controllers\Api\SellerReviewController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\Api\SellerController;
 use App\Http\Controllers\Api\DeliveryController;
+use App\Http\Controllers\Api\DeliveryAreaController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\FollowController;
 use App\Http\Controllers\Api\BusinessTypeController;
 use App\Http\Controllers\Api\DiscountController;
 use App\Http\Controllers\Api\CouponController;
-use App\Http\Controllers\Api\DeliveryAreaController;
 use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
@@ -79,6 +79,9 @@ Route::group([
 
     // Announcements (public — visible to all visitors)
     Route::get('/announcements', [AnnouncementController::class, 'index']);
+
+    // Checkout locations — aggregated states/cities from seller delivery zones (unauthenticated)
+    Route::get('/checkout-locations', [DeliveryAreaController::class, 'getCheckoutLocations']);
 
     //Order Tracking
     Route::get('/track/{orderNumber}', [OrderTrackingController::class, 'track'])

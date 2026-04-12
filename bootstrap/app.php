@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Foundation\Application;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
@@ -49,6 +51,41 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
+    })
+    ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
+        // Schedules are in routes/console.php
+    })
+    ->booted(function () {
+        // ── Named rate limiters ───────────────────────────────────────────
+        // These are referenced in routes/api.php as throttle:reviews etc.
+        // Must be registered at boot-time, not inside withMiddleware.
+
+        RateLimiter::for('reviews', function ($request) {
+            return Limit::perHour(3)
+                ->by($request->user()?->id ?: $request->ip())
+                ->response(fn() => response()->json([
+                    'success' => false,
+                    'message' => 'Too many reviews. Please wait before submitting another.',
+                ], 429));
+        });
+
+        RateLimiter::for('follows', function ($request) {
+            return Limit::perMinute(20)
+                ->by($request->user()?->id ?: $request->ip())
+                ->response(fn() => response()->json([
+                    'success' => false,
+                    'message' => 'Too many follow actions. Slow down.',
+                ], 429));
+        });
+
+        RateLimiter::for('checkout', function ($request) {
+            return Limit::perMinutes(10, 5)
+                ->by($request->user()?->id ?: $request->ip())
+                ->response(fn() => response()->json([
+                    'success' => false,
+                    'message' => 'Too many order attempts. Please wait a moment.',
+                ], 429));
+        });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

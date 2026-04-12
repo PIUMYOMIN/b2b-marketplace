@@ -3,477 +3,722 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\CodCommissionInvoice;
-use App\Models\Commission;
-use App\Models\Delivery;
-use App\Models\Order;
-use App\Models\SellerWallet;
-use App\Notifications\OrderDeliveredThankYou;
+use App\Models\DeliveryArea;
+use App\Models\SellerProfile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Validator;
 
-class DeliveryController extends Controller
+class DeliveryAreaController extends Controller
 {
     /**
-     * List deliveries for the authenticated user.
-     * Sellers see their own; admin/courier see all or filtered.
+     * Get seller's delivery areas
      */
     public function index(Request $request)
     {
         try {
-            $user     = $request->user();
-            $isSeller = $user->type === 'seller'
-                || (method_exists($user, 'hasRole') && $user->hasRole('seller'));
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
 
-            // ── Stats mode (used by DashboardSummary) ──────────────────────
-            if ($request->boolean('stats')) {
-                $query = Delivery::query();
-                if ($isSeller) {
-                    $query->where('supplier_id', $user->id);
-                }
-
-                $total    = $query->count();
-                $byStatus = (clone $query)
-                    ->selectRaw('status, count(*) as count')
-                    ->groupBy('status')
-                    ->pluck('count', 'status')
-                    ->toArray();
-
+            if (!$sellerProfile) {
                 return response()->json([
-                    'success' => true,
-                    'data'    => [
-                        'delivery_stats' => [
-                            'total'     => $total,
-                            'by_status' => $byStatus,
-                        ],
-                    ],
-                ]);
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
             }
 
-            // ── List mode ──────────────────────────────────────────────────
-            $query = Delivery::with(['order', 'supplier', 'platformCourier', 'deliveryUpdates'])
-                ->orderBy('created_at', 'desc');
-
-            if ($isSeller) {
-                $query->where('supplier_id', $user->id);
-            } elseif ($request->has('delivery_method')) {
-                $query->where('delivery_method', $request->delivery_method);
-            }
-
-            $deliveries = $query->paginate($request->get('per_page', 15));
-
-            return response()->json([
-                'success' => true,
-                'data'    => $deliveries,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch deliveries: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Failed to fetch deliveries'], 500);
-        }
-    }
-
-    /**
-     * Seller chooses delivery method for an order.
-     * POST /seller/delivery/{order}/delivery-method
-     */
-    public function chooseDeliveryMethod(Request $request, Order $order)
-    {
-        try {
-            $user = $request->user();
-
-            if (
-                (int) $order->seller_id   !== (int) $user->id &&
-                (int) $order->supplier_id !== (int) $user->id
-            ) {
-                return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
-            }
-
-            $validated = $request->validate([
-                'delivery_method'       => 'required|in:supplier,platform',
-                'platform_delivery_fee' => 'nullable|numeric|min:0',
-                'pickup_address'        => 'required_if:delivery_method,platform|nullable|string|max:500',
-            ]);
-
-            $delivery                       = Delivery::firstOrNew(['order_id' => $order->id]);
-            $delivery->order_id             = $order->id;
-            $delivery->supplier_id          = $user->id;
-            $delivery->delivery_method      = $validated['delivery_method'];
-            $delivery->platform_delivery_fee= $validated['platform_delivery_fee'] ?? 0;
-            $delivery->pickup_address       = $validated['pickup_address'] ?? $delivery->pickup_address;
-            $delivery->delivery_address     = $order->shipping_address ?? '';
-            $delivery->status               = 'awaiting_pickup';
-            $delivery->tracking_number      = $delivery->tracking_number ?? strtoupper(Str::random(12));
-
-            // Set delivery fee status based on method:
-            // 'platform' → fee will be collected from seller → mark outstanding
-            // 'supplier' → seller handles own delivery → not applicable
-            $delivery->delivery_fee_status  = $validated['delivery_method'] === 'platform'
-                ? 'outstanding'
-                : 'not_applicable';
-
-            $delivery->save();
-
-            return response()->json([
-                'success' => true,
-                'message' => __('messages.delivery.method_set'),
-                'data'    => $delivery->load(['order', 'platformCourier']),
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to set delivery method: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Update delivery status.
-     * POST /deliveries/{delivery}/status
-     *
-     * When status becomes 'delivered', the full order confirmation pipeline
-     * fires automatically — same as uploadDeliveryProof(). This covers the
-     * platform logistics flow where the admin marks the delivery as delivered
-     * from the PlatformLogistics dashboard (no proof image in that flow).
-     */
-    public function updateStatus(Request $request, Delivery $delivery)
-    {
-        try {
-            $user = $request->user();
-
-            $canUpdate = (int) $delivery->supplier_id === (int) $user->id
-                || ($delivery->platform_courier_id && (int) $delivery->platform_courier_id === (int) $user->id)
-                || $user->hasRole('admin')
-                || $user->type === 'admin';
-
-            if (!$canUpdate) {
-                return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
-            }
-
-            $validated = $request->validate([
-                'status'   => 'required|in:awaiting_pickup,picked_up,in_transit,out_for_delivery,delivered,failed,cancelled,returned',
-                'notes'    => 'nullable|string|max:500',
-                'location' => 'nullable|string|max:200',
-            ]);
-
-            DB::beginTransaction();
-
-            $delivery->update(['status' => $validated['status']]);
-
-            $delivery->deliveryUpdates()->create([
-                'user_id'  => $user->id,
-                'status'   => $validated['status'],
-                'notes'    => $validated['notes'] ?? null,
-                'location' => $validated['location'] ?? null,
-            ]);
-
-            // ── When delivery is marked delivered, run the full order
-            //    confirmation pipeline (commission, escrow/COD, order status).
-            //    This is the critical path for platform logistics: the admin
-            //    marks the delivery done and all financials must fire here.
-            $order = null;
-            if ($validated['status'] === 'delivered') {
-                $order = $delivery->order()->with(['buyer', 'seller.sellerProfile', 'items'])->first();
-
-                if ($order && $order->status !== Order::STATUS_DELIVERED) {
-
-                    $order->update([
-                        'status'       => Order::STATUS_DELIVERED,
-                        'delivered_at' => now(),
-                    ]);
-
-                    // Mark commission collected
-                    Commission::where('order_id', $order->id)
-                        ->where('status', 'pending')
-                        ->update(['status' => 'collected', 'collected_at' => now()]);
-
-                    $commission = Commission::where('order_id', $order->id)->first();
-
-                    if ($order->payment_method !== 'cash_on_delivery') {
-                        // Digital payment — release escrow, deduct commission, credit payout
-                        $wallet = SellerWallet::lockForSeller($order->seller_id);
-                        $wallet->releaseEscrow(
-                            escrowAmount:     (float) $order->total_amount,
-                            sellerPayout:     (float) ($commission?->seller_payout
-                                                ?? ($order->subtotal_amount - $order->commission_amount)),
-                            commissionAmount: (float) $order->commission_amount,
-                            orderId:          $order->id,
-                            actorId:          $user->id
-                        );
-                        $order->update(['escrow_status' => 'released']);
-                    } else {
-                        // COD — seller (or platform on behalf) collected cash.
-                        // Raise a commission invoice so platform gets paid.
-                        // Avoid duplicates if an invoice already exists for this order.
-                        $existingInvoice = CodCommissionInvoice::where('order_id', $order->id)->first();
-                        if (!$existingInvoice) {
-                            CodCommissionInvoice::create([
-                                'invoice_number'    => CodCommissionInvoice::generateInvoiceNumber(),
-                                'order_id'          => $order->id,
-                                'seller_id'         => $order->seller_id,
-                                'order_subtotal'    => $order->subtotal_amount,
-                                'commission_rate'   => $order->commission_rate,
-                                'commission_amount' => $order->commission_amount,
-                                'status'            => 'outstanding',
-                                'due_date'          => now()->addDays(7)->toDateString(),
-                                'seller_notes'      => "Commission owed for COD order #{$order->order_number}. "
-                                                     . "Delivered via platform logistics. "
-                                                     . "Please settle within 7 days via bank transfer.",
-                            ]);
-
-                            $wallet = SellerWallet::forSeller($order->seller_id);
-                            $wallet->increment('cod_commission_outstanding', $order->commission_amount);
-                            $wallet->transactions()->create([
-                                'order_id'               => $order->id,
-                                'type'                   => 'cod_invoice',
-                                'amount'                 => -(float) $order->commission_amount,
-                                'escrow_balance_after'   => $wallet->escrow_balance,
-                                'available_balance_after'=> $wallet->available_balance,
-                                'notes'                  => "COD commission invoice raised for order #{$order->order_number} "
-                                                         . "(platform logistics delivery). "
-                                                         . "Amount: {$order->commission_amount} MMK. "
-                                                         . "Due: " . now()->addDays(7)->toDateString(),
-                                'created_by'             => $user->id,
-                            ]);
-                        }
-                    }
-                }
-            }
-
-            DB::commit();
-
-            // Send buyer thank-you email outside the transaction
-            if ($order) {
-                try {
-                    $order->load('items', 'buyer', 'seller.sellerProfile');
-                    $order->buyer->notify(new OrderDeliveredThankYou($order));
-                } catch (\Exception $mailEx) {
-                    Log::warning('OrderDeliveredThankYou failed after updateStatus: '
-                        . $mailEx->getMessage(), ['order_id' => $order->id]);
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => __('messages.delivery.status_updated'),
-                'data'    => $delivery->load(['order', 'deliveryUpdates', 'platformCourier']),
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Failed to update delivery status: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Upload delivery proof image.
-     * POST /deliveries/{delivery}/proof
-     *
-     * This is the seller's "delivered" trigger. Uploading proof is treated as
-     * physical evidence of delivery, so the full order confirmation pipeline
-     * fires here — escrow release (digital) or COD invoice (cash), commission
-     * collected, and the buyer thank-you email sent.
-     *
-     * The buyer's own "Confirm Delivery" button remains available but becomes
-     * idempotent — the order is already marked delivered so it short-circuits.
-     */
-    public function uploadDeliveryProof(Request $request, Delivery $delivery)
-    {
-        try {
-            $user = $request->user();
-
-            $canUpdate = (int) $delivery->supplier_id === (int) $user->id
-                || ($delivery->platform_courier_id && (int) $delivery->platform_courier_id === (int) $user->id)
-                || $user->hasRole('admin')
-                || $user->type === 'admin';
-
-            if (!$canUpdate) {
-                return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
-            }
-
-            $request->validate([
-                'delivery_proof'  => 'required|image|max:5120',
-                'recipient_name'  => 'required|string|max:200',
-                'recipient_phone' => 'required|string|max:30',
-            ]);
-
-            DB::beginTransaction();
-
-            // ── 1. Store the proof image ────────────────────────────────────
-            $path = $request->file('delivery_proof')
-                ->store("deliveries/{$delivery->id}/proof", 'public');
-
-            $delivery->update([
-                'delivery_proof_image' => $path,
-                'recipient_name'       => $request->recipient_name,
-                'recipient_phone'      => $request->recipient_phone,
-                'delivered_at'         => now(),
-                'status'               => 'delivered',
-            ]);
-
-            $delivery->deliveryUpdates()->create([
-                'user_id' => $user->id,
-                'status'  => 'delivered',
-                'notes'   => 'Delivery proof uploaded by seller. Physical delivery confirmed.',
-            ]);
-
-            // ── 2. Run the order confirmation pipeline ─────────────────────
-            // Load the linked order. If somehow missing, skip gracefully.
-            $order = $delivery->order()->with(['buyer', 'seller.sellerProfile', 'items'])->first();
-
-            if ($order && $order->status !== Order::STATUS_DELIVERED) {
-
-                // Mark the order as delivered
-                $order->update([
-                    'status'       => Order::STATUS_DELIVERED,
-                    'delivered_at' => now(),
-                ]);
-
-                // ── 2a. Mark commission collected ───────────────────────────
-                Commission::where('order_id', $order->id)
-                    ->where('status', 'pending')
-                    ->update(['status' => 'collected', 'collected_at' => now()]);
-
-                $commission = Commission::where('order_id', $order->id)->first();
-
-                // ── 2b. Escrow (digital) or COD invoice ─────────────────────
-                if ($order->payment_method !== 'cash_on_delivery') {
-                    // Release escrow — deduct commission, credit seller payout
-                    $wallet = SellerWallet::lockForSeller($order->seller_id);
-                    $wallet->releaseEscrow(
-                        escrowAmount:     (float) $order->total_amount,
-                        sellerPayout:     (float) ($commission?->seller_payout
-                                            ?? ($order->subtotal_amount - $order->commission_amount)),
-                        commissionAmount: (float) $order->commission_amount,
-                        orderId:          $order->id,
-                        actorId:          $user->id
-                    );
-                    $order->update(['escrow_status' => 'released']);
-                } else {
-                    // COD — seller collected cash from buyer; they now owe
-                    // the platform the commission. Raise an invoice.
-                    CodCommissionInvoice::create([
-                        'invoice_number'    => CodCommissionInvoice::generateInvoiceNumber(),
-                        'order_id'          => $order->id,
-                        'seller_id'         => $order->seller_id,
-                        'order_subtotal'    => $order->subtotal_amount,
-                        'commission_rate'   => $order->commission_rate,
-                        'commission_amount' => $order->commission_amount,
-                        'status'            => 'outstanding',
-                        'due_date'          => now()->addDays(7)->toDateString(),
-                        'seller_notes'      => "Commission owed for COD order #{$order->order_number}. "
-                                            . "Please settle within 7 days via bank transfer.",
-                    ]);
-
-                    $wallet = SellerWallet::forSeller($order->seller_id);
-                    $wallet->increment('cod_commission_outstanding', $order->commission_amount);
-                    $wallet->transactions()->create([
-                        'order_id'               => $order->id,
-                        'type'                   => 'cod_invoice',
-                        'amount'                 => -(float) $order->commission_amount,
-                        'escrow_balance_after'   => $wallet->escrow_balance,
-                        'available_balance_after'=> $wallet->available_balance,
-                        'notes'                  => "COD commission invoice raised for order "
-                                                  . "#{$order->order_number}. "
-                                                  . "Amount: {$order->commission_amount} MMK. "
-                                                  . "Due: " . now()->addDays(7)->toDateString(),
-                        'created_by'             => $user->id,
-                    ]);
-                }
-            }
-
-            DB::commit();
-
-            // ── 3. Thank-you email — outside the transaction so a mail failure
-            //       never rolls back the financial records ───────────────────
-            if ($order) {
-                try {
-                    // Re-load relations for the email template
-                    $order->load('items', 'buyer', 'seller.sellerProfile');
-                    $order->buyer->notify(new OrderDeliveredThankYou($order));
-                } catch (\Exception $mailEx) {
-                    // Log but never fail the request over an email issue
-                    Log::warning('OrderDeliveredThankYou notification failed after proof upload: '
-                        . $mailEx->getMessage(), ['order_id' => $order->id]);
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => __('messages.delivery.proof_uploaded'),
-                'data'    => $delivery->fresh(),
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Failed to upload delivery proof: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Assign a platform courier to a delivery.
-     * POST /deliveries/{delivery}/assign-courier
-     */
-    public function assignCourier(Request $request, Delivery $delivery)
-    {
-        try {
-            $user = $request->user();
-
-            if (!$user->hasRole('admin') && (int) $delivery->supplier_id !== (int) $user->id) {
-                return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
-            }
-
-            $validated = $request->validate([
-                'platform_courier_id' => 'required|exists:users,id',
-                'driver_name'         => 'nullable|string|max:200',
-                'driver_phone'        => 'nullable|string|max:30',
-                'vehicle_type'        => 'nullable|string|max:100',
-                'vehicle_number'      => 'nullable|string|max:50',
-            ]);
-
-            $delivery->update([
-                'platform_courier_id'     => $validated['platform_courier_id'],
-                'assigned_driver_name'    => $validated['driver_name']    ?? null,
-                'assigned_driver_phone'   => $validated['driver_phone']   ?? null,
-                'assigned_vehicle_type'   => $validated['vehicle_type']   ?? null,
-                'assigned_vehicle_number' => $validated['vehicle_number'] ?? null,
-                'status'                  => 'awaiting_pickup',
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => __('messages.delivery.courier_assigned'),
-                'data'    => $delivery->fresh(['platformCourier']),
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to assign courier: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Get tracking timeline for a delivery.
-     * GET /deliveries/{delivery}/tracking
-     */
-    public function getTrackingUpdates(Delivery $delivery)
-    {
-        try {
-            $updates = $delivery->deliveryUpdates()
-                ->with('user:id,name')
-                ->orderBy('created_at', 'asc')
+            $areas = $sellerProfile->deliveryAreas()
+                ->orderBy('sort_order')
+                ->orderBy('area_type')
                 ->get();
 
             return response()->json([
                 'success' => true,
-                'data'    => [
-                    'delivery' => $delivery->load(['order', 'platformCourier']),
-                    'updates'  => $updates,
-                ],
+                'data' => $areas,
+                'count' => $areas->count()
             ]);
+
         } catch (\Exception $e) {
-            Log::error('Failed to get tracking updates: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Failed to fetch tracking'], 500);
+            Log::error('Failed to fetch delivery areas: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch delivery areas'
+            ], 500);
         }
     }
+
+    /**
+     * Create new delivery area
+     */
+    public function store(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'area_type' => 'required|in:country,state,city,township,specific_address',
+                'country' => 'required|string|max:100',
+                'state' => 'nullable|string|max:100',
+                'city' => 'nullable|string|max:100',
+                'township' => 'nullable|string|max:100',
+                'specific_location' => 'nullable|string|max:500',
+                'postal_code' => 'nullable|string|max:20',
+                'is_deliverable' => 'boolean',
+                'shipping_fee' => 'required|numeric|min:0',
+                'free_shipping_threshold' => 'nullable|numeric|min:0',
+                'estimated_delivery_days_min' => 'nullable|integer|min:0',
+                'estimated_delivery_days_max' => 'nullable|integer|min:0|gte:estimated_delivery_days_min',
+                'standard_shipping_available' => 'boolean',
+                'express_shipping_available' => 'boolean',
+                'pickup_available' => 'boolean',
+                'pickup_location' => 'nullable|string|max:500',
+                'has_weight_limit' => 'boolean',
+                'max_weight_kg' => 'nullable|numeric|min:0',
+                'has_size_limit' => 'boolean',
+                'size_restrictions' => 'nullable|array',
+                'product_category_restrictions' => 'nullable|array',
+                'excluded_dates' => 'nullable|array',
+                'is_active' => 'boolean',
+                'sort_order' => 'nullable|integer',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+            $validated['seller_profile_id'] = $sellerProfile->id;
+            $validated['user_id'] = $user->id;
+
+            // Validate area type specific requirements
+            if ($validated['area_type'] === 'state' && empty($validated['state'])) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => ['state' => ['State is required for state-level delivery area']]
+                ], 422);
+            }
+
+            if ($validated['area_type'] === 'city' && empty($validated['city'])) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => ['city' => ['City is required for city-level delivery area']]
+                ], 422);
+            }
+
+            if ($validated['area_type'] === 'specific_address' && empty($validated['specific_location'])) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => ['specific_location' => ['Specific location is required for specific address delivery area']]
+                ], 422);
+            }
+
+            // Check for overlapping areas
+            $overlap = $this->checkOverlappingArea($sellerProfile->id, $validated);
+            if ($overlap) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Delivery area overlaps with existing area: ' . $overlap->area_label
+                ], 422);
+            }
+
+            $deliveryArea = DeliveryArea::create($validated);
+
+            Log::info('Delivery area created', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'delivery_area_id' => $deliveryArea->id,
+                'area_type' => $deliveryArea->area_type
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => __('messages.delivery.area_created'),
+                'data' => $deliveryArea
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to create delivery area: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create delivery area: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update delivery area
+     */
+    public function update(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            $deliveryArea = DeliveryArea::findOrFail($id);
+
+            // Check ownership
+            if ($deliveryArea->user_id !== $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.delivery.unauthorized_update')
+                ], 403);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'area_type' => 'sometimes|in:country,state,city,township,specific_address',
+                'country' => 'sometimes|string|max:100',
+                'state' => 'nullable|string|max:100',
+                'city' => 'nullable|string|max:100',
+                'township' => 'nullable|string|max:100',
+                'specific_location' => 'nullable|string|max:500',
+                'postal_code' => 'nullable|string|max:20',
+                'is_deliverable' => 'sometimes|boolean',
+                'shipping_fee' => 'sometimes|numeric|min:0',
+                'free_shipping_threshold' => 'nullable|numeric|min:0',
+                'estimated_delivery_days_min' => 'nullable|integer|min:0',
+                'estimated_delivery_days_max' => 'nullable|integer|min:0|gte:estimated_delivery_days_min',
+                'standard_shipping_available' => 'sometimes|boolean',
+                'express_shipping_available' => 'sometimes|boolean',
+                'pickup_available' => 'sometimes|boolean',
+                'pickup_location' => 'nullable|string|max:500',
+                'has_weight_limit' => 'sometimes|boolean',
+                'max_weight_kg' => 'nullable|numeric|min:0',
+                'has_size_limit' => 'sometimes|boolean',
+                'size_restrictions' => 'nullable|array',
+                'product_category_restrictions' => 'nullable|array',
+                'excluded_dates' => 'nullable|array',
+                'is_active' => 'sometimes|boolean',
+                'sort_order' => 'nullable|integer',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Check for overlapping areas (excluding current one)
+            $overlap = $this->checkOverlappingArea($deliveryArea->seller_profile_id, $validated, $id);
+            if ($overlap) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Delivery area overlaps with existing area: ' . $overlap->area_label
+                ], 422);
+            }
+
+            $deliveryArea->update($validated);
+
+            Log::info('Delivery area updated', [
+                'user_id' => $user->id,
+                'delivery_area_id' => $deliveryArea->id,
+                'area_type' => $deliveryArea->area_type
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => __('messages.delivery.area_updated'),
+                'data' => $deliveryArea
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to update delivery area: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update delivery area: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete delivery area
+     */
+    public function destroy(Request $request, $id)
+    {
+        try {
+            $user = $request->user();
+            $deliveryArea = DeliveryArea::findOrFail($id);
+
+            // Check ownership
+            if ($deliveryArea->user_id !== $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.delivery.unauthorized_delete')
+                ], 403);
+            }
+
+            $deliveryArea->delete();
+
+            Log::info('Delivery area deleted', [
+                'user_id' => $user->id,
+                'delivery_area_id' => $id
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => __('messages.delivery.area_deleted')
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to delete delivery area: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete delivery area'
+            ], 500);
+        }
+    }
+
+    /**
+     * Check shipping fee for location
+     */
+    public function checkShippingFee(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'country' => 'required|string|max:100',
+                'state' => 'nullable|string|max:100',
+                'city' => 'nullable|string|max:100',
+                'township' => 'nullable|string|max:100',
+                'order_amount' => 'nullable|numeric|min:0',
+                'weight_kg' => 'nullable|numeric|min:0',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $validated = $validator->validated();
+
+            // Find matching delivery area
+            $matchingArea = $sellerProfile->activeDeliveryAreas()
+                ->where('country', $validated['country'])
+                ->where(function ($query) use ($validated) {
+                    $query->where('state', $validated['state'])
+                        ->orWhereNull('state')
+                        ->orWhere('area_type', 'country');
+                })
+                ->where(function ($query) use ($validated) {
+                    if ($validated['city']) {
+                        $query->where('city', $validated['city'])
+                            ->orWhereNull('city')
+                            ->orWhereIn('area_type', ['country', 'state']);
+                    } else {
+                        $query->whereNull('city');
+                    }
+                })
+                ->where(function ($query) use ($validated) {
+                    if ($validated['township']) {
+                        $query->where('township', $validated['township'])
+                            ->orWhereNull('township')
+                            ->orWhereIn('area_type', ['country', 'state', 'city']);
+                    } else {
+                        $query->whereNull('township');
+                    }
+                })
+                ->orderBy('area_type', 'desc') // Most specific first
+                ->first();
+
+            if (!$matchingArea) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'is_deliverable' => false,
+                        'message' => __('messages.delivery.not_available')
+                    ]
+                ]);
+            }
+
+            // Check weight restrictions
+            if (
+                $validated['weight_kg'] && $matchingArea->has_weight_limit &&
+                $validated['weight_kg'] > $matchingArea->max_weight_kg
+            ) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'is_deliverable' => false,
+                        'message' => 'Package exceeds weight limit for this area'
+                    ]
+                ]);
+            }
+
+            $shippingFee = $matchingArea->getShippingFeeForOrder($validated['order_amount'] ?? 0);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'is_deliverable' => true,
+                    'delivery_area' => $matchingArea,
+                    'shipping_fee' => $shippingFee,
+                    'free_shipping_threshold' => $matchingArea->free_shipping_threshold,
+                    'estimated_delivery' => $matchingArea->estimated_delivery,
+                    'standard_shipping_available' => $matchingArea->standard_shipping_available,
+                    'express_shipping_available' => $matchingArea->express_shipping_available,
+                    'pickup_available' => $matchingArea->pickup_available,
+                    'pickup_location' => $matchingArea->pickup_location,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to check shipping fee: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to check shipping fee'
+            ], 500);
+        }
+    }
+
+    /**
+     * Sync delivery zones — replace the seller's entire zone configuration in one call.
+     */
+    public function sync(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found',
+                ], 404);
+            }
+
+            $request->validate([
+                'zones' => 'required|array',
+                'zones.*.area_type' => 'required|in:country,state,city,township',
+                'zones.*.country' => 'required|string|max:100',
+                'zones.*.state' => 'nullable|string|max:100',
+                'zones.*.city' => 'nullable|string|max:100',
+                'zones.*.township' => 'nullable|string|max:150',
+                'zones.*.shipping_fee' => 'required|numeric|min:0',
+                'zones.*.free_shipping_threshold' => 'nullable|numeric|min:0',
+                'zones.*.estimated_delivery_days_min' => 'nullable|integer|min:1',
+                'zones.*.estimated_delivery_days_max' => 'nullable|integer|min:1',
+                'zones.*.is_active' => 'nullable|boolean',
+            ]);
+
+            \DB::transaction(function () use ($request, $sellerProfile, $user) {
+                // Delete all existing zones for this seller
+                DeliveryArea::where('seller_profile_id', $sellerProfile->id)->delete();
+
+                // Insert the new set
+                $now = now();
+                $rows = collect($request->zones)->map(function ($zone, $index) use ($sellerProfile, $user, $now) {
+                    return [
+                        'seller_profile_id' => $sellerProfile->id,
+                        'user_id' => $user->id,
+                        'area_type' => $zone['area_type'],
+                        'country' => $zone['country'],
+                        'state' => $zone['state'] ?? null,
+                        'city' => $zone['city'] ?? null,
+                        'township' => $zone['township'] ?? null,
+                        'shipping_fee' => $zone['shipping_fee'],
+                        'free_shipping_threshold' => $zone['free_shipping_threshold'] ?? null,
+                        'estimated_delivery_days_min' => $zone['estimated_delivery_days_min'] ?? null,
+                        'estimated_delivery_days_max' => $zone['estimated_delivery_days_max'] ?? null,
+                        'is_deliverable' => true,
+                        'is_active' => $zone['is_active'] ?? true,
+                        'standard_shipping_available' => true,
+                        'sort_order' => $index,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                })->toArray();
+
+                if (!empty($rows)) {
+                    // Chunk inserts to avoid hitting parameter limits on large zone sets
+                    foreach (array_chunk($rows, 50) as $chunk) {
+                        DeliveryArea::insert($chunk);
+                    }
+                }
+            });
+
+            $saved = DeliveryArea::where('seller_profile_id', $sellerProfile->id)
+                ->orderBy('sort_order')
+                ->get();
+
+            Log::info('Delivery zones synced', [
+                'user_id' => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+                'zone_count' => $saved->count(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => __('messages.delivery.zones_saved'),
+                'data' => $saved,
+                'count' => $saved->count(),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to sync delivery zones: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save delivery zones: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Check for overlapping delivery areas
+     */
+    private function checkOverlappingArea($sellerProfileId, $newAreaData, $excludeId = null)
+    {
+        $query = DeliveryArea::where('seller_profile_id', $sellerProfileId)
+            ->where('country', $newAreaData['country']);
+
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        // Check different area types for overlap
+        switch ($newAreaData['area_type']) {
+            case 'country':
+                // Country covers everything
+                return $query->first();
+
+            case 'state':
+                if (isset($newAreaData['state'])) {
+                    // State covers: same state, or any area within that state
+                    return $query->where(function ($q) use ($newAreaData) {
+                        $q->where('area_type', 'country')
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'state')
+                                    ->where('state', $newAreaData['state']);
+                            });
+                    })->first();
+                }
+                break;
+
+            case 'city':
+                if (isset($newAreaData['state']) && isset($newAreaData['city'])) {
+                    // City covers: country, same state, or same city
+                    return $query->where(function ($q) use ($newAreaData) {
+                        $q->where('area_type', 'country')
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'state')
+                                    ->where('state', $newAreaData['state']);
+                            })
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'city')
+                                    ->where('state', $newAreaData['state'])
+                                    ->where('city', $newAreaData['city']);
+                            });
+                    })->first();
+                }
+                break;
+
+            case 'township':
+                if (isset($newAreaData['state']) && isset($newAreaData['city']) && isset($newAreaData['township'])) {
+                    // Township covers: country, same state, same city, or same township
+                    return $query->where(function ($q) use ($newAreaData) {
+                        $q->where('area_type', 'country')
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'state')
+                                    ->where('state', $newAreaData['state']);
+                            })
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'city')
+                                    ->where('state', $newAreaData['state'])
+                                    ->where('city', $newAreaData['city']);
+                            })
+                            ->orWhere(function ($sub) use ($newAreaData) {
+                                $sub->where('area_type', 'township')
+                                    ->where('state', $newAreaData['state'])
+                                    ->where('city', $newAreaData['city'])
+                                    ->where('township', $newAreaData['township']);
+                            });
+                    })->first();
+                }
+                break;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get available countries/states/cities for dropdowns
+     */
+    public function getLocationOptions(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Seller profile not found'
+                ], 404);
+            }
+
+            // Get unique countries
+            $countries = DeliveryArea::where('seller_profile_id', $sellerProfile->id)
+                ->select('country')
+                ->distinct()
+                ->pluck('country');
+
+            // Get states for each country
+            $statesByCountry = [];
+            foreach ($countries as $country) {
+                $states = DeliveryArea::where('seller_profile_id', $sellerProfile->id)
+                    ->where('country', $country)
+                    ->whereNotNull('state')
+                    ->select('state')
+                    ->distinct()
+                    ->pluck('state');
+
+                $statesByCountry[$country] = $states;
+            }
+
+            // Get cities for each state
+            $citiesByState = [];
+            foreach ($statesByCountry as $country => $states) {
+                foreach ($states as $state) {
+                    $cities = DeliveryArea::where('seller_profile_id', $sellerProfile->id)
+                        ->where('country', $country)
+                        ->where('state', $state)
+                        ->whereNotNull('city')
+                        ->select('city')
+                        ->distinct()
+                        ->pluck('city');
+
+                    $citiesByState[$country . '.' . $state] = $cities;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'countries' => $countries,
+                    'states_by_country' => $statesByCountry,
+                    'cities_by_state' => $citiesByState
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get location options: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get location options'
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /public/checkout-locations
+     * Returns union of all states & cities covered by active sellers.
+     * If any seller has a country-level (nationwide) zone, all Myanmar
+     * states are available (that's the default fallback anyway).
+     * This is unauthenticated — called at checkout before login is required.
+     */
+    public function getCheckoutLocations(Request $request): \Illuminate\Http\JsonResponse
+    {
+        // All Myanmar states with their cities — the canonical full list.
+        // Shown when: no sellers configured zones, or any seller covers nationwide.
+        $allStates = [
+            ['state' => 'Yangon Region',             'cities' => ['Yangon', 'Thanlyin', 'Hlegu', 'Pathein', 'Tharkayta', 'Dagon Seikkan']],
+            ['state' => 'Mandalay Region',           'cities' => ['Mandalay', 'Pyin Oo Lwin', 'Meikhtila', 'Kyaukse', 'Nyaung-U', 'Sagaing']],
+            ['state' => 'Naypyidaw Union Territory', 'cities' => ['Naypyidaw', 'Pyinmana', 'Lewe', 'Tatkon']],
+            ['state' => 'Sagaing Region',            'cities' => ['Sagaing', 'Monywa', 'Shwebo', 'Katha', 'Kalay']],
+            ['state' => 'Bago Region',               'cities' => ['Bago', 'Toungoo', 'Pyay', 'Taungoo', 'Thayarwady']],
+            ['state' => 'Magway Region',             'cities' => ['Magway', 'Pakokku', 'Yenangyaung', 'Chauk', 'Minbu']],
+            ['state' => 'Ayeyarwady Region',         'cities' => ['Pathein', 'Hinthada', 'Myaungmya', 'Maubin', 'Pyapon']],
+            ['state' => 'Tanintharyi Region',        'cities' => ['Dawei', 'Myeik', 'Kawthaung', 'Bokpyin']],
+            ['state' => 'Mon State',                 'cities' => ['Mawlamyine', 'Thaton', 'Ye', 'Kyaikto']],
+            ['state' => 'Karen State',               'cities' => ['Hpa-an', 'Myawaddy', 'Kawkareik', 'Hlaingbwe']],
+            ['state' => 'Karenni State',             'cities' => ['Loikaw', 'Demoso', 'Pruso']],
+            ['state' => 'Chin State',                'cities' => ['Hakha', 'Falam', 'Mindat', 'Tedim']],
+            ['state' => 'Kachin State',              'cities' => ['Myitkyina', 'Bhamo', 'Putao', 'Mogaung']],
+            ['state' => 'Shan State',                'cities' => ['Taunggyi', 'Lashio', 'Kengtung', 'Loilem', 'Hsipaw']],
+            ['state' => 'Rakhine State',             'cities' => ['Sittwe', 'Kyaukpyu', 'Thandwe', 'Maungdaw']],
+        ];
+
+        // Check if ANY active seller has a country-level zone (= nationwide delivery)
+        $hasNationwide = \App\Models\DeliveryArea::whereHas('sellerProfile', fn($q) => $q->where('is_verified', true))
+            ->where('area_type', 'country')
+            ->where('is_active', true)
+            ->exists();
+
+        if ($hasNationwide) {
+            // At least one seller covers nationwide — show all Myanmar states so buyers
+            // aren't confused about which area to select.
+            return response()->json(['success' => true, 'data' => [
+                'nationwide' => true,
+                'states'     => $allStates,
+                'source'     => 'nationwide_seller',
+            ]]);
+        }
+
+        // No nationwide seller — aggregate covered states & cities from all active zone configs.
+        $areas = \App\Models\DeliveryArea::whereHas('sellerProfile', fn($q) => $q->where('is_verified', true))
+            ->where('is_active', true)
+            ->whereIn('area_type', ['state', 'city'])
+            ->whereNotNull('state')
+            ->select('state', 'city', 'area_type')
+            ->get();
+
+        if ($areas->isEmpty()) {
+            // No zones configured at all — fall back to full Myanmar list
+            return response()->json(['success' => true, 'data' => [
+                'nationwide' => true,
+                'states'     => $allStates,
+                'source'     => 'fallback_default',
+            ]]);
+        }
+
+        // Build state→cities map from configured zones
+        $stateMap = [];
+        foreach ($areas as $area) {
+            $state = $area->state;
+            if (!isset($stateMap[$state])) {
+                $stateMap[$state] = [];
+            }
+            if ($area->area_type === 'state') {
+                // State-level zone — include all known cities for that state
+                $fullCities = collect($allStates)->firstWhere('state', $state)['cities'] ?? [];
+                $stateMap[$state] = array_unique(array_merge($stateMap[$state], $fullCities));
+            } elseif ($area->city) {
+                $stateMap[$state][] = $area->city;
+            }
+        }
+
+        $states = collect($stateMap)->map(fn($cities, $state) => [
+            'state'  => $state,
+            'cities' => array_values(array_unique($cities)),
+        ])->values();
+
+        return response()->json(['success' => true, 'data' => [
+            'nationwide' => false,
+            'states'     => $states,
+            'source'     => 'seller_zones',
+        ]]);
+    }
+
 }
