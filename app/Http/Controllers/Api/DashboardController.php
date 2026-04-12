@@ -974,7 +974,7 @@ class DashboardController extends Controller
      */
     public function adminListDeliveryFees(Request $request)
     {
-        $base = \App\Models\Delivery::where('delivery_method', 'platform');
+        $base = Delivery::where('delivery_method', 'platform');
         $query = (clone $base)
             ->with(['order:id,order_number,buyer_id', 'supplier:id,name'])
             ->orderByDesc('created_at');
@@ -1006,7 +1006,7 @@ class DashboardController extends Controller
      */
     public function adminPendingDeliveryFees(Request $request)
     {
-        $fees = \App\Models\Delivery::with(['order:id,order_number', 'supplier:id,name'])
+        $fees = Delivery::with(['order:id,order_number', 'supplier:id,name'])
             ->where('delivery_method', 'platform')
             ->whereNotNull('fee_submitted_at')
             ->whereNull('fee_confirmed_at')
@@ -1028,7 +1028,7 @@ class DashboardController extends Controller
             return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
         }
 
-        $delivery = \App\Models\Delivery::findOrFail($id);
+        $delivery = Delivery::findOrFail($id);
 
         $validated = $request->validate([
             'collection_ref' => 'required|string|max:200',
@@ -1066,7 +1066,7 @@ class DashboardController extends Controller
      */
     public function adminListCodInvoices(Request $request)
     {
-        $query = \App\Models\CodCommissionInvoice::with([
+        $query = CodCommissionInvoice::with([
                 'seller:id,name',
                 'order:id,order_number',
                 'confirmedBy:id,name',
@@ -1080,12 +1080,12 @@ class DashboardController extends Controller
         $invoices = $query->paginate($request->get('per_page', 20));
 
         $summary = [
-            'outstanding' => \App\Models\CodCommissionInvoice::where('status', 'outstanding')->count(),
-            'overdue'     => \App\Models\CodCommissionInvoice::where('status', 'overdue')->count(),
-            'paid'        => \App\Models\CodCommissionInvoice::where('status', 'paid')->count(),
-            'waived'      => \App\Models\CodCommissionInvoice::where('status', 'waived')->count(),
-            'total_owed'  => \App\Models\CodCommissionInvoice::whereIn('status', ['outstanding','overdue'])->sum('commission_amount'),
-            'total_paid'  => \App\Models\CodCommissionInvoice::where('status', 'paid')->sum('commission_amount'),
+            'outstanding' => CodCommissionInvoice::where('status', 'outstanding')->count(),
+            'overdue'     => CodCommissionInvoice::where('status', 'overdue')->count(),
+            'paid'        => CodCommissionInvoice::where('status', 'paid')->count(),
+            'waived'      => CodCommissionInvoice::where('status', 'waived')->count(),
+            'total_owed'  => CodCommissionInvoice::whereIn('status', ['outstanding','overdue'])->sum('commission_amount'),
+            'total_paid'  => CodCommissionInvoice::where('status', 'paid')->sum('commission_amount'),
         ];
 
         return response()->json([
@@ -1106,7 +1106,7 @@ class DashboardController extends Controller
             return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
         }
 
-        $invoice = \App\Models\CodCommissionInvoice::findOrFail($id);
+        $invoice = CodCommissionInvoice::findOrFail($id);
 
         $validated = $request->validate([
             'payment_reference' => 'nullable|string|max:200',
@@ -1143,7 +1143,7 @@ class DashboardController extends Controller
             return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
         }
 
-        $invoice = \App\Models\CodCommissionInvoice::findOrFail($id);
+        $invoice = CodCommissionInvoice::findOrFail($id);
 
         $validated = $request->validate([
             'admin_notes' => 'required|string|max:500',
@@ -1214,7 +1214,7 @@ class DashboardController extends Controller
         }
 
         // ── Orders in range (for summary + detail table) ─────────────────
-        $orders = \App\Models\Order::with([
+        $orders = Order::with([
                 'buyer:id,name,email',
                 'seller.sellerProfile:user_id,store_name',
                 'items',
