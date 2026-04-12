@@ -28,7 +28,6 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
-use App\Http\Controllers\Api\ShippingSettingController;
 
 
 /*
@@ -318,6 +317,28 @@ Route::group([
             Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
             Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
             Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
+
+            // ── Admin: platform delivery fee management ────────────────────────
+            Route::prefix('delivery-fees')->middleware('role:admin')->group(function () {
+                // List all platform deliveries with fee status (for DeliveryFeeManagement component)
+                Route::get('/', [DashboardController::class, 'adminListDeliveryFees']);
+                // Pending-only list (for DeliveryFeeReview component in AdminDashboard)
+                Route::get('/pending', [DashboardController::class, 'adminPendingDeliveryFees']);
+            });
+
+            Route::prefix('deliveries')->middleware('role:admin')->group(function () {
+                // Collect delivery fee from seller (mark as confirmed)
+                Route::post('/{id}/collect-fee', [DashboardController::class, 'adminCollectDeliveryFee']);
+                // Confirm fee (alias used by DeliveryFeeReview)
+                Route::patch('/{id}/confirm-fee', [DashboardController::class, 'adminConfirmDeliveryFee']);
+            });
+
+            // ── Admin: COD commission invoice management ───────────────────────
+            Route::prefix('cod-invoices')->middleware('role:admin')->group(function () {
+                Route::get('/', [DashboardController::class, 'adminListCodInvoices']);
+                Route::post('/{id}/confirm-payment', [DashboardController::class, 'adminConfirmCodPayment']);
+                Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
+            });
             Route::get('/customers', [SellerController::class, 'customers']);
 
             // Revenue export
@@ -385,13 +406,6 @@ Route::group([
                 Route::delete('/{id}', [DeliveryAreaController::class, 'destroy']);
             });
 
-            // Shipping settings (separate from general settings)
-            Route::prefix('shipping')->group(function () {
-                Route::get('/settings', [ShippingSettingController::class, 'getShippingSettings']);
-                Route::put('/settings', [ShippingSettingController::class, 'updateShippingSettings']);
-                Route::post('/calculate', [ShippingSettingController::class, 'calculateShipping']);
-                Route::post('/toggle', [ShippingSettingController::class, 'toggleShipping']);
-            });
 
             // Settings routes
             Route::prefix('settings')->group(function () {

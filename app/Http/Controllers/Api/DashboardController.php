@@ -963,4 +963,204 @@ class DashboardController extends Controller
         ]);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADMIN — DELIVERY FEE MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * GET /admin/delivery-fees
+     * List all platform-method deliveries with their fee status.
+     * Used by DeliveryFeeManagement component.
+     */
+    public function adminListDeliveryFees(Request $request)
+    {
+        $base = \App\Models\Delivery::where('delivery_method', 'platform');
+        $query = (clone $base)
+            ->with(['order:id,order_number,buyer_id', 'supplier:id,name'])
+            ->orderByDesc('created_at');
+
+        // Filter by delivery_fee_status enum: outstanding | collected
+        if ($feeStatus = $request->fee_status) {
+            $query->where('delivery_fee_status', $feeStatus);
+        }
+
+        $deliveries = $query->paginate($request->get('per_page', 20));
+
+        $summary = [
+            'outstanding_count'  => (clone $base)->where('delivery_fee_status', 'outstanding')->count(),
+            'outstanding_amount' => (clone $base)->where('delivery_fee_status', 'outstanding')->sum('platform_delivery_fee'),
+            'collected_count'    => (clone $base)->where('delivery_fee_status', 'collected')->count(),
+            'collected_amount'   => (clone $base)->where('delivery_fee_status', 'collected')->sum('platform_delivery_fee'),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data'    => ['deliveries' => $deliveries, 'summary' => $summary],
+        ]);
+    }
+
+    /**
+     * GET /admin/delivery-fees/pending
+     * Deliveries where seller submitted payment but admin hasn't confirmed yet.
+     * Used by DeliveryFeeReview component.
+     */
+    public function adminPendingDeliveryFees(Request $request)
+    {
+        $fees = \App\Models\Delivery::with(['order:id,order_number', 'supplier:id,name'])
+            ->where('delivery_method', 'platform')
+            ->whereNotNull('fee_submitted_at')
+            ->whereNull('fee_confirmed_at')
+            ->orderBy('fee_submitted_at')
+            ->get();
+
+        return response()->json(['success' => true, 'data' => $fees]);
+    }
+
+    /**
+     * POST /admin/deliveries/{id}/collect-fee
+     * Admin marks the delivery fee as collected from seller.
+     * Used by DeliveryFeeManagement Collect modal.
+     */
+    public function adminCollectDeliveryFee(Request $request, $id)
+    {
+        $user = $request->user();
+        if (!$user->hasRole('admin') && $user->type !== 'admin') {
+            return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+        }
+
+        $delivery = \App\Models\Delivery::findOrFail($id);
+
+        $validated = $request->validate([
+            'collection_ref' => 'required|string|max:200',
+            'admin_notes'    => 'nullable|string|max:500',
+        ]);
+
+        $delivery->update([
+            // System 1: delivery_fee_status enum tracks collection state
+            'delivery_fee_status'        => 'collected',
+            'delivery_fee_collected_at'  => now(),
+            'delivery_fee_collected_by'  => $user->id,
+            'delivery_fee_collection_ref'=> $validated['collection_ref'],
+            // System 2: fee_confirmed columns for DeliveryFeeReview
+            'fee_confirmed_at'           => now(),
+            'fee_confirmed_by'           => $user->id,
+            'fee_confirmation_note'      => $validated['collection_ref']
+                . ($validated['admin_notes'] ? ' — ' . $validated['admin_notes'] : ''),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery fee marked as collected.',
+            'data'    => $delivery->fresh(['order', 'supplier']),
+        ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADMIN — COD COMMISSION INVOICE MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * GET /admin/cod-invoices
+     * List COD commission invoices with optional status filter.
+     * Used by CodInvoiceManagement component.
+     */
+    public function adminListCodInvoices(Request $request)
+    {
+        $query = \App\Models\CodCommissionInvoice::with([
+                'seller:id,name',
+                'order:id,order_number',
+                'confirmedBy:id,name',
+            ])
+            ->orderByDesc('created_at');
+
+        if ($status = $request->status) {
+            $query->where('status', $status);
+        }
+
+        $invoices = $query->paginate($request->get('per_page', 20));
+
+        $summary = [
+            'outstanding' => \App\Models\CodCommissionInvoice::where('status', 'outstanding')->count(),
+            'overdue'     => \App\Models\CodCommissionInvoice::where('status', 'overdue')->count(),
+            'paid'        => \App\Models\CodCommissionInvoice::where('status', 'paid')->count(),
+            'waived'      => \App\Models\CodCommissionInvoice::where('status', 'waived')->count(),
+            'total_owed'  => \App\Models\CodCommissionInvoice::whereIn('status', ['outstanding','overdue'])->sum('commission_amount'),
+            'total_paid'  => \App\Models\CodCommissionInvoice::where('status', 'paid')->sum('commission_amount'),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data'    => ['invoices' => $invoices, 'summary' => $summary],
+        ]);
+    }
+
+    /**
+     * POST /admin/cod-invoices/{id}/confirm-payment
+     * Admin confirms a seller paid their COD commission invoice.
+     * Used by CodInvoiceManagement confirm modal.
+     */
+    public function adminConfirmCodPayment(Request $request, $id)
+    {
+        $user = $request->user();
+        if (!$user->hasRole('admin') && $user->type !== 'admin') {
+            return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+        }
+
+        $invoice = \App\Models\CodCommissionInvoice::findOrFail($id);
+
+        $validated = $request->validate([
+            'payment_reference' => 'nullable|string|max:200',
+            'payment_method'    => 'nullable|string|max:100',
+            'admin_notes'       => 'nullable|string|max:500',
+        ]);
+
+        $invoice->update([
+            'status'             => 'paid',
+            'paid_at'            => now(),
+            'admin_confirmed_at' => now(),
+            'confirmed_by'       => $user->id,
+            'payment_reference'  => $validated['payment_reference'] ?? null,
+            'payment_method'     => $validated['payment_method'] ?? null,
+            'admin_notes'        => $validated['admin_notes'] ?? null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'COD invoice marked as paid.',
+            'data'    => $invoice->fresh(['seller', 'order', 'confirmedBy']),
+        ]);
+    }
+
+    /**
+     * POST /admin/cod-invoices/{id}/waive
+     * Admin waives a COD commission invoice (writes off the debt).
+     * Used by CodInvoiceManagement waive modal.
+     */
+    public function adminWaiveCodInvoice(Request $request, $id)
+    {
+        $user = $request->user();
+        if (!$user->hasRole('admin') && $user->type !== 'admin') {
+            return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+        }
+
+        $invoice = \App\Models\CodCommissionInvoice::findOrFail($id);
+
+        $validated = $request->validate([
+            'admin_notes' => 'required|string|max:500',
+        ]);
+
+        $invoice->update([
+            'status'             => 'waived',
+            'admin_confirmed_at' => now(),
+            'confirmed_by'       => $user->id,
+            'admin_notes'        => $validated['admin_notes'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'COD invoice waived.',
+            'data'    => $invoice->fresh(['seller', 'order']),
+        ]);
+    }
+
 }

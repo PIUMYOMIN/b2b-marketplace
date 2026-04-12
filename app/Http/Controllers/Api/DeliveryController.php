@@ -208,7 +208,7 @@ class DeliveryController extends Controller
                         $existingInvoice = CodCommissionInvoice::where('order_id', $order->id)->first();
                         if (!$existingInvoice) {
                             CodCommissionInvoice::create([
-                                'invoice_number'    => CodCommissionInvoice::generateInvoiceNumber(),
+                                'invoice_number'    => 'COD-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999),
                                 'order_id'          => $order->id,
                                 'seller_id'         => $order->seller_id,
                                 'order_subtotal'    => $order->subtotal_amount,
@@ -353,7 +353,7 @@ class DeliveryController extends Controller
                     // COD — seller collected cash from buyer; they now owe
                     // the platform the commission. Raise an invoice.
                     CodCommissionInvoice::create([
-                        'invoice_number'    => CodCommissionInvoice::generateInvoiceNumber(),
+                        'invoice_number'    => 'COD-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999),
                         'order_id'          => $order->id,
                         'seller_id'         => $order->seller_id,
                         'order_subtotal'    => $order->subtotal_amount,

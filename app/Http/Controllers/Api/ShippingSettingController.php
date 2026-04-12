@@ -96,8 +96,13 @@ class ShippingSettingController extends Controller
             $validator = Validator::make($request->all(), [
                 // Basic Settings
                 'enabled' => 'sometimes|boolean',
-                'processing_time' => 'sometimes|in:same_day,1_2_days,3_5_days,5_7_days,custom',
+                // processing_time: accept both enum keys AND human-readable labels
+                // (normalised to DB enum before saving)
+                'processing_time' => 'sometimes|nullable|string|max:50',
                 'custom_processing_time' => 'nullable|string|max:255',
+                // Shipping fee fallback + buyer-facing notes
+                'default_shipping_fee' => 'sometimes|numeric|min:0',
+                'shipping_notes' => 'nullable|string|max:1000',
 
                 // Free Shipping
                 'free_shipping_enabled' => 'sometimes|boolean',
@@ -161,10 +166,35 @@ class ShippingSettingController extends Controller
                 ?? $validated['international_shipping_enabled']
                 ?? $shippingSetting->international_shipping;
 
+            // ── Normalise processing_time ─────────────────────────────────────
+            // Frontend may send human-readable strings ("1-2 days", "Same day", etc.)
+            // Map them to the DB enum values before saving.
+            $processingTimeMap = [
+                'same day'   => 'same_day',
+                'same_day'   => 'same_day',
+                '1 day'      => '1_2_days',
+                '1-2 days'   => '1_2_days',
+                '1_2_days'   => '1_2_days',
+                '2-3 days'   => '3_5_days',
+                '3-5 days'   => '3_5_days',
+                '3_5_days'   => '3_5_days',
+                '4-7 days'   => '5_7_days',
+                '5-7 days'   => '5_7_days',
+                '5_7_days'   => '5_7_days',
+                '1 week'     => '5_7_days',
+                '1-2 weeks'  => 'custom',
+                'custom'     => 'custom',
+            ];
+            $rawProcessingTime  = strtolower(trim($validated['processing_time'] ?? ''));
+            $normProcessingTime = $processingTimeMap[$rawProcessingTime]
+                ?? (in_array($rawProcessingTime, ['same_day','1_2_days','3_5_days','5_7_days','custom'], true)
+                    ? $rawProcessingTime
+                    : $shippingSetting->processing_time);
+
             // Update shipping settings (only columns on shipping_settings / model $fillable)
             $shippingSetting->update([
                 'enabled' => $validated['enabled'] ?? $shippingSetting->enabled,
-                'processing_time' => $validated['processing_time'] ?? $shippingSetting->processing_time,
+                'processing_time' => $normProcessingTime,
                 'custom_processing_time' => $validated['custom_processing_time'] ?? $shippingSetting->custom_processing_time,
                 'free_shipping_enabled' => $validated['free_shipping_enabled'] ?? $shippingSetting->free_shipping_enabled,
                 'free_shipping_threshold' => $validated['free_shipping_threshold'] ?? $shippingSetting->free_shipping_threshold,
@@ -176,6 +206,8 @@ class ShippingSettingController extends Controller
                 'default_package_weight' => $validated['default_package_weight'] ?? $shippingSetting->default_package_weight,
                 'shipping_policy' => $validated['shipping_policy'] ?? $shippingSetting->shipping_policy,
                 'return_policy' => $validated['return_policy'] ?? $shippingSetting->return_policy,
+                'default_shipping_fee' => $validated['default_shipping_fee'] ?? $shippingSetting->default_shipping_fee,
+                'shipping_notes' => $validated['shipping_notes'] ?? $shippingSetting->shipping_notes,
             ]);
 
             // Update seller profile shipping_enabled flag
