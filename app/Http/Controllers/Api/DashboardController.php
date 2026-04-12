@@ -939,10 +939,10 @@ class DashboardController extends Controller
         $pendingCommission = Commission::where('seller_id', $user->id)->where('status', 'pending')->sum('amount');
         $paidCommission    = Commission::where('seller_id', $user->id)->whereIn('status', ['collected', 'paid'])->sum('amount');
         $commissionRate    = Commission::where('seller_id', $user->id)->latest()->value('commission_rate') ?? 0.05;
-        $totalDeliveryFees    = \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->sum('platform_delivery_fee');
-        $pendingDeliveryFees  = \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNull('fee_confirmed_at')->sum('platform_delivery_fee');
-        $confirmedDeliveryFees= \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNotNull('fee_confirmed_at')->sum('platform_delivery_fee');
-        $submittedPending     = \App\Models\Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNotNull('fee_submitted_at')->whereNull('fee_confirmed_at')->sum('platform_delivery_fee');
+        $totalDeliveryFees    = Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->sum('platform_delivery_fee');
+        $pendingDeliveryFees  = Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNull('fee_confirmed_at')->sum('platform_delivery_fee');
+        $confirmedDeliveryFees= Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNotNull('fee_confirmed_at')->sum('platform_delivery_fee');
+        $submittedPending     = Delivery::where('supplier_id', $user->id)->where('delivery_method', 'platform')->whereNotNull('fee_submitted_at')->whereNull('fee_confirmed_at')->sum('platform_delivery_fee');
         return response()->json([
             'success' => true,
             'data' => [
@@ -1298,7 +1298,7 @@ class DashboardController extends Controller
             default => '%Y-%m-%d',
         };
 
-        $trendOrders = \App\Models\Order::whereBetween('created_at', [$start, $end])
+        $trOrder::whereBetween('created_at', [$start, $end])
             ->where('status', 'delivered')
             ->selectRaw("DATE_FORMAT(created_at, '{$groupFmt}') as period,
                 COUNT(*) as orders,
