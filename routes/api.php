@@ -211,8 +211,10 @@ Route::group([
             });
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
+                Route::get('/', [BusinessTypeController::class, 'adminIndex']);
                 Route::post('/', [BusinessTypeController::class, 'store']);
                 Route::put('/{id}', [BusinessTypeController::class, 'update']);
+                Route::patch('/{id}/toggle', [BusinessTypeController::class, 'toggleStatus']);
                 Route::delete('/{id}', [BusinessTypeController::class, 'destroy']);
             });
 
@@ -320,16 +322,12 @@ Route::group([
 
             // ── Admin: platform delivery fee management ────────────────────────
             Route::prefix('delivery-fees')->middleware('role:admin')->group(function () {
-                // List all platform deliveries with fee status (for DeliveryFeeManagement component)
                 Route::get('/', [DashboardController::class, 'adminListDeliveryFees']);
-                // Pending-only list (for DeliveryFeeReview component in AdminDashboard)
                 Route::get('/pending', [DashboardController::class, 'adminPendingDeliveryFees']);
             });
 
             Route::prefix('deliveries')->middleware('role:admin')->group(function () {
-                // Collect delivery fee from seller (mark as confirmed)
                 Route::post('/{id}/collect-fee', [DashboardController::class, 'adminCollectDeliveryFee']);
-                // Confirm fee (alias used by DeliveryFeeReview)
                 Route::patch('/{id}/confirm-fee', [DashboardController::class, 'adminConfirmDeliveryFee']);
             });
 
