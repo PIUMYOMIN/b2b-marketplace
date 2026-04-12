@@ -144,6 +144,8 @@ Route::group([
             Route::get('/users-by-role', [DashboardController::class, 'usersCountByRole']);
             Route::get('/recent-users', [DashboardController::class, 'recentUsers']);
             Route::get('/active-inactive-users', [DashboardController::class, 'activeInactiveUsers']);
+            Route::get('/revenue-breakdown', [DashboardController::class, 'revenueBreakdown']);
+            Route::get('/financial-report',  [DashboardController::class, 'financialReport']);
 
             // Admin newsletter + campaigns
             Route::prefix('newsletter')->middleware('role:admin')->group(function () {

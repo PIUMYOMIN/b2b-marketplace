@@ -1163,4 +1163,185 @@ class DashboardController extends Controller
         ]);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADMIN — FINANCIAL REPORT
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * GET /admin/financial-report?period=month&group_by=day
+     *
+     * Comprehensive financial report for the FinancialReports admin component.
+     * Returns summary stats, per-order details, and time-series trend data.
+     *
+     * period: day | week | month | quarter | year | custom
+     * group_by: day | week | month
+     * from / to: ISO date strings (required when period=custom)
+     */
+    public function financialReport(Request $request)
+    {
+        $period  = $request->input('period', 'month');
+        $groupBy = $request->input('group_by', 'day');
+
+        // ── Date range ────────────────────────────────────────────────────
+        switch ($period) {
+            case 'day':
+                $start = Carbon::today()->startOfDay();
+                $end   = Carbon::today()->endOfDay();
+                break;
+            case 'week':
+                $start = Carbon::now()->startOfWeek();
+                $end   = Carbon::now()->endOfWeek();
+                break;
+            case 'month':
+                $start = Carbon::now()->startOfMonth();
+                $end   = Carbon::now()->endOfMonth();
+                break;
+            case 'quarter':
+                $start = Carbon::now()->startOfQuarter();
+                $end   = Carbon::now()->endOfQuarter();
+                break;
+            case 'year':
+                $start = Carbon::now()->startOfYear();
+                $end   = Carbon::now()->endOfYear();
+                break;
+            case 'custom':
+                $start = Carbon::parse($request->input('from', Carbon::now()->subMonth()))->startOfDay();
+                $end   = Carbon::parse($request->input('to',   Carbon::now()))->endOfDay();
+                break;
+            default:
+                $start = Carbon::now()->startOfMonth();
+                $end   = Carbon::now()->endOfMonth();
+        }
+
+        // ── Orders in range (for summary + detail table) ─────────────────
+        $orders = \App\Models\Order::with([
+                'buyer:id,name,email',
+                'seller.sellerProfile:user_id,store_name',
+                'items',
+            ])
+            ->whereBetween('created_at', [$start, $end])
+            ->get();
+
+        $delivered = $orders->where('status', 'delivered');
+
+        // ── Summary ───────────────────────────────────────────────────────
+        $totalCommission = (float) $delivered->sum('commission_amount');
+        $pendingCommission = (float) Commission::whereBetween('created_at', [$start, $end])
+            ->where('status', 'pending')->sum('amount');
+        $confirmedCommission = $totalCommission - $pendingCommission;
+
+        $delivFeeBase = \App\Models\Delivery::where('delivery_method', 'platform')
+            ->whereBetween('created_at', [$start, $end]);
+        $totalDelivFees     = (float) (clone $delivFeeBase)->sum('platform_delivery_fee');
+        $confirmedDelivFees = (float) (clone $delivFeeBase)->where('delivery_fee_status', 'collected')->sum('platform_delivery_fee');
+
+        $summary = [
+            'from'                        => $start->toDateString(),
+            'to'                          => $end->toDateString(),
+            // Orders
+            'total_orders'                => $orders->count(),
+            'delivered_orders'            => $delivered->count(),
+            'pending_orders'              => $orders->whereIn('status', ['pending', 'processing', 'confirmed'])->count(),
+            'cancelled_orders'            => $orders->where('status', 'cancelled')->count(),
+            // GMV
+            'total_gmv'                   => (float) $orders->sum('total_amount'),
+            'total_subtotal'              => (float) $orders->sum('subtotal_amount'),
+            'total_shipping'              => (float) $orders->sum('shipping_fee'),
+            'total_tax'                   => (float) $orders->sum('tax_amount'),
+            'total_coupon_discount'       => (float) $orders->sum('coupon_discount'),
+            // Commission
+            'total_commission'            => $totalCommission,
+            'total_commission_confirmed'  => $confirmedCommission,
+            'total_commission_pending'    => $pendingCommission,
+            'total_seller_payout'         => (float) $delivered->sum(fn($o) =>
+                ($o->subtotal_amount ?? 0) - ($o->commission_amount ?? 0)),
+            // Delivery fees
+            'total_delivery_fees'         => $totalDelivFees,
+            'total_delivery_fees_confirmed' => $confirmedDelivFees,
+            'total_delivery_fees_pending' => $totalDelivFees - $confirmedDelivFees,
+            // Platform revenue
+            'platform_revenue'            => $totalCommission + $confirmedDelivFees,
+            'platform_revenue_pending'    => $pendingCommission + ($totalDelivFees - $confirmedDelivFees),
+        ];
+
+        // ── Per-order detail rows ─────────────────────────────────────────
+        $orderRows = $orders->map(function ($o) {
+            $itemsSummary = $o->items->map(fn($i) =>
+                ($i->product_data['name'] ?? 'Product') . ' x' . $i->quantity
+            )->join(', ');
+
+            return [
+                'order_number'  => $o->order_number,
+                'order_date'    => $o->created_at?->toDateString(),
+                'delivered_at'  => $o->delivered_at?->toDateString(),
+                'buyer_name'    => $o->buyer?->name,
+                'buyer_email'   => $o->buyer?->email,
+                'seller_name'   => $o->seller?->sellerProfile?->store_name ?? $o->seller?->name,
+                'seller_email'  => $o->seller?->email,
+                'items_summary' => $itemsSummary,
+                'subtotal'      => (float) $o->subtotal_amount,
+                'shipping_fee'  => (float) $o->shipping_fee,
+                'tax_amount'    => (float) $o->tax_amount,
+                'coupon_discount'=> (float) $o->coupon_discount,
+                'total'         => (float) $o->total_amount,
+                'commission_rate'=> (float) $o->commission_rate,
+                'commission'    => (float) $o->commission_amount,
+                'payment_method'=> $o->payment_method,
+                'order_status'  => $o->status,
+            ];
+        })->values();
+
+        // ── Time-series trend ─────────────────────────────────────────────
+        $groupFmt = match ($groupBy) {
+            'week'  => '%Y-W%u',
+            'month' => '%Y-%m',
+            default => '%Y-%m-%d',
+        };
+
+        $trendOrders = \App\Models\Order::whereBetween('created_at', [$start, $end])
+            ->where('status', 'delivered')
+            ->selectRaw("DATE_FORMAT(created_at, '{$groupFmt}') as period,
+                COUNT(*) as orders,
+                SUM(total_amount) as gmv,
+                SUM(tax_amount) as tax,
+                SUM(commission_amount) as commission,
+                SUM(subtotal_amount) as subtotal")
+            ->groupBy('period')
+            ->orderBy('period')
+            ->get()
+            ->keyBy('period');
+
+        $trendDelivery = \App\Models\Delivery::where('delivery_method', 'platform')
+            ->where('status', 'delivered')
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw("DATE_FORMAT(created_at, '{$groupFmt}') as period,
+                SUM(platform_delivery_fee) as delivery_fee")
+            ->groupBy('period')
+            ->get()
+            ->keyBy('period');
+
+        $trend = $trendOrders->keys()->union($trendDelivery->keys())->sort()->map(function ($p) use ($trendOrders, $trendDelivery) {
+            $o    = $trendOrders[$p]  ?? null;
+            $d    = $trendDelivery[$p] ?? null;
+            $comm = (float) ($o->commission ?? 0);
+            $dFee = (float) ($d->delivery_fee ?? 0);
+            return [
+                'period'       => $p,
+                'orders'       => (int) ($o->orders ?? 0),
+                'gmv'          => (float) ($o->gmv ?? 0),
+                'tax'          => (float) ($o->tax ?? 0),
+                'commission'   => $comm,
+                'delivery_fee' => $dFee,
+                'platform'     => $comm + $dFee,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'summary' => $summary,
+            'orders'  => $orderRows,
+            'trend'   => $trend,
+        ]);
+    }
+
 }
