@@ -56,8 +56,8 @@ class OrderController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
         } else if ($user->hasRole('buyer')) {
-            // For buyers, show their own orders
-            $orders = Order::with(['items', 'seller'])
+            // For buyers, show their own orders with seller store name
+            $orders = Order::with(['items', 'seller.sellerProfile'])
                 ->where('buyer_id', $user->id)
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -90,6 +90,12 @@ class OrderController extends Controller
 
                 return $item;
             });
+
+            if ($order->seller && $order->seller->sellerProfile) {
+                $order->store_name = $order->seller->sellerProfile->store_name;
+            } elseif ($order->seller) {
+                $order->store_name = $order->seller->name; // fallback to user name
+            }
 
             return $order;
         });
