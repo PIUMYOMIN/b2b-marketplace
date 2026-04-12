@@ -411,7 +411,7 @@ Route::group([
             //Seller Wallet
             Route::get('/wallet', [WalletController::class, 'sellerSummary']);
             Route::prefix('cod-invoices')->group(function () {
-                Route::get('/', [WalletController::class, 'selerCodInvoices ']);
+                Route::get('/', [WalletController::class, 'selerCodInvoices']);
                 Route::post('/{invoice}/submit-payment', [WalletController::class, 'submitCodPayment']);
             });
 
