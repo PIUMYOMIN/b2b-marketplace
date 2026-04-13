@@ -74,10 +74,12 @@ class ContactMessageController extends Controller
 
         try {
             // Attempt to send email
-            Mail::to(config('mail.from.address'))->send(new ContactFormMail($data));
+            Mail::to(config('mail.from.address'))->queue(new ContactFormMail($data));
         } catch (\Exception $e) {
             // Log the error for debugging
-            \Log::error('Contact form email failed: ' . $e->getMessage());
+            \Log::error('Contact form email failed: ' . $e->getMessage(),[
+                'trace' => $e->getTraceAsString()
+            ]);
 
             // Return error response to frontend
             return response()->json([
