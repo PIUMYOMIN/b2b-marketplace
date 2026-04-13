@@ -8,6 +8,7 @@ use App\Models\NewsletterSubscriber;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use App\Mail\NewsletterConfirmMail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
