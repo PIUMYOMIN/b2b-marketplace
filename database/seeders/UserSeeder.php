@@ -28,7 +28,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Admin User',
                 'user_id' => 'ADM001',
-                'email' => 'admin@b2b.com',
+                'email' => 'official.pyonea@gmail.com',
                 'phone' => '+959123456789',
                 'password' => Hash::make('password'),
                 'type' => 'admin',
@@ -41,7 +41,7 @@ class UserSeeder extends Seeder
             [
                 'name' => 'System Administrator',
                 'user_id' => 'ADM002',
-                'email' => 'sysadmin@b2b.com',
+                'email' => 'official@pyonea.com',
                 'phone' => '+959987654321',
                 'password' => Hash::make('password'),
                 'type' => 'admin',
