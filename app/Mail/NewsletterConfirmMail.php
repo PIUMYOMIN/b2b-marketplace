@@ -11,7 +11,10 @@ class NewsletterConfirmMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public NewsletterSubscriber $subscriber) {}
+    public function __construct(
+        public string $token,
+        public ?string $name
+    ) {}
 
     public function build(): static
     {
