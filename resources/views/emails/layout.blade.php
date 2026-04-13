@@ -240,11 +240,11 @@
                 @hasSection('unsubscribe_url')
                     <p style="margin-top:10px;"><a href="@yield('unsubscribe_url')">Unsubscribe</a> &nbsp;·&nbsp; <a
                             href="https://pyonea.com/privacy-policy">Privacy Policy</a></p>
-                @endif
+                @endhasSection
                 @unless(isset($hide_unsubscribe) && $hide_unsubscribe)
                     @hasSection('footer_note')
                         <p style="margin-top:8px; font-size:11px;">@yield('footer_note')</p>
-                    @endif
+                    @endhasSection
                 @endunless
             </div>
         </div>
