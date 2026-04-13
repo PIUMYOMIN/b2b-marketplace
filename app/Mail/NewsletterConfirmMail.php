@@ -21,8 +21,8 @@ class NewsletterConfirmMail extends Mailable
         return $this
             ->subject('Confirm your Pyonea subscription')
             ->view('emails.newsletter-confirm', [
-                'token' => $this->subscriber->confirm_token,
-                'name'  => $this->subscriber->name,
+                'token' => $this->token,
+                'name'  => $this->name,
             ]);
     }
 }

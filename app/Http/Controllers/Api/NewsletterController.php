@@ -40,7 +40,12 @@ class NewsletterController extends Controller
         $sub->save();
 
         // Send confirmation email
-        Mail::to($sub->email)->send(new NewsletterConfirmMail($sub));
+        Mail::to($sub->email)->queue(
+        new NewsletterConfirmMail(
+                $sub->confirm_token,
+                $sub->name
+            )
+        );
 
         return response()->json(['success' => true, 'message' => __('messages.newsletter.confirm_sent')]);
     }
