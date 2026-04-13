@@ -34,12 +34,12 @@ class NewsletterController extends Controller
         $sub->name            = $request->name ?: $sub->name;
         $sub->confirm_token   = NewsletterSubscriber::generateToken();
         $sub->unsubscribe_token = $sub->unsubscribe_token ?: NewsletterSubscriber::generateToken();
-        $sub->user_id         = User::where('email', $request->email)->value('id');
-        $sub->source          = $request->input('source', 'website');
+        $sub->user_id = User::where('email', $request->email)->value('id');
+        $sub->source = $request->input('source', 'website');
         $sub->save();
 
         // Send confirmation email
-        Mail::to($sub->email)->queue(new \App\Mail\NewsletterConfirmMail($sub));
+        Mail::to($sub->email)->send(new NewsletterConfirmMail($sub));
 
         return response()->json(['success' => true, 'message' => __('messages.newsletter.confirm_sent')]);
     }

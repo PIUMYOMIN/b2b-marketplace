@@ -76,10 +76,10 @@ Route::group([
     // Newsletter (public)
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
     Route::get('/newsletter/confirm', [NewsletterController::class, 'confirm']);
-Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
+    Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
 
-// Referral validation (public for register page)
-Route::post('/referral/validate', [ReferralController::class, 'validate']);
+    // Referral validation (public for register page)
+    Route::post('/referral/validate', [ReferralController::class, 'validate']);
 
     // Announcements (public — visible to all visitors)
     Route::get('/announcements', [AnnouncementController::class, 'index']);
