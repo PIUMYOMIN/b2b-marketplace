@@ -236,14 +236,17 @@
             <div class="footer">
                 <p>You're receiving this email from <strong>Pyonea Marketplace</strong></p>
                 <p>Yangon, Myanmar &nbsp;·&nbsp; <a href="https://pyonea.com">pyonea.com</a></p>
-                @hasSection('unsubscribe_url')
-                    <p style="margin-top:10px;"><a href="@yield('unsubscribe_url')">Unsubscribe</a> &nbsp;·&nbsp; <a
-                            href="https://pyonea.com/privacy-policy">Privacy Policy</a></p>
-                @endhasSection
-                @if(!isset($hide_unsubscribe) || !$hide_unsubscribe)
-                    @if($__env->hasSection('footer_note'))
-                        <p style="margin-top:8px; font-size:11px;">@yield('footer_note')</p>
-                    @endif
+                @if(!empty(trim($__env->yieldContent('unsubscribe_url'))))
+                    <p style="margin-top:10px;">
+                        <a href="@yield('unsubscribe_url')">Unsubscribe</a> &nbsp;·&nbsp; 
+                        <a href="https://pyonea.com/privacy-policy">Privacy Policy</a>
+                    </p>
+                @endif
+                @php
+                    $showFooterNote = !isset($hide_unsubscribe) || !$hide_unsubscribe;
+                @endphp
+                @if($showFooterNote && !empty(trim($__env->yieldContent('footer_note'))))
+                    <p style="margin-top:8px; font-size:11px;">@yield('footer_note')</p>
                 @endif
             </div>
         </div>
