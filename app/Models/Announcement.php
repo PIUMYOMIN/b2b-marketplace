@@ -36,10 +36,13 @@ class Announcement extends Model
     /** Filter by target audience */
     public function scopeForAudience($query, ?string $type = null)
     {
-        // 'all' shows to everyone; specific types only show to matching users
+        // 'all' shows to everyone.
+        // null type = unauthenticated visitor → treat as 'guests'.
+        // Authenticated users see 'all' + their specific type.
+        $audienceType = $type ?? 'guests';
         return $query->where(fn ($q) =>
             $q->where('target_audience', 'all')
-              ->orWhere('target_audience', $type ?? 'all')
+              ->orWhere('target_audience', $audienceType)
         );
     }
 }
