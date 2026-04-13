@@ -50,6 +50,11 @@ class Delivery extends Model
         'actual_delivery_cost',
         'delivery_cost_paid',
         'delivery_cost_paid_at',
+        // Fee collection tracking (System 1 — enum-based)
+        'delivery_fee_status',
+        'delivery_fee_collected_at',
+        'delivery_fee_collected_by',
+        'delivery_fee_collection_ref',
     ];
 
     protected $casts = [
@@ -64,7 +69,8 @@ class Delivery extends Model
         'fee_confirmed_by' => 'integer',
         'delivered_at' => 'datetime',
         'fee_submitted_at' => 'datetime',
-        'fee_confirmed_at' => 'datetime',
+        'fee_confirmed_at'          => 'datetime',
+        'delivery_fee_collected_at' => 'datetime',
         'failed_at' => 'datetime',
         'delivery_cost_paid_at' => 'datetime',
         'package_dimensions' => 'array',

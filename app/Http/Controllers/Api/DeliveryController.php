@@ -59,6 +59,11 @@ class DeliveryController extends Controller
 
             if ($isSeller) {
                 $query->where('supplier_id', $user->id);
+                // Apply delivery_method filter for sellers too (e.g. seller dashboard
+                // fetches with ?delivery_method=platform to show only platform fees)
+                if ($request->has('delivery_method')) {
+                    $query->where('delivery_method', $request->delivery_method);
+                }
             } elseif ($request->has('delivery_method')) {
                 $query->where('delivery_method', $request->delivery_method);
             }

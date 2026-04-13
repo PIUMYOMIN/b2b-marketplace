@@ -977,7 +977,7 @@ class DashboardController extends Controller
     {
         $base = Delivery::where('delivery_method', 'platform');
         $query = (clone $base)
-            ->with(['order:id,order_number,buyer_id', 'supplier:id,name'])
+            ->with(['order:id,order_number', 'supplier:id,name,email'])
             ->orderByDesc('created_at');
 
         // Filter by delivery_fee_status enum: outstanding | collected
