@@ -352,8 +352,9 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
 
             Route::get('/customers', [SellerController::class, 'customers']);
 
-            // Revenue export
+            // Revenue export + financial report
             Route::get('/revenue/seller-export', [RevenueExportController::class, 'sellerExport']);
+            Route::get('/financial-report',       [RevenueExportController::class, 'sellerExport']);
 
             Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
 
