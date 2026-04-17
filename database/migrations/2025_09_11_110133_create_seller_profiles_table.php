@@ -69,6 +69,22 @@ return new class extends Migration {
                 'other'
             ])->nullable();
 
+            // Myanmar NRC (National Registration Card) — structured breakdown
+            // Full NRC = {nrc_division}/{nrc_township_code}({nrc_type}){nrc_number}
+            // Example:  8/KaPaTa(N)123456
+            $table->string('nrc_division', 2)->nullable();       // 1-14
+            $table->string('nrc_township_code', 20)->nullable(); // e.g. KaPaTa
+            $table->string('nrc_township_mm', 30)->nullable();   // e.g. ကပတ
+            $table->string('nrc_type', 10)->nullable();          // N, E, P, T, TH
+            $table->string('nrc_number', 10)->nullable();        // 6-digit serial
+            // Admin NRC verification
+            $table->enum('nrc_verification_status', [
+                'unverified', 'pending', 'verified', 'mismatch', 'rejected'
+            ])->default('unverified');
+            $table->timestamp('nrc_verified_at')->nullable();
+            $table->foreignId('nrc_verified_by')->nullable()->constrained('users')->onDelete('set null');
+            $table->text('nrc_verification_notes')->nullable();
+
             // Status Fields
             $table->enum('status', [
                 'setup_pending',

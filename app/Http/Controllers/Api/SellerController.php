@@ -1020,6 +1020,12 @@ class SellerController extends Controller
                 'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
                 'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
                 'production_capacity' => 'nullable|string|max:255',
+                // NRC fields
+                'nrc_division'      => 'nullable|string|max:2',
+                'nrc_township_code' => 'nullable|string|max:20',
+                'nrc_township_mm'   => 'nullable|string|max:30',
+                'nrc_type'          => 'nullable|in:N,E,P,T,TH,Naing',
+                'nrc_number'        => ['nullable','string','max:10','regex:/^[0-9]{1,10}$/'],
             ]);
 
             if ($validator->fails()) {
@@ -1224,6 +1230,12 @@ class SellerController extends Controller
                 'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
                 'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
                 'production_capacity' => 'nullable|string|max:255',
+                // NRC fields
+                'nrc_division'      => 'nullable|string|max:2',
+                'nrc_township_code' => 'nullable|string|max:20',
+                'nrc_township_mm'   => 'nullable|string|max:30',
+                'nrc_type'          => 'nullable|in:N,E,P,T,TH,Naing',
+                'nrc_number'        => ['nullable','string','max:10','regex:/^[0-9]{1,10}$/'],
             ]);
 
             if ($validator->fails()) {
@@ -3261,8 +3273,14 @@ class SellerController extends Controller
                 ],
                 'business-details' => [
                     'business_registration_number' => 'nullable|string|max:255',
-                    'tax_id' => 'nullable|string|max:255',
-                    'website' => 'nullable|url'
+                    'tax_id'            => 'nullable|string|max:255',
+                    'website'           => 'nullable|url',
+                    // NRC fields
+                    'nrc_division'      => 'nullable|string|max:2',
+                    'nrc_township_code' => 'nullable|string|max:20',
+                    'nrc_township_mm'   => 'nullable|string|max:30',
+                    'nrc_type'          => 'nullable|in:N,E,P,T,TH,Naing',
+                    'nrc_number'        => 'nullable|digits_between:1,10',
                 ],
                 'address' => [
                     'address' => 'required|string|max:500',
@@ -5687,4 +5705,100 @@ class SellerController extends Controller
             ], 500);
         }
     }
+    /**
+     * POST /admin/seller/{id}/verify-nrc
+     * Admin verifies seller NRC against uploaded identity document.
+     * Updates nrc_verification_status and can also change store status.
+     */
+    public function verifyNrc(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin' && !$admin->hasRole('admin')) {
+                return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+            }
+
+            $seller = \App\Models\SellerProfile::findOrFail($id);
+
+            $v = Validator::make($request->all(), [
+                'nrc_verification_status' => 'required|in:pending,verified,mismatch,rejected',
+                'nrc_verification_notes'  => 'nullable|string|max:1000',
+                // Optionally update store status at the same time
+                'status'                  => 'nullable|in:setup_pending,pending,approved,active,suspended,closed',
+            ]);
+
+            if ($v->fails()) {
+                return response()->json(['success' => false, 'errors' => $v->errors()], 422);
+            }
+
+            $update = [
+                'nrc_verification_status' => $v->validated()['nrc_verification_status'],
+                'nrc_verification_notes'  => $v->validated()['nrc_verification_notes'] ?? null,
+                'nrc_verified_at'         => now(),
+                'nrc_verified_by'         => $admin->id,
+            ];
+
+            if (!empty($v->validated()['status'])) {
+                $update['status'] = $v->validated()['status'];
+                // Sync is_active based on status
+                $update['is_active'] = in_array($v->validated()['status'], ['active', 'approved']);
+            }
+
+            $seller->update($update);
+
+            return response()->json([
+                'success'  => true,
+                'message'  => 'NRC verification updated.',
+                'data'     => [
+                    'nrc_verification_status' => $seller->fresh()->nrc_verification_status,
+                    'nrc_verified_at'         => $seller->fresh()->nrc_verified_at?->toIso8601String(),
+                    'status'                  => $seller->fresh()->status,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('verifyNrc failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * PATCH /admin/seller/{id}/set-status
+     * Quick status toggle: active ↔ suspended ↔ closed etc.
+     */
+    public function setSellerStatus(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin' && !$admin->hasRole('admin')) {
+                return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+            }
+
+            $seller = \App\Models\SellerProfile::findOrFail($id);
+
+            $v = Validator::make($request->all(), [
+                'status' => 'required|in:setup_pending,pending,approved,active,rejected,suspended,closed',
+                'reason' => 'nullable|string|max:500',
+            ]);
+
+            if ($v->fails()) {
+                return response()->json(['success' => false, 'errors' => $v->errors()], 422);
+            }
+
+            $newStatus = $v->validated()['status'];
+            $seller->update([
+                'status'     => $newStatus,
+                'is_active'  => in_array($newStatus, ['active', 'approved']),
+                'admin_notes'=> $v->validated()['reason'] ?? $seller->admin_notes,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Seller status updated to {$newStatus}.",
+                'status'  => $newStatus,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
 }

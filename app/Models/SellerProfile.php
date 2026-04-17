@@ -47,6 +47,21 @@ class SellerProfile extends Model
     const ID_DRIVING_LICENSE = 'driving_license';
     const ID_OTHER = 'other';
 
+    // NRC verification statuses
+    const NRC_VERIFY_STATUSES = [
+        'unverified', 'pending', 'verified', 'mismatch', 'rejected',
+    ];
+
+    // NRC type codes → Myanmar script labels
+    const NRC_TYPE_LABELS = [
+        'N'     => 'နိုင်',
+        'E'     => 'ဧည့်',
+        'P'     => 'ဧည့်ပြု',
+        'T'     => 'သာသနာ',
+        'TH'    => 'သာသနာ',
+        'Naing' => 'နိုင်',
+    ];
+
     protected $fillable = [
         'user_id',
         'store_name',
@@ -83,6 +98,16 @@ class SellerProfile extends Model
         'identity_document_back',
         'additional_documents',
         'identity_document_type',
+        // NRC (National Registration Card) structured fields
+        'nrc_division',
+        'nrc_township_code',
+        'nrc_township_mm',
+        'nrc_type',
+        'nrc_number',
+        'nrc_verification_status',
+        'nrc_verified_at',
+        'nrc_verified_by',
+        'nrc_verification_notes',
 
         // Status fields
         'status',
@@ -143,6 +168,8 @@ class SellerProfile extends Model
         'status' => self::STATUS_SETUP_PENDING,
     ];
 
+    protected $appends = ['nrc_full', 'nrc_full_mm'];
+
     protected $casts = [
         'additional_documents' => 'array',
         'verified_at' => 'datetime',
@@ -156,8 +183,37 @@ class SellerProfile extends Model
         'auto_withdrawal' => 'boolean',
         'business_hours' => 'array',
         'vacation_start_date' => 'date',
-        'vacation_end_date' => 'date'
+        'vacation_end_date'   => 'date',
+        'nrc_verified_at'     => 'datetime',
     ];
+
+    /**
+     * Computed NRC string: e.g. 8/KaPaTa(N)123456
+     * Returns null when any required part is missing.
+     */
+    public function getNrcFullAttribute(): ?string
+    {
+        if (!$this->nrc_division || !$this->nrc_township_code ||
+            !$this->nrc_type    || !$this->nrc_number) {
+            return null;
+        }
+        return "{$this->nrc_division}/{$this->nrc_township_code}({$this->nrc_type}){$this->nrc_number}";
+    }
+
+    /**
+     * NRC in Myanmar script: e.g. ၈/ကပတ(နိုင်)၁၂၃၄၅၆
+     */
+    public function getNrcFullMmAttribute(): ?string
+    {
+        if (!$this->nrc_division || !$this->nrc_township_mm ||
+            !$this->nrc_type    || !$this->nrc_number) {
+            return null;
+        }
+        $divMm   = strtr($this->nrc_division, '0123456789', '၀၁၂၃၄၅၆၇၈၉');
+        $numMm   = strtr($this->nrc_number,   '0123456789', '၀၁၂၃၄၅၆၇၈၉');
+        $typeMm  = self::NRC_TYPE_LABELS[$this->nrc_type] ?? $this->nrc_type;
+        return "{$divMm}/{$this->nrc_township_mm}({$typeMm}){$numMm}";
+    }
 
     const STATUS_FLOW = [
         'setup_pending' => 'pending',

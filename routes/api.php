@@ -215,6 +215,9 @@ Route::group([
                 Route::put('/{id}/approve', [SellerController::class, 'sellerApprove']);
                 Route::post('/{id}/suspend', [SellerController::class, 'suspendSeller']);
                 Route::post('/{id}/reactivate', [SellerController::class, 'reactivateSeller']);
+                // NRC verification + quick status toggle
+                Route::post('/{id}/verify-nrc', [SellerController::class, 'verifyNrc']);
+                Route::patch('/{id}/set-status', [SellerController::class, 'setSellerStatus']);
             });
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
