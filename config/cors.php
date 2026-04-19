@@ -4,7 +4,7 @@ return [
 
     'paths' => ['api/*', 'sanctum/csrf-cookie', 'storage/*'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['https://pyonea.com', 'https://www.pyonea.com', 'http://localhost:5173', 'http://localhost:5174'],
 
     'allowed_origins' => [
         'https://api.pyonea.com',
