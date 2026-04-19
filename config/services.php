@@ -1,42 +1,46 @@
 <?php
+// config/services.php
+// Payment gateway credentials — all sourced from .env
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Third Party Services
-    |--------------------------------------------------------------------------
-    |
-    | This file is for storing the credentials for third party services such
-    | as Mailgun, Postmark, AWS and more. This file provides the de facto
-    | location for this type of information, allowing packages to have
-    | a conventional file to locate the various service credentials.
-    |
-    */
-
-    'postmark' => [
-        'token' => env('POSTMARK_TOKEN'),
+    'mailgun' => [
+        'domain'   => env('MAILGUN_DOMAIN'),
+        'secret'   => env('MAILGUN_SECRET'),
+        'endpoint' => env('MAILGUN_ENDPOINT', 'api.mailgun.net'),
+        'scheme'   => 'https',
     ],
 
-    'resend' => [
-        'key' => env('RESEND_KEY'),
-    ],
+    'postmark' => ['token' => env('POSTMARK_TOKEN')],
 
     'ses' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
+        'key'    => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
-    'slack' => [
-        'notifications' => [
-            'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
-            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
-        ],
+    // ── Myanmar Payment Gateways ───────────────────────────────────────────────
+
+    'mmqr' => [
+        'merchant_id'    => env('MMQR_MERCHANT_ID'),
+        'merchant_key'   => env('MMQR_MERCHANT_KEY'),
+        'api_url'        => env('MMQR_API_URL', 'https://api.mmqr.com.mm/v1'),
+        'webhook_secret' => env('MMQR_WEBHOOK_SECRET'),
     ],
-    'recaptcha' => [
-        'site_key' => env('RECAPTCHA_SITE_KEY'),
-        'secret_key' => env('RECAPTCHA_SECRET_KEY'),
+
+    'kbzpay' => [
+        'app_id'        => env('KBZPAY_APP_ID'),
+        'app_key'       => env('KBZPAY_APP_KEY'),
+        'merchant_code' => env('KBZPAY_MERCHANT_CODE'),
+        'api_url'       => env('KBZPAY_API_URL', 'https://api.kbzpay.com/payment/gateway/uat'),
+        'webhook_secret'=> env('KBZPAY_WEBHOOK_SECRET'),
+    ],
+
+    'wavepay' => [
+        'merchant_id'    => env('WAVEPAY_MERCHANT_ID'),
+        'secret_key'     => env('WAVEPAY_SECRET_KEY'),
+        'api_url'        => env('WAVEPAY_API_URL', 'https://api.wavemoney.com.mm/sandbox/payment'),
+        'webhook_secret' => env('WAVEPAY_WEBHOOK_SECRET'),
     ],
 
 ];

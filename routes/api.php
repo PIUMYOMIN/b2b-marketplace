@@ -46,8 +46,8 @@ Route::group([
     // --------------------
     // Authentication
     // --------------------
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:register');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
     Route::prefix('auth')->group(function () {
         Route::post('/refresh-token', [AuthController::class, 'refreshToken']);
@@ -67,14 +67,14 @@ Route::group([
     });
 
     // Password Reset
-    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->name('password.reset');
-    Route::post('/reset-password', [PasswordResetController::class, 'reset']);
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->middleware('throttle:password-reset')->name('password.reset');
+    Route::post('/reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:password-reset');
 
     //Contact
-    Route::post('/contact', [ContactMessageController::class, 'submit']);
+    Route::post('/contact', [ContactMessageController::class, 'submit'])->middleware('throttle:3,1');
 
     // Newsletter (public)
-    Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
+    Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])->middleware('throttle:5,1');
     Route::get('/newsletter/confirm', [NewsletterController::class, 'confirm']);
     Route::get('/newsletter/unsubscribe', [NewsletterController::class, 'unsubscribe']);
 
@@ -131,8 +131,8 @@ Route::group([
     // --------------------
     Route::middleware(['auth:sanctum'])->group(function () {
 
-        // Dashboard
-        Route::prefix('admin')->group(function () {
+        // Dashboard — all admin routes require the admin role
+        Route::prefix('admin')->middleware('role:admin')->group(function () {
             Route::get('/', [DashboardController::class, 'index']);
             Route::post('/{seller}/reject', [DashboardController::class, 'adminReject']);
             Route::get('/sellers', [DashboardController::class, 'getSellers']);
@@ -624,7 +624,7 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
         // Payments
         Route::prefix('payments')->group(function () {
             Route::post('/initiate', [PaymentController::class, 'initiate']);
-            Route::post('/verify', [PaymentController::class, 'verify']);
+            Route::post('/verify', [PaymentController::class, 'verify'])->middleware('throttle:30,1');
             Route::get('/history', [PaymentController::class, 'history']);
         });
         
@@ -636,8 +636,11 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
     // Webhooks (no auth)
     // --------------------
     Route::prefix('webhooks')->group(function () {
-        Route::post('/mmqr', [PaymentController::class, 'handleMMQRWebhook']);
-        Route::post('/kbzpay', [PaymentController::class, 'handleKBZPayWebhook']);
+        // Webhook endpoints are called by payment gateways (no Sanctum auth)
+        // Signature verification is handled inside each controller method
+        Route::post('/mmqr',    [PaymentController::class, 'handleMMQRWebhook']);
+        Route::post('/kbzpay',  [PaymentController::class, 'handleKBZPayWebhook']);
+        Route::post('/wavepay', [PaymentController::class, 'handleWavePayWebhook']);
     });
 
     // --------------------

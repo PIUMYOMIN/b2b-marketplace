@@ -70,6 +70,15 @@ return new class extends Migration
                 'refunded',
             ])->default('pending');
 
+            // Payment gateway tracking
+            $table->string('payment_gateway')->nullable();           // e.g. 'MMQR', 'KBZPay'
+            $table->string('transaction_id')->nullable();            // gateway's own txn ID
+            $table->string('payment_reference')->nullable();         // our internal reference
+            $table->json('payment_data')->nullable();                // full gateway response (audit)
+            $table->timestamp('payment_initiated_at')->nullable();
+            $table->timestamp('payment_confirmed_at')->nullable();
+            $table->timestamp('payment_failed_at')->nullable();
+
             $table->enum('escrow_status', [
                 'not_applicable',
                 'held',
@@ -115,6 +124,8 @@ return new class extends Migration
             $table->index(['seller_id', 'status']);
             $table->index('order_number');
             $table->index('created_at');
+            $table->index('transaction_id');
+            $table->index('payment_reference');
         });
     }
 
