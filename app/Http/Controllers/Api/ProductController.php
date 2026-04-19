@@ -111,8 +111,11 @@ class ProductController extends Controller
         }
 
         // Apply sorting
-        $sortBy = $request->input('sort_by', 'created_at');
-        $sortOrder = $request->input('sort_order', 'desc');
+        $sortBy    = $request->input('sort_by', 'created_at');
+        // Whitelist sortOrder — never allow raw user input into orderByRaw
+        $sortOrder = in_array(strtolower($request->input('sort_order', 'desc')), ['asc', 'desc'])
+            ? strtolower($request->input('sort_order', 'desc'))
+            : 'desc';
 
         if ($request->has('sort')) {
             switch ($request->input('sort')) {

@@ -5721,7 +5721,7 @@ class SellerController extends Controller
             $seller = \App\Models\SellerProfile::findOrFail($id);
 
             $v = Validator::make($request->all(), [
-                'nrc_verification_status' => 'required|in:pending,verified,mismatch,rejected',
+                'nrc_verification_status' => 'required|in:unverified,pending,verified,mismatch,rejected',
                 'nrc_verification_notes'  => 'nullable|string|max:1000',
                 // Optionally update store status at the same time
                 'status'                  => 'nullable|in:setup_pending,pending,approved,active,suspended,closed',

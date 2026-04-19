@@ -220,6 +220,11 @@ class RevenueExportController extends Controller
     public function adminReport(Request $request)
     {
         try {
+            $user = $request->user();
+            if (!$user || ($user->type !== 'admin' && !$user->hasRole('admin'))) {
+                return response()->json(['success' => false, 'message' => 'Admin access required.'], 403);
+            }
+
             [$start, $end, $periodLabel] = $this->resolvePeriod($request);
             $sellerId = $request->input('seller_id');
             $groupBy  = $request->input('group_by', 'day');
@@ -256,7 +261,9 @@ class RevenueExportController extends Controller
             }
 
             [$start, $end, $periodLabel] = $this->resolvePeriod($request);
-            $groupBy = $request->input('group_by', 'day');
+            $groupBy = in_array($request->input('group_by'), ['day','week','month'])
+                ? $request->input('group_by')
+                : 'day';
 
             $rows    = $this->buildOrderReport($start, $end, $user->id);
             $summary = $this->buildSummary($rows, $periodLabel, $start, $end);

@@ -219,11 +219,13 @@ class AuthController extends Controller
             ], 401);
         }
 
+        // Note: use 401 (not 403) to avoid revealing whether the account
+        // exists. Only show 'inactive' detail after a valid captcha pass.
         if (!$user->is_active || $user->status !== 'active') {
             return response()->json([
                 'success' => false,
-                'message' => __('messages.auth.account_inactive')
-            ], 403);
+                'message' => __('messages.auth.invalid_credentials')
+            ], 401);
         }
 
         // Set token expiration based on remember me
