@@ -15,7 +15,7 @@ class PaymentService
         'mmqr'             => MMQRGateway::class,
         'kbz_pay'          => KBZPayGateway::class,
         'wave_pay'         => WavePayGateway::class,
-        'cash_on_delivery' => null,   // no gateway — handled in-app
+        'cash_on_delivery' => null,
     ];
 
     /**
