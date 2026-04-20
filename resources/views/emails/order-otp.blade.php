@@ -5,19 +5,27 @@
 <p class="greeting">Your Order Confirmation Code 🔐</p>
 <p class="text">Hi {{ $userName }}, use the code below to confirm your order on Pyonea. This code expires in <strong>10 minutes</strong>.</p>
 
-<div style="text-align:center; margin:32px 0;">
-    <div style="display:inline-block; background:#f0fdf4; border:2px dashed #10b981; border-radius:14px; padding:24px 40px;">
-        <div style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:2px; margin-bottom:10px;">
-            Confirmation Code
-        </div>
-        <div style="font-size:44px; font-weight:800; letter-spacing:12px; color:#059669; font-family:'Courier New', Courier, monospace;">
-            {{ $otp }}
-        </div>
-        <div style="font-size:12px; color:#9ca3af; margin-top:8px;">
-            Expires in 10 minutes
-        </div>
-    </div>
-</div>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:32px 0;">
+    <tr>
+        <td align="center">
+            <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td style="background:#f0fdf4; border:2px dashed #10b981; border-radius:14px; padding:24px 40px; text-align:center;">
+                        <div style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:2px; margin-bottom:10px;">
+                            Confirmation Code
+                        </div>
+                        <div style="font-size:44px; font-weight:800; letter-spacing:8px; color:#059669; font-family:'Courier New', Courier, monospace; padding-right:8px;">
+                            {{ $otp }}
+                        </div>
+                        <div style="font-size:12px; color:#9ca3af; margin-top:8px;">
+                            Expires in 10 minutes
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
 
 <div class="info-box">
     <p>💰 Order total: <strong>{{ $orderTotal }}</strong></p>
@@ -32,3 +40,4 @@
     <a href="{{ config('app.frontend_url') }}" style="color:#059669;">pyonea.com</a>.
 </p>
 @endsection
+@section('footer_note')This confirmation code was sent to {{ $userEmail ?? '' }}@endsection
