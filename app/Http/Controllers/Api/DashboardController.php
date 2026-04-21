@@ -1219,6 +1219,7 @@ class DashboardController extends Controller
                 'buyer:id,name,email',
                 'seller.sellerProfile:user_id,store_name',
                 'items',
+                'commission:id,order_id,status',   // needed for commission_status column
             ])
             ->whereBetween('created_at', [$start, $end])
             ->get();
@@ -1286,9 +1287,10 @@ class DashboardController extends Controller
                 'coupon_discount'=> (float) $o->coupon_discount,
                 'total'         => (float) $o->total_amount,
                 'commission_rate'=> (float) $o->commission_rate,
-                'commission'    => (float) $o->commission_amount,
-                'payment_method'=> $o->payment_method,
-                'order_status'  => $o->status,
+                'commission'        => (float) $o->commission_amount,
+                'commission_status' => $o->commission?->status ?? 'pending',
+                'payment_method'    => $o->payment_method,
+                'order_status'      => $o->status,
             ];
         })->values();
 
