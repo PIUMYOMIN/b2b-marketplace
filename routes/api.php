@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\ReferralController;
+use App\Http\Controllers\Api\ReportController;
 
 
 /*
@@ -72,6 +73,9 @@ Route::group([
 
     //Contact
     Route::post('/contact', [ContactMessageController::class, 'submit'])->middleware('throttle:3,1');
+
+    // ── Reports / Support Tickets (guest-allowed for safety/fraud) ──────────
+    Route::post('/reports', [ReportController::class, 'store'])->middleware('throttle:5,10');
 
     // Newsletter (public)
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])->middleware('throttle:5,1');
@@ -218,6 +222,14 @@ Route::group([
                 // NRC verification + quick status toggle
                 Route::post('/{id}/verify-nrc', [SellerController::class, 'verifyNrc']);
                 Route::patch('/{id}/set-status', [SellerController::class, 'setSellerStatus']);
+            });
+
+            // ── Admin Reports / Support Tickets ─────────────────────────────
+            Route::prefix('reports')->group(function () {
+                Route::get('/', [ReportController::class, 'adminIndex']);
+                Route::get('/{ticket_id}', [ReportController::class, 'adminShow']);
+                Route::patch('/{ticket_id}', [ReportController::class, 'adminUpdate']);
+                Route::post('/{ticket_id}/comments', [ReportController::class, 'adminComment']);
             });
 
             Route::prefix('/business-types')->middleware('role:admin')->group(function () {
@@ -621,6 +633,13 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
             Route::get('/seller/{seller}/followers', [FollowController::class, 'getSellerFollowers']);
         });
 
+        // Reports — authenticated user
+        Route::prefix('reports')->group(function () {
+            Route::get('/',                    [ReportController::class, 'index']);
+            Route::get('/{ticket_id}',         [ReportController::class, 'show']);
+            Route::post('/{ticket_id}/comments',[ReportController::class, 'addComment']);
+        });
+
         // Payments
         Route::prefix('payments')->group(function () {
             Route::post('/initiate', [PaymentController::class, 'initiate']);
@@ -636,8 +655,6 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
     // Webhooks (no auth)
     // --------------------
     Route::prefix('webhooks')->group(function () {
-        // Webhook endpoints are called by payment gateways (no Sanctum auth)
-        // Signature verification is handled inside each controller method
         Route::post('/mmqr',    [PaymentController::class, 'handleMMQRWebhook']);
         Route::post('/kbzpay',  [PaymentController::class, 'handleKBZPayWebhook']);
         Route::post('/wavepay', [PaymentController::class, 'handleWavePayWebhook']);
