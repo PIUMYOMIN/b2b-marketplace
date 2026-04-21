@@ -1266,30 +1266,62 @@ class DashboardController extends Controller
             'platform_revenue_pending'    => $pendingCommission + ($totalDelivFees - $confirmedDelivFees),
         ];
 
+        // ── Delivery fee map (platform delivery only) ──────────────────────
+        $deliveryMap = Delivery::whereIn('order_id', $orders->pluck('id'))
+            ->where('delivery_method', 'platform')
+            ->get(['order_id', 'platform_delivery_fee', 'delivery_fee_status'])
+            ->keyBy('order_id');
+
         // ── Per-order detail rows ─────────────────────────────────────────
-        $orderRows = $orders->map(function ($o) {
+        $orderRows = $orders->map(function ($o) use ($deliveryMap) {
             $itemsSummary = $o->items->map(fn($i) =>
-                ($i->product_data['name'] ?? 'Product') . ' x' . $i->quantity
+                ($i->product_data['name'] ?? $i->product_name ?? 'Product') . ' x' . $i->quantity
             )->join(', ');
 
+            // Flatten items for the expanded row
+            $itemsArray = $o->items->map(fn($i) => [
+                'id'       => $i->id,
+                'name'     => $i->product_data['name'] ?? $i->product_name ?? 'Product',
+                'qty'      => $i->quantity,
+                'price'    => (float) $i->price,
+                'subtotal' => (float) ($i->price * $i->quantity),
+            ])->values();
+
+            $delivery    = $deliveryMap[$o->id] ?? null;
+            $delivFee    = (float) ($delivery?->platform_delivery_fee ?? 0);
+            $feeStatus   = $delivery?->delivery_fee_status ?? 'not_applicable';
+
             return [
-                'order_number'  => $o->order_number,
-                'order_date'    => $o->created_at?->toDateString(),
-                'delivered_at'  => $o->delivered_at?->toDateString(),
-                'buyer_name'    => $o->buyer?->name,
-                'buyer_email'   => $o->buyer?->email,
-                'seller_name'   => $o->seller?->sellerProfile?->store_name ?? $o->seller?->name,
-                'seller_email'  => $o->seller?->email,
-                'items_summary' => $itemsSummary,
-                'subtotal'      => (float) $o->subtotal_amount,
-                'shipping_fee'  => (float) $o->shipping_fee,
-                'tax_amount'    => (float) $o->tax_amount,
-                'coupon_discount'=> (float) $o->coupon_discount,
-                'total'         => (float) $o->total_amount,
-                'commission_rate'=> (float) $o->commission_rate,
-                'commission'        => (float) $o->commission_amount,
+                // IDs
+                'order_id'          => $o->id,
+                'order_number'      => $o->order_number,
+                'order_date'        => $o->created_at?->toDateString(),
+                'delivered_at'      => $o->delivered_at?->toDateString(),
+                // Parties
+                'buyer_name'        => $o->buyer?->name,
+                'buyer_email'       => $o->buyer?->email,
+                'seller_name'       => $o->seller?->sellerProfile?->store_name ?? $o->seller?->name,
+                'seller_email'      => $o->seller?->email,
+                // Items
+                'items_summary'     => $itemsSummary ?: '—',
+                'items_count'       => $o->items->count(),
+                'items'             => $itemsArray,
+                // Financials — key names match frontend field names exactly
+                'subtotal'          => (float) $o->subtotal_amount,
+                'shipping_fee'      => (float) $o->shipping_fee,
+                'tax_amount'        => (float) $o->tax_amount,
+                'coupon_discount'   => (float) ($o->coupon_discount_amount ?? 0),
+                'total_amount'      => (float) $o->total_amount,   // was 'total' — fixed
+                // Commission
+                'commission_rate'   => (float) $o->commission_rate,
+                'commission_amount' => (float) $o->commission_amount, // was 'commission' — fixed
                 'commission_status' => $o->commission?->status ?? 'pending',
+                // Delivery fees
+                'delivery_fee'        => $delivFee,
+                'delivery_fee_status' => $feeStatus,
+                // Order meta
                 'payment_method'    => $o->payment_method,
+                'escrow_status'     => $o->escrow_status,
                 'order_status'      => $o->status,
             ];
         })->values();
