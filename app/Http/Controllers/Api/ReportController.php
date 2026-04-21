@@ -82,7 +82,9 @@ class ReportController extends Controller
             'related_url'        => $v->validated()['related_url'] ?? null,
             'status'             => Report::STATUS_OPEN,
             'reporter_ip'        => $request->ip(),
-            'reporter_locale'    => $request->header('Accept-Language', 'en'),
+            // Extract only the primary language tag from the full Accept-Language header
+            // e.g. 'en-GB,en-US;q=0.9,en;q=0.8' → 'en-GB' (fits VARCHAR(10))
+            'reporter_locale'    => substr(explode(',', $request->header('Accept-Language', 'en'))[0], 0, 10),
         ]);
 
         // System comment for audit trail
