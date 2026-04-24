@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "eae4077b18e786dffbe1d9ec30513da6",
+    "content-hash": "c11767eaaa6dfc95a89fa3b3381628f4",
     "packages": [
         {
             "name": "archtechx/enums",
@@ -4427,6 +4427,46 @@
                 }
             ],
             "time": "2025-03-24T10:02:05+00:00"
+        },
+        {
+            "name": "myanmyanpay/mmpay-php-sdk",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/nawing/MMPay-Php-SDK.git",
+                "reference": "5a0af3a1716b500112aec71ffb7ef04049959708"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/nawing/MMPay-Php-SDK/zipball/5a0af3a1716b500112aec71ffb7ef04049959708",
+                "reference": "5a0af3a1716b500112aec71ffb7ef04049959708",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "guzzlehttp/guzzle": "^7.0",
+                "php": ">=7.4",
+                "vlucas/phpdotenv": "^5.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "MMPay\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "authors": [
+                {
+                    "name": "Naw Ing",
+                    "email": "nawing@myanmyanpay.com"
+                }
+            ],
+            "description": "PHP SDK for MyanMyanPay Integration",
+            "support": {
+                "issues": "https://github.com/nawing/MMPay-Php-SDK/issues",
+                "source": "https://github.com/nawing/MMPay-Php-SDK/tree/v1.0.0"
+            },
+            "time": "2026-01-23T11:33:48+00:00"
         },
         {
             "name": "nesbot/carbon",

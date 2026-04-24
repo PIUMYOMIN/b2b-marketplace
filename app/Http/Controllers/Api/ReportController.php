@@ -6,9 +6,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Report;
 use App\Models\ReportComment;
-use App\Notifications\ReportStatusChanged;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -96,8 +94,9 @@ class ReportController extends Controller
             'is_internal' => true,
         ]);
 
-        // Notify reporter by email
+        // Notify reporter and admin by email
         $this->notifyReporter($report, 'created');
+        $this->notifyAdmin($report, 'new_report');
 
         return response()->json([
             'success'   => true,
@@ -176,6 +175,9 @@ class ReportController extends Controller
         if ($report->status === Report::STATUS_WAITING) {
             $report->update(['status' => Report::STATUS_IN_REVIEW]);
         }
+
+        // Notify admin that the reporter replied
+        $this->notifyAdmin($report, 'reporter_replied', $comment->body);
 
         return response()->json(['success' => true, 'data' => $comment]);
     }
@@ -406,6 +408,41 @@ class ReportController extends Controller
         return $base;
     }
 
+    private function notifyAdmin(Report $report, string $event, ?string $extra = null): void
+    {
+        $adminEmail = config('mail.admin_report_email');
+        if (!$adminEmail) return;
+
+        try {
+            $subject = match ($event) {
+                'new_report'      => "[{$report->ticket_id}] New {$report->priority} report: {$report->subject}",
+                'reporter_replied' => "[{$report->ticket_id}] Reporter replied — {$report->subject}",
+                default           => "[{$report->ticket_id}] Report update",
+            };
+
+            $reporterName  = $report->reporter?->name  ?? $report->guest_name  ?? 'Guest';
+            $reporterEmail = $report->reporter?->email ?? $report->guest_email  ?? null;
+
+            Mail::send('emails.report_admin_notification', [
+                'email_subject' => $subject,
+                'ticket_id'     => $report->ticket_id,
+                'subject'       => $report->subject,
+                'category'      => $report->category,
+                'priority'      => $report->priority,
+                'description'   => $report->description,
+                'reporter_name' => $reporterName,
+                'reporter_email' => $reporterEmail,
+                'event'         => $event,
+                'extra'         => $extra,
+                'url'           => config('app.frontend_url') . "/admin/reports/{$report->ticket_id}",
+            ], function ($m) use ($adminEmail, $subject) {
+                $m->to($adminEmail)->subject($subject);
+            });
+        } catch (\Exception $e) {
+            Log::error("Admin report notification failed: " . $e->getMessage());
+        }
+    }
+
     private function notifyReporter(Report $report, string $event, ?string $extra = null): void
     {
         $email = $report->reporter?->email ?? $report->guest_email;
@@ -420,7 +457,7 @@ class ReportController extends Controller
                 default          => "[{$report->ticket_id}] Report update",
             };
 
-            \Mail::send('emails.report_notification', [
+            Mail::send('emails.report_notification', [
                 'name'      => $name,
                 'ticket_id' => $report->ticket_id,
                 'subject'   => $report->subject,

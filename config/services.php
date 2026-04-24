@@ -21,6 +21,13 @@ return [
 
     // ── Myanmar Payment Gateways ───────────────────────────────────────────────
 
+    'myanpay' => [
+        'merchant_id'    => env('MyanPay_MERCHANT_ID'),
+        'merchant_key'   => env('MyanPay_MERCHANT_KEY'),
+        'api_url'        => env('MyanPay_API_URL', 'https://api.mmqr.com.mm/v1'),
+        'webhook_secret' => env('MyanPay_WEBHOOK_SECRET'),
+    ],
+
     'mmqr' => [
         'merchant_id'    => env('MMQR_MERCHANT_ID'),
         'merchant_key'   => env('MMQR_MERCHANT_KEY'),

@@ -14,7 +14,7 @@
                         <div style="font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:2px; margin-bottom:10px;">
                             Confirmation Code
                         </div>
-                        <div style="font-size:44px; font-weight:800; letter-spacing:8px; color:#059669; font-family:'Courier New', Courier, monospace; padding-right:8px;">
+                        <div style="font-size:44px; font-weight:800; letter-spacing:8px; color:#059669; font-family:'Courier New', Courier, monospace; padding-left:8px;">
                             {{ $otp }}
                         </div>
                         <div style="font-size:12px; color:#9ca3af; margin-top:8px;">

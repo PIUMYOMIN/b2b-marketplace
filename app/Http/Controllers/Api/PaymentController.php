@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Services\Payment\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use MMPay\MMPay;
 
 class PaymentController extends Controller
 {
@@ -90,6 +91,44 @@ class PaymentController extends Controller
     // ── Webhooks ───────────────────────────────────────────────────────────────
     // Webhooks are called by the payment gateway directly (not by the user).
     // They do NOT require auth:sanctum but DO verify gateway signatures.
+
+    /**
+     * POST /webhooks/myanpay
+     * Called by the MyanPay gateway when a QR payment completes.
+     */
+    public function handleMyanPayWebhook(Request $request)
+    {
+        $mmpay = new MMPay([
+            'appId'          => env('MMPAY_APP_ID'),
+            'publishableKey' => env('MMPAY_PUBLISHABLE_KEY'),
+            'secretKey'      => env('MMPAY_SECRET_KEY'),
+            'apiBaseUrl'     => env('MMPAY_API_URL'),
+        ]);
+        $rawPayload = $request->getContent();
+        $nonce      = $request->header('X-Mmpay-Nonce');
+        $signature  = $request->header('X-Mmpay-Signature');
+        Log::info('MMPay Callback Received', [
+            'nonce' => $nonce,
+            'signature' => $signature
+        ]);
+        $isValid = $mmpay->verifyCb($rawPayload, $nonce, $signature);
+        if (!$isValid) {
+            Log::error('MMPay Signature Verification Failed');
+            return response()->json(['message' => 'Invalid signature'], 403);
+        }
+        $data = json_decode($rawPayload, true);
+        // ---------------------------------------------------
+        // TODO: Add your business logic here
+        // ---------------------------------------------------
+        // Example:
+        // $order = Order::where('order_id', $data['orderId'])->first();
+        // if ($data['status'] === 'PAID') {
+        //     $order->update(['status' => 'completed']);
+        // }
+        // ---------------------------------------------------
+
+        return response()->json(['status' => 'success']);
+    }
 
     /**
      * POST /webhooks/mmqr

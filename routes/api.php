@@ -31,6 +31,8 @@ use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\RfqController;
+use App\Http\Controllers\Api\SellerExportController;
 
 
 /*
@@ -294,10 +296,10 @@ Route::group([
             Route::prefix('cod-invoices')->middleware('role:admin')->group(function () {
                 Route::get('/', [DashboardController::class, 'adminListCodInvoices']);
                 Route::post('/{id}/confirm-payment', [DashboardController::class, 'adminConfirmCodPayment']);
-Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
+                Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
             });
-            
-// Admin referral stats
+
+            // Admin referral stats
             Route::middleware('role:admin')->group(function () {
                 Route::get('/referrals', [ReferralController::class, 'adminIndex']);
             });
@@ -637,7 +639,26 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
         Route::prefix('reports')->group(function () {
             Route::get('/',                    [ReportController::class, 'index']);
             Route::get('/{ticket_id}',         [ReportController::class, 'show']);
-            Route::post('/{ticket_id}/comments',[ReportController::class, 'addComment']);
+            Route::post('/{ticket_id}/comments', [ReportController::class, 'addComment']);
+        });
+
+        // ── RFQ (Request For Quotation) ────────────────────────────────────────
+        Route::prefix('rfq')->group(function () {
+            // Buyer side
+            Route::get('/sent',                [RfqController::class, 'listSent']);
+            Route::post('/',                   [RfqController::class, 'create'])->middleware('throttle:10,1');
+            // Seller side
+            Route::get('/received',            [RfqController::class, 'listReceived']);
+            // Both — RfqController checks authorization
+            Route::get('/{id}',                [RfqController::class, 'show']);
+            // Buyer actions
+            Route::patch('/{id}/close',        [RfqController::class, 'close']);
+            Route::patch('/{id}/cancel',       [RfqController::class, 'cancel']);
+            // Seller submits a quote
+            Route::post('/{id}/quotes',        [RfqController::class, 'submitQuote'])->middleware('throttle:30,1');
+            // Buyer accepts/rejects a quote
+            Route::patch('/{rfqId}/quotes/{quoteId}/accept', [RfqController::class, 'acceptQuote']);
+            Route::patch('/{rfqId}/quotes/{quoteId}/reject', [RfqController::class, 'rejectQuote']);
         });
 
         // Payments
@@ -646,8 +667,8 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
             Route::post('/verify', [PaymentController::class, 'verify'])->middleware('throttle:30,1');
             Route::get('/history', [PaymentController::class, 'history']);
         });
-        
-// User referral link (auth required)
+
+        // User referral link (auth required)
         Route::get('/referral/my-link', [ReferralController::class, 'myLink']);
     });
 
@@ -655,6 +676,7 @@ Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice'])
     // Webhooks (no auth)
     // --------------------
     Route::prefix('webhooks')->group(function () {
+        Route::post('/myanpay',    [PaymentController::class, 'handleMyanPayWebhook']);
         Route::post('/mmqr',    [PaymentController::class, 'handleMMQRWebhook']);
         Route::post('/kbzpay',  [PaymentController::class, 'handleKBZPayWebhook']);
         Route::post('/wavepay', [PaymentController::class, 'handleWavePayWebhook']);

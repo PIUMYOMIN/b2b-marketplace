@@ -42,12 +42,12 @@
   @if (!empty($breadcrumbs))
   <script type="application/ld+json">
   {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
+    "@@context": "https://schema.org",
+    "@@type": "BreadcrumbList",
     "itemListElement": [
       @foreach ($breadcrumbs as $i => $crumb)
       {
-        "@type": "ListItem",
+        "@@type": "ListItem",
         "position": {{ $i + 1 }},
         "name": "{{ $crumb['name'] }}",
         "item": "https://pyonea.com{{ $crumb['url'] }}"
@@ -62,8 +62,8 @@
   @if (!empty($product))
   <script type="application/ld+json">
   {
-    "@context": "https://schema.org",
-    "@type": "Product",
+    "@@context": "https://schema.org",
+    "@@type": "Product",
     "name": "{{ $product['name'] }}",
     "description": "{{ addslashes($product['description'] ?? '') }}",
     "sku": "{{ $product['sku'] ?? '' }}",
@@ -73,11 +73,11 @@
       @endforeach
     ],
     "brand": {
-      "@type": "Brand",
+      "@@type": "Brand",
       "name": "{{ $product['brand'] ?? 'Pyonea Seller' }}"
     },
     "offers": {
-      "@type": "Offer",
+      "@@type": "Offer",
       "priceCurrency": "MMK",
       "price": "{{ $product['price'] ?? 0 }}",
       "availability": "{{ ($product['inStock'] ?? true) ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock' }}",
@@ -85,7 +85,7 @@
     }
     @if (!empty($product['review_count']))
     ,"aggregateRating": {
-      "@type": "AggregateRating",
+      "@@type": "AggregateRating",
       "ratingValue": "{{ $product['average_rating'] ?? 0 }}",
       "reviewCount": "{{ $product['review_count'] }}"
     }
@@ -98,15 +98,15 @@
   @if (!empty($seller))
   <script type="application/ld+json">
   {
-    "@context": "https://schema.org",
-    "@type": "Store",
+    "@@context": "https://schema.org",
+    "@@type": "Store",
     "name": "{{ $seller['store_name'] }}",
     "description": "{{ addslashes($seller['store_description'] ?? '') }}",
     "url": "https://pyonea.com/sellers/{{ $seller['slug'] ?? '' }}",
     "logo": "{{ $seller['store_logo'] ?? '' }}"
     @if (!empty($seller['address']))
     ,"address": {
-      "@type": "PostalAddress",
+      "@@type": "PostalAddress",
       "addressLocality": "{{ $seller['address']['city'] ?? '' }}",
       "addressRegion": "{{ $seller['address']['state'] ?? '' }}",
       "addressCountry": "MM"
@@ -119,20 +119,20 @@
   <!-- Base site JSON-LD (always present) -->
   <script type="application/ld+json">
   {
-    "@context": "https://schema.org",
-    "@graph": [
+    "@@context": "https://schema.org",
+    "@@graph": [
       {
-        "@type": "Organization",
+        "@@type": "Organization",
         "name": "Pyonea Marketplace",
         "url": "https://pyonea.com",
         "logo": "https://pyonea.com/logo.png"
       },
       {
-        "@type": "WebSite",
+        "@@type": "WebSite",
         "name": "Pyonea Marketplace",
         "url": "https://pyonea.com",
         "potentialAction": {
-          "@type": "SearchAction",
+          "@@type": "SearchAction",
           "target": "https://pyonea.com/products?search={search_term_string}",
           "query-input": "required name=search_term_string"
         }
