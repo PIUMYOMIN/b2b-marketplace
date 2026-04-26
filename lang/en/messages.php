@@ -45,6 +45,25 @@ return [
         'unauthorized_update'     => 'Unauthorized to update this product',
         'unauthorized_delete'     => 'Unauthorized to delete this product',
         'stock_limit'             => 'Cannot add more items. Only :count items available',
+
+        // Options
+        'options_saved'                  => 'Product options saved successfully.',
+        'options_cleared'                => 'Product options and variants cleared.',
+        'options_required_for_generate'  => 'Please define product options before generating variants.',
+
+        // Variants
+        'variants_generated'             => ':count variant(s) generated successfully.',
+        'variant_created'                => 'Variant created successfully.',
+        'variant_updated'                => 'Variant updated successfully.',
+        'variant_deleted'                => 'Variant deleted successfully.',
+        'variant_activated'              => 'Variant activated.',
+        'variant_deactivated'            => 'Variant deactivated.',
+        'variant_not_found'              => 'Variant not found for this product.',
+        'variant_combination_exists'     => 'A variant with this combination already exists.',
+ 
+        // Approval
+        'approved'                       => 'Product approved successfully.',
+        'rejected'                       => 'Product rejected.',
     ],
 
     // ── Cart ──────────────────────────────────────────────────────────────────

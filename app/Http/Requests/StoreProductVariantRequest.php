@@ -1,28 +1,35 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\ProductVariant;
 
 use Illuminate\Foundation\Http\FormRequest;
 
+/**
+ * For manually creating a single variant.
+ */
 class StoreProductVariantRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
-        return false;
+        $product = $this->route('product');
+        return $this->user()->hasRole('admin') ||
+            ($this->user()->hasRole('seller') && $product?->seller_id === $this->user()->id);
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         return [
-            //
+            // option_value_ids must all belong to options of the parent product
+            'option_value_ids' => ['required', 'array', 'min:1'],
+            'option_value_ids.*' => ['integer', 'exists:product_option_values,id'],
+            'sku'              => ['nullable', 'string', 'max:100', 'unique:product_variants,sku'],
+            'price'            => ['required', 'numeric', 'min:0'],
+            'quantity'         => ['required', 'numeric', 'min:0'],
+            'quantity_unit'    => ['nullable', 'string', 'max:50'],
+            'moq'              => ['nullable', 'integer', 'min:1'],
+            'image'            => ['nullable', 'string', 'max:2048'],
+            'position'         => ['nullable', 'integer', 'min:1'],
+            'is_active'        => ['nullable', 'boolean'],
         ];
     }
 }
