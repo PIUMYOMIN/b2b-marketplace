@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage; // FIX: was missing — used in three image accessor methods
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
 {
@@ -19,18 +19,8 @@ class Product extends Model
         'slug_mm',
         'description_en',
         'description_mm',
+        'product_type',
         'price',
-        'discount_price',
-        'discount_type',
-        'discount_percentage',
-        'sale_badge',
-        'compare_at_price',
-        'sale_quantity',
-        'sale_sold',
-        'discount_start',
-        'discount_end',
-        'is_on_sale',
-        'quantity',
         'category_id',
         'seller_id',
         'average_rating',
@@ -42,9 +32,18 @@ class Product extends Model
         'barcode',
         'brand',
         'model',
-        'color',
         'material',
         'origin',
+        'discount_price',
+        'discount_type',
+        'discount_percentage',
+        'sale_badge',
+        'compare_at_price',
+        'sale_quantity',
+        'sale_sold',
+        'discount_start',
+        'discount_end',
+        'is_on_sale',
         'views',
         'sales',
         'is_featured',
@@ -63,472 +62,155 @@ class Product extends Model
         'shipping_origin',
         'customs_info',
         'hs_code',
-        'min_order_unit',
+        'quantity_unit',
         'moq',
+        'min_order_unit',
         'lead_time',
         'packaging_details',
         'additional_info',
+        'file_url',
+        'file_type',
+        'file_size',
         'listed_at',
         'approved_at',
         'rejection_reason',
         'status',
-        'is_active'
+        'is_active',
     ];
 
     protected $casts = [
-        // FIX: cast FK/ID columns to int — without this, strict !== comparisons
-        // against $user->id (which is always int) will fail even for the owner.
-        'seller_id' => 'integer',
-        'category_id' => 'integer',
-        'specifications' => 'array',
-        'images' => 'array',
-        'dimensions' => 'array',
-        'is_active' => 'boolean',
-        'is_featured' => 'boolean',
-        'is_new' => 'boolean',
-        'is_on_sale' => 'boolean',
-        'price' => 'decimal:2',
-        'discount_price' => 'decimal:2',
-        'compare_at_price' => 'decimal:2',
-        // FIX: removed 'discount_percentage' => 'decimal:2' — the custom
-        // getDiscountPercentageAttribute() accessor below supersedes the cast.
-        // Having both causes Eloquent to apply the cast first, then call the
-        // accessor which reads $this->attributes[] directly, resulting in
-        // unpredictable double-processing. The accessor handles all formatting.
-        'weight_kg' => 'decimal:2',
-        'shipping_cost' => 'decimal:2',
-        'average_rating' => 'decimal:2',
-        'discount_start' => 'date',
-        'discount_end' => 'date',
-        'listed_at' => 'datetime',
-        'approved_at' => 'datetime',
+        'price'               => 'decimal:2',
+        'discount_price'      => 'decimal:2',
+        'discount_percentage' => 'decimal:2',
+        'compare_at_price'    => 'decimal:2',
+        'shipping_cost'       => 'decimal:2',
+        'average_rating'      => 'decimal:2',
+        'specifications'      => 'array',
+        'images'              => 'array',
+        'dimensions'          => 'array',
+        'is_on_sale'          => 'boolean',
+        'is_featured'         => 'boolean',
+        'is_new'              => 'boolean',
+        'is_active'           => 'boolean',
+        'discount_start'      => 'date',
+        'discount_end'        => 'date',
+        'listed_at'           => 'datetime',
+        'approved_at'         => 'datetime',
     ];
 
-    /**
-     * Get the category that owns the product.
-     */
+    // -------------------------------------------------------------------------
+    // Relationships
+    // -------------------------------------------------------------------------
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
     }
 
-    /**
-     * Get the seller that owns the product.
-     */
     public function seller(): BelongsTo
     {
         return $this->belongsTo(User::class, 'seller_id');
     }
 
-    /**
-     * Check if product is currently on sale
-     */
-    public function getIsCurrentlyOnSaleAttribute(): bool
+    public function options(): HasMany
     {
-        if (!$this->is_on_sale) {
-            return false;
-        }
-
-        $now = now();
-
-        // Check if sale has started
-        if ($this->discount_start && $this->discount_start->gt($now)) {
-            return false;
-        }
-
-        // Check if sale has ended
-        if ($this->discount_end && $this->discount_end->lt($now)) {
-            return false;
-        }
-
-        // Check sale quantity limit
-        if ($this->sale_quantity && $this->sale_sold >= $this->sale_quantity) {
-            return false;
-        }
-
-        return true;
+        return $this->hasMany(ProductOption::class)->orderBy('position');
     }
 
-    /**
-     * Get current selling price (with discount applied)
-     */
-    public function getSellingPriceAttribute(): float
+    public function variants(): HasMany
     {
-        if (!$this->isCurrentlyOnSale) {
-            return (float) $this->price;
-        }
-
-        if ($this->discount_price && $this->discount_price > 0) {
-            return (float) $this->discount_price;
-        }
-
-        if ($this->discount_percentage && $this->discount_percentage > 0) {
-            $discountAmount = $this->price * ($this->discount_percentage / 100);
-            return (float) ($this->price - $discountAmount);
-        }
-
-        return (float) $this->price;
+        return $this->hasMany(ProductVariant::class)->orderBy('position');
     }
 
-    /**
-     * Get discount amount saved
-     */
-    public function getDiscountSavedAttribute(): float
+    public function activeVariants(): HasMany
     {
-        if (!$this->isCurrentlyOnSale) {
-            return 0.0;
-        }
-
-        return (float) ($this->price - $this->selling_price);
+        return $this->hasMany(ProductVariant::class)
+            ->where('is_active', true)
+            ->orderBy('position');
     }
 
-    /**
-     * Get discount percentage
-     */
-    public function getDiscountPercentageAttribute(): float
-    {
-        if (!$this->isCurrentlyOnSale || $this->price <= 0) {
-            return 0.0;
-        }
-
-        if ($this->attributes['discount_percentage']) {
-            return (float) $this->attributes['discount_percentage'];
-        }
-
-        $saved = $this->discount_saved;
-        if ($saved <= 0) {
-            return 0.0;
-        }
-
-        return (float) round(($saved / $this->price) * 100, 2);
-    }
-
-    /**
-     * Get sale ends in days
-     */
-    public function getSaleEndsInAttribute(): ?int
-    {
-        if (!$this->isCurrentlyOnSale || !$this->discount_end) {
-            return null;
-        }
-
-        return now()->diffInDays($this->discount_end, false);
-    }
-
-    /**
-     * Scope for products currently on sale
-     */
-    public function scopeOnSale($query)
-    {
-        return $query->where('is_on_sale', true)
-            ->where(function ($q) {
-                $q->whereNull('discount_start')
-                    ->orWhere('discount_start', '<=', now());
-            })
-            ->where(function ($q) {
-                $q->whereNull('discount_end')
-                    ->orWhere('discount_end', '>=', now());
-            })
-            ->where(function ($q) {
-                $q->whereNull('sale_quantity')
-                    ->orWhereRaw('sale_sold < sale_quantity');
-            });
-    }
-
-    /**
-     * Get name attribute (fallback to English if Myanmar not available)
-     */
-    public function getNameAttribute(): string
-    {
-        return $this->name_en ?? $this->name_mm ?? '';
-    }
-
-    /**
-     * Get description attribute (fallback to English if Myanmar not available)
-     */
-    public function getDescriptionAttribute(): string
-    {
-        return $this->description_en ?? $this->description_mm ?? '';
-    }
-
-    /**
-     * Get the primary image URL.
-     */
-    public function getPrimaryImageAttribute(): ?string
-    {
-        if (empty($this->images)) {
-            return null;
-        }
-
-        $images = $this->images;
-        if (is_string($images)) {
-            try {
-                $images = json_decode($images, true);
-            } catch (\Exception $e) {
-                // If it's not valid JSON, treat it as a single image
-                $url = $images;
-                if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                    $url = Storage::disk('public')->url($url);
-                }
-                return $url;
-            }
-        }
-
-        // Find primary image or return first
-        foreach ($images as $image) {
-            if (is_array($image) && isset($image['is_primary']) && $image['is_primary']) {
-                return $image['url'] ??
-                    (isset($image['path']) ? Storage::disk('public')->url($image['path']) : null);
-            }
-        }
-
-        // Return first image
-        if (!empty($images[0])) {
-            $firstImage = $images[0];
-            if (is_array($firstImage)) {
-                return $firstImage['url'] ??
-                    (isset($firstImage['path']) ? Storage::disk('public')->url($firstImage['path']) : null);
-            } else {
-                $url = $firstImage;
-                if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                    $url = Storage::disk('public')->url($url);
-                }
-                return $url;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Get all image URLs.
-     */
-    public function getImageUrlsAttribute(): array
-    {
-        if (empty($this->images)) {
-            return [];
-        }
-
-        $images = $this->images;
-        if (is_string($images)) {
-            try {
-                $images = json_decode($images, true);
-            } catch (\Exception $e) {
-                // If it's not valid JSON, treat it as a single image
-                $url = $images;
-                if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                    $url = Storage::disk('public')->url($url);
-                }
-                return [$url];
-            }
-        }
-
-        $urls = [];
-        foreach ($images as $image) {
-            if (is_array($image)) {
-                $url = $image['url'] ??
-                    (isset($image['path']) ? Storage::disk('public')->url($image['path']) : null);
-            } else {
-                $url = $image;
-                if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                    $url = Storage::disk('public')->url($url);
-                }
-            }
-
-            if ($url) {
-                $urls[] = $url;
-            }
-        }
-
-        return $urls;
-    }
-
-    /**
-     * Get formatted images array with both path and URL
-     */
-    public function getFormattedImagesAttribute(): array
-    {
-        if (empty($this->images)) {
-            return [];
-        }
-
-        $images = $this->images;
-        if (is_string($images)) {
-            try {
-                $images = json_decode($images, true);
-            } catch (\Exception $e) {
-                // If it's not valid JSON, treat it as a single image
-                $url = $images;
-                $path = $images;
-                if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                    $url = Storage::disk('public')->url($url);
-                }
-                return [
-                    [
-                        'path' => $path,
-                        'url' => $url,
-                        'angle' => 'default',
-                        'is_primary' => true
-                    ]
-                ];
-            }
-        }
-
-        $formattedImages = [];
-        foreach ($images as $index => $image) {
-            if (is_array($image)) {
-                $path = $image['path'] ?? $image['url'] ?? '';
-                $url = $image['url'] ?? $path;
-
-                if ($url && !filter_var($url, FILTER_VALIDATE_URL)) {
-                    $url = Storage::disk('public')->url($url);
-                }
-
-                $formattedImages[] = [
-                    'path' => $path,
-                    'url' => $url,
-                    'angle' => $image['angle'] ?? 'default',
-                    'is_primary' => $image['is_primary'] ?? ($index === 0)
-                ];
-            } else {
-                $path = $image;
-                $url = $image;
-                if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                    $url = Storage::disk('public')->url($url);
-                }
-
-                $formattedImages[] = [
-                    'path' => $path,
-                    'url' => $url,
-                    'angle' => 'default',
-                    'is_primary' => $index === 0
-                ];
-            }
-        }
-
-        return $formattedImages;
-    }
-
-    /**
-     * Scope a query to only include active products.
-     */
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-
-    /**
-     * Scope a query to only include products from a specific category.
-     */
-    public function scopeByCategory($query, $categoryId)
-    {
-        return $query->where('category_id', $categoryId);
-    }
-
-    /**
-     * Scope a query to only include products from a specific seller.
-     */
-    public function scopeBySeller($query, $sellerId)
-    {
-        return $query->where('seller_id', $sellerId);
-    }
-
-    /**
-     * Scope a query to search products.
-     */
-    public function scopeSearch($query, $searchTerm)
-    {
-        return $query->where(function ($q) use ($searchTerm) {
-            $q->where('name_en', 'like', "%{$searchTerm}%")
-                ->orWhere('name_mm', 'like', "%{$searchTerm}%")
-                ->orWhere('description_en', 'like', "%{$searchTerm}%")
-                ->orWhere('description_mm', 'like', "%{$searchTerm}%");
-        });
-    }
-
-    /**
-     * Check if product is out of stock.
-     */
-    public function getIsOutOfStockAttribute(): bool
-    {
-        return $this->quantity <= 0;
-    }
-
-    /**
-     * Check if product is low in stock.
-     */
-    public function getIsLowStockAttribute(): bool
-    {
-        return $this->quantity > 0 && $this->quantity <= 10;
-    }
-
-    /**
-     * Get formatted price.
-     */
-    public function getFormattedPriceAttribute(): string
-    {
-        return number_format($this->price, 0) . ' MMK';
-    }
-
-    /**
-     * Get formatted selling price.
-     */
-    public function getFormattedSellingPriceAttribute(): string
-    {
-        return number_format($this->selling_price, 0) . ' MMK';
-    }
-
-    public function reviews()
-    {
-        return $this->hasMany(ProductReview::class);
-    }
-
-    public function orders()
-    {
-        return $this->belongsToMany(Order::class, 'order_items')
-            ->withPivot('quantity', 'price', 'seller_id')
-            ->withTimestamps();
-    }
-
-    public function orderItems()
+    public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
-    //seller profile relationship
-    public function sellerProfile(): BelongsTo
+    public function reviews(): HasMany
     {
-        return $this->belongsTo(SellerProfile::class, 'seller_id', 'user_id');
+        return $this->hasMany(ProductReview::class);
+    }
+
+    // -------------------------------------------------------------------------
+    // Business Logic Helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Whether this product uses the variant system (has defined options).
+     */
+    public function hasVariants(): bool
+    {
+        return $this->options()->exists();
     }
 
     /**
-     * Increment sale sold count
+     * Total available stock across all active variants.
+     * Returns null for digital / service products (no stock tracking).
      */
-    public function incrementSaleSold(int $quantity = 1): bool
+    public function totalStock(): ?float
     {
-        if ($this->sale_quantity && ($this->sale_sold + $quantity) > $this->sale_quantity) {
-            return false;
+        if ($this->product_type !== 'physical') {
+            return null;
         }
 
-        $this->increment('sale_sold', $quantity);
-        return true;
-    }
-
-    public function getAverageRatingAttribute($value)
-    {
-        return $value ?? 0;
-    }
-
-    public function getReviewCountAttribute($value)
-    {
-        return $value ?? 0;
+        return $this->activeVariants()->sum('quantity');
     }
 
     /**
-     * Get the route key for the model.
+     * Whether the product has any stock available.
      */
-    public function getRouteKeyName()
+    public function isInStock(): bool
     {
-        return 'slug_en';
+        if ($this->product_type !== 'physical') {
+            return true; // Digital/service always available
+        }
+
+        return $this->activeVariants()->where('quantity', '>', 0)->exists();
+    }
+
+    /**
+     * The lowest price among active variants.
+     * Falls back to the base product price if no variants exist.
+     */
+    public function lowestVariantPrice(): float
+    {
+        $min = $this->activeVariants()->min('price');
+        return $min ?? (float) $this->price;
+    }
+
+    /**
+     * Returns the effective quantity unit for display.
+     * Reads from the product-level unit (variants can override per-variant).
+     */
+    public function effectiveUnit(): string
+    {
+        return $this->quantity_unit ?? 'piece';
+    }
+
+    // -------------------------------------------------------------------------
+    // Scopes
+    // -------------------------------------------------------------------------
+
+    public function scopeApproved($query)
+    {
+        return $query->where('status', 'approved')->where('is_active', true);
+    }
+
+    public function scopeForSeller($query, int $sellerId)
+    {
+        return $query->where('seller_id', $sellerId);
+    }
+
+    public function scopeOfType($query, string $type)
+    {
+        return $query->where('product_type', $type);
     }
 }

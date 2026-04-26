@@ -2,55 +2,78 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Cart extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'user_id',
         'product_id',
+        'variant_id',
+        'selected_options',
         'quantity',
+        'quantity_unit',
         'price',
-        'product_data'
+        'product_data',
     ];
 
     protected $casts = [
-        'product_data' => 'array',
-        'price' => 'decimal:2',
-        'user_id' => 'integer',
-        'product_id' => 'integer',
-        'quantity' => 'integer',
+        'quantity'         => 'decimal:3',
+        'price'            => 'decimal:2',
+        'selected_options' => 'array',
+        'product_data'     => 'array',
     ];
 
+    // -------------------------------------------------------------------------
     // Relationships
-    public function user()
+    // -------------------------------------------------------------------------
+
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    public function product()
+    public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
     }
 
-    // Accessors
-    public function getSubtotalAttribute()
+    public function variant(): BelongsTo
     {
-        return $this->price * $this->quantity;
+        return $this->belongsTo(ProductVariant::class, 'variant_id');
     }
 
-    // Check if product is still available
-    public function getIsAvailableAttribute()
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * The effective MOQ the buyer must meet for this cart item.
+     */
+    public function effectiveMoq(): int
     {
-        return $this->product && $this->product->is_active && $this->product->quantity > 0;
+        return $this->variant?->effectiveMoq() ?? $this->product?->moq ?? 1;
     }
 
-    // Check if quantity is within stock limits
-    public function getIsQuantityValidAttribute()
+    /**
+     * Subtotal for this cart item.
+     */
+    public function subtotal(): float
     {
-        return $this->product && $this->quantity <= $this->product->quantity;
+        return round((float) $this->price * (float) $this->quantity, 2);
+    }
+
+    /**
+     * Refresh the locked price from the current variant / product price.
+     * Call before checkout to detect price changes since adding to cart.
+     */
+    public function refreshPrice(): void
+    {
+        $livePrice = $this->variant?->price ?? $this->product?->price;
+
+        if ($livePrice && (float) $livePrice !== (float) $this->price) {
+            $this->update(['price' => $livePrice]);
+        }
     }
 }
