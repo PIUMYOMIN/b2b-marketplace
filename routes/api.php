@@ -657,21 +657,25 @@ Route::group([
 
         // ── RFQ (Request For Quotation) ────────────────────────────────────────
         Route::prefix('rfq')->group(function () {
-            // Buyer side
-            Route::get('/sent',                [RfqController::class, 'listSent']);
-            Route::post('/',                   [RfqController::class, 'create'])->middleware('throttle:10,1');
-            // Seller side
-            Route::get('/received',            [RfqController::class, 'listReceived']);
-            // Both — RfqController checks authorization
-            Route::get('/{id}',                [RfqController::class, 'show']);
-            // Buyer actions
-            Route::patch('/{id}/close',        [RfqController::class, 'close']);
-            Route::patch('/{id}/cancel',       [RfqController::class, 'cancel']);
-            // Seller submits a quote
-            Route::post('/{id}/quotes',        [RfqController::class, 'submitQuote'])->middleware('throttle:30,1');
-            // Buyer accepts/rejects a quote
-            Route::patch('/{rfqId}/quotes/{quoteId}/accept', [RfqController::class, 'acceptQuote']);
-            Route::patch('/{rfqId}/quotes/{quoteId}/reject', [RfqController::class, 'rejectQuote']);
+
+            // ── Buyer-only routes ──────────────────────────────────────────
+            Route::middleware('role:buyer')->group(function () {
+                Route::get('/sent',                          [RfqController::class, 'listSent']);
+                Route::post('/',                             [RfqController::class, 'create'])->middleware('throttle:10,1');
+                Route::patch('/{id}/close',                  [RfqController::class, 'close']);
+                Route::patch('/{id}/cancel',                 [RfqController::class, 'cancel']);
+                Route::patch('/{rfqId}/quotes/{quoteId}/accept', [RfqController::class, 'acceptQuote']);
+                Route::patch('/{rfqId}/quotes/{quoteId}/reject', [RfqController::class, 'rejectQuote']);
+            });
+
+            // ── Seller-only routes ─────────────────────────────────────────
+            Route::middleware('role:seller')->group(function () {
+                Route::get('/received',                      [RfqController::class, 'listReceived']);
+                Route::post('/{id}/quotes',                  [RfqController::class, 'submitQuote'])->middleware('throttle:30,1');
+            });
+
+            // ── Both buyer and seller — controller enforces per-record auth ─
+            Route::get('/{id}',                              [RfqController::class, 'show']);
         });
 
         // Payments

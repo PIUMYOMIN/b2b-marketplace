@@ -8,6 +8,10 @@ use App\Models\Rfq;
 use App\Models\RfqQuote;
 use App\Models\RfqRecipient;
 use App\Models\User;
+use App\Notifications\RfqCreated;
+use App\Notifications\RfqQuoteAccepted;
+use App\Notifications\RfqQuoteReceived;
+use App\Notifications\RfqQuoteRejected;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -146,6 +150,20 @@ class RfqController extends Controller
             return $rfq;
         });
 
+        // ── Notify targeted sellers (non-broadcast only) ───────────────────
+        // Broadcast RFQs are discoverable on the platform — we don't email
+        // every seller to avoid spam. Targeted sellers get an immediate alert.
+        if (!$broadcast && !empty($sellerIds)) {
+            $notification = new RfqCreated($rfq->load('buyer'));
+            User::whereIn('id', $sellerIds)->each(function ($seller) use ($notification) {
+                try {
+                    $seller->notify(clone $notification);
+                } catch (\Exception $e) {
+                    Log::warning("RfqCreated notification failed for seller {$seller->id}: " . $e->getMessage());
+                }
+            });
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'RFQ created and sent to sellers.',
@@ -232,6 +250,13 @@ class RfqController extends Controller
             $rfq->update(['status' => Rfq::STATUS_QUOTED]);
         }
 
+        // ── Notify the buyer ───────────────────────────────────────────────
+        try {
+            $rfq->buyer->notify(new RfqQuoteReceived($rfq, $quote->load('seller.sellerProfile')));
+        } catch (\Exception $e) {
+            Log::warning("RfqQuoteReceived notification failed for buyer {$rfq->buyer_id}: " . $e->getMessage());
+        }
+
         return response()->json(['success' => true, 'data' => $quote->load('seller:id,name')]);
     }
 
@@ -274,6 +299,27 @@ class RfqController extends Controller
             ]);
         });
 
+        // ── Notify the winning seller ──────────────────────────────────────
+        try {
+            $quote->seller->notify(new RfqQuoteAccepted($rfq, $quote));
+        } catch (\Exception $e) {
+            Log::warning("RfqQuoteAccepted notification failed for seller {$quote->seller_id}: " . $e->getMessage());
+        }
+
+        // ── Notify auto-rejected sellers (silent — database only) ─────────
+        $rfq->quotes()
+            ->where('id', '!=', $quote->id)
+            ->where('status', RfqQuote::STATUS_REJECTED)
+            ->with('seller')
+            ->get()
+            ->each(function ($rejected) use ($rfq) {
+                try {
+                    $rejected->seller->notify(new RfqQuoteRejected($rfq, $rejected, explicit: false));
+                } catch (\Exception $e) {
+                    Log::warning("RfqQuoteRejected notification failed for seller {$rejected->seller_id}: " . $e->getMessage());
+                }
+            });
+
         return response()->json([
             'success' => true,
             'message' => 'Quote accepted. The seller has been notified.',
@@ -297,6 +343,13 @@ class RfqController extends Controller
         }
 
         $quote->update(['status' => RfqQuote::STATUS_REJECTED]);
+
+        // ── Notify the seller (explicit rejection — sends mail) ────────────
+        try {
+            $quote->seller->notify(new RfqQuoteRejected($rfq, $quote, explicit: true));
+        } catch (\Exception $e) {
+            Log::warning("RfqQuoteRejected (explicit) notification failed for seller {$quote->seller_id}: " . $e->getMessage());
+        }
 
         return response()->json(['success' => true, 'data' => $quote]);
     }

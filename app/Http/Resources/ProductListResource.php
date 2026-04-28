@@ -45,6 +45,7 @@ class ProductListResource extends JsonResource
             'is_featured'    => $this->is_featured,
             'is_active'      => $this->is_active,
             'in_stock'       => $this->isInStock(),
+            'has_variants'   => $this->hasVariants(),
             // Primary image only — with full storage URL
             'image'          => $this->formatPrimaryImage(),
             'seller'         => $this->whenLoaded('seller', fn() => [

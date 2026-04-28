@@ -24,6 +24,7 @@ class OrderTrackingController extends Controller
                 'delivery.deliveryUpdates',
                 'seller:id,name',
                 'seller.sellerProfile:user_id,store_name,store_logo,store_slug',
+                'buyer:id,email',
             ])
                 ->where('order_number', strtoupper(trim($orderNumber)))
             ->first();
@@ -38,8 +39,12 @@ class OrderTrackingController extends Controller
             // Optional email verification for guest security
             if ($request->filled('email')) {
                 $email = strtolower(trim($request->email));
-                $orderEmail = strtolower($order->shipping_address['email'] ?? '');
-                if ($email !== $orderEmail) {
+                $orderEmail = strtolower(
+                    $order->buyer?->email
+                    ?? $order->shipping_address['email']
+                    ?? ''
+                );
+                if (!$orderEmail || $email !== $orderEmail) {
                     return response()->json([
                         'success' => false,
                         'message' => 'The email address does not match this order.',
