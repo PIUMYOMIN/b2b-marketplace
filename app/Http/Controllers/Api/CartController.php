@@ -29,80 +29,112 @@ class CartController extends Controller
 
             $cartItems = Cart::with([
                 'product' => function ($query) {
-                    $query->withTrashed(); // Include soft-deleted products to avoid null
+                    $query->withTrashed();
                 },
                 'product.category',
-                'product.sellerProfile',
+                'product.seller.sellerProfile',
+                'variant',
             ])
                 ->where('user_id', $user->id)
                 ->get()
                 ->map(function ($item) {
                     $product = $item->product;
+                    $variant = $item->variant;   // null for simple products
 
-                    // If product is soft-deleted, mark as unavailable
-                    $isAvailable = $product && !$product->trashed() && $product->is_active && $product->quantity > 0;
+                    $productGone = !$product || $product->trashed();
+                    $cachedData  = $item->product_data ?? [];
 
-                    // Update price if product exists and price changed
-                    if ($product && !$product->trashed() && $item->price != $product->price) {
-                        $item->price = $product->price;
-                        $item->save();
+                    // ── Effective price (variant > product, cached if gone) ────
+                    $livePrice = $variant
+                        ? (float) $variant->price
+                        : (($productGone) ? (float) $item->price : (float) $product->price);
+
+                    // Keep the stored price fresh
+                    if (!$productGone && $item->price != $livePrice) {
+                        $item->update(['price' => $livePrice]);
                     }
 
-                    // Fall back to cached product_data when product is deleted
-                    $cachedData = $item->product_data ?? [];
+                    // ── Stock ─────────────────────────────────────────────────
+                    // Variant products: stock = that specific variant's quantity.
+                    // Simple products (no variants): use totalStock() which sums all active variants.
+                    // Digital/service: stock = null (unlimited).
+                    $stock = null;
+                    if (!$productGone && $product->product_type === 'physical') {
+                        $stock = $variant
+                            ? (float) $variant->quantity
+                            : $product->totalStock();
+                    }
 
-                    // Get product name safely — use cached name if product is gone
-                    $productName = ($product && !$product->trashed())
-                        ? ($product->name ?? 'Product')
-                        : ($cachedData['name'] ?? 'Product Unavailable');
+                    // ── Availability ──────────────────────────────────────────
+                    $isAvailable = !$productGone
+                        && $product->is_active
+                        && ($product->product_type !== 'physical' || ($stock !== null && $stock > 0));
 
-                    $productPrice = ($product && !$product->trashed())
-                        ? (float) $product->price
-                        : (float) $item->price;
+                    // ── Names / images ────────────────────────────────────────
+                    $productName = $productGone
+                        ? ($cachedData['name'] ?? 'Product Unavailable')
+                        : $product->name_en;
 
-                    $stock = ($product && !$product->trashed()) ? (int) $product->quantity : 0;
-
-                    $categoryName = ($product && !$product->trashed() && $product->category)
+                    $categoryName = (!$productGone && $product->category)
                         ? $product->category->name_en
                         : ($cachedData['category'] ?? 'Uncategorized');
 
-                    // Use cached image if product is gone
-                    $image = ($product && !$product->trashed())
-                        ? $this->getProductImageUrl($product)
-                        : ($cachedData['image'] ?? '/placeholder-product.jpg');
+                    $image = $productGone
+                        ? ($cachedData['image'] ?? null)
+                        : $this->getProductImageUrl($product);
+
+                    // ── MOQ / unit ────────────────────────────────────────────
+                    $moq  = $item->effectiveMoq();
+                    $unit = $productGone
+                        ? ($cachedData['unit'] ?? 'piece')
+                        : ($variant ? $variant->effectiveUnit() : $product->effectiveUnit());
+
+                    // ── Discount / selling price ──────────────────────────────
+                    // Selling price = discounted price when an active sale applies.
+                    // We do NOT discount per-variant prices — discount is a product-level concept.
+                    $sellingPrice = $livePrice;
+                    $isOnSale     = false;
+                    $discountPct  = 0.0;
+                    $discountSaved = 0.0;
+                    if (!$productGone && $product->is_on_sale) {
+                        $today = now()->toDateString();
+                        $inWindow = (!$product->discount_start || $product->discount_start <= $today)
+                                 && (!$product->discount_end   || $product->discount_end   >= $today);
+                        if ($inWindow && $product->discount_price) {
+                            $isOnSale     = true;
+                            $sellingPrice = (float) $product->discount_price;
+                            $discountPct  = (float) ($product->discount_percentage ?? 0);
+                            $discountSaved = round($livePrice - $sellingPrice, 2);
+                        }
+                    }
+
+                    $subtotal = $sellingPrice * $item->quantity;
 
                     return [
-                        'id'                 => $item->id,
-                        'product_id'         => $item->product_id,
-                        'name'               => $productName,
-                        'price'              => $productPrice,
-                        // Effective checkout price (discounted when a sale is active)
-                        'selling_price'      => ($product && !$product->trashed())
-                                                    ? (float) $product->selling_price
-                                                    : $productPrice,
-                        'is_currently_on_sale' => ($product && !$product->trashed())
-                                                    ? (bool) $product->is_currently_on_sale
-                                                    : false,
-                        'discount_percentage'  => ($product && !$product->trashed())
-                                                    ? (float) $product->discount_percentage
-                                                    : 0.0,
-                        'discount_saved'       => ($product && !$product->trashed())
-                                                    ? (float) $product->discount_saved
-                                                    : 0.0,
-                        'quantity'           => (int) $item->quantity,
-                        'image'              => $image,
-                        'category'           => $categoryName,
-                        'stock'              => $stock,
-                        'min_order'          => $product && !$product->trashed() ? ($product->min_order ?? 1) : 1,
-                        'is_available'       => $isAvailable,
-                        'is_quantity_valid'  => $isAvailable && $item->quantity <= $stock,
-                        // subtotal always uses selling_price so the cart total is accurate
-                        'subtotal'           => (($product && !$product->trashed())
-                                                    ? (float) $product->selling_price
-                                                    : $productPrice) * $item->quantity,
-                        'seller_id'          => $product?->sellerProfile?->user_id,
-                        'seller_name'        => $product?->sellerProfile?->store_name,
-                        'seller_slug'        => $product?->sellerProfile?->store_slug,
+                        'id'                   => $item->id,
+                        'product_id'           => $item->product_id,
+                        'variant_id'           => $item->variant_id,
+                        'slug'                 => $productGone ? null : $product->slug_en,
+                        'name'                 => $productName,
+                        'price'                => $livePrice,
+                        'selling_price'        => $sellingPrice,
+                        'is_currently_on_sale' => $isOnSale,
+                        'discount_percentage'  => $discountPct,
+                        'discount_saved'       => $discountSaved,
+                        'quantity'             => (int) $item->quantity,
+                        'quantity_unit'        => $unit,
+                        'image'                => $image,
+                        'category'             => $categoryName,
+                        'stock'                => $stock,          // null = unlimited
+                        'min_order'            => $moq,
+                        'selected_options'     => $item->selected_options,
+                        'is_available'         => $isAvailable,
+                        'is_quantity_valid'    => $isAvailable
+                            && ($stock === null || $item->quantity <= $stock),
+                        'subtotal'             => $subtotal,
+                        'seller_id'            => $product?->seller?->sellerProfile?->user_id,
+                        'seller_name'          => $product?->seller?->sellerProfile?->store_name,
+                        'seller_slug'          => $product?->seller?->sellerProfile?->store_slug,
                     ];
                 })
                 ->filter(function ($item) {
@@ -131,12 +163,13 @@ class CartController extends Controller
         } catch (\Exception $e) {
             Log::error('Cart index error: ' . $e->getMessage(), [
                 'user_id' => Auth::id(),
-                'trace' => $e->getTraceAsString()
+                'trace'   => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch cart items'
+                'message' => 'Failed to fetch cart items',
+                'debug'   => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
@@ -157,75 +190,94 @@ class CartController extends Controller
             }
 
             $request->validate([
-                'product_id' => 'required|exists:products,id',
-                'quantity' => 'required|integer|min:1'
+                'product_id'       => 'required|exists:products,id',
+                'quantity'         => 'required|numeric|min:0.001',
+                'variant_id'       => 'nullable|exists:product_variants,id',
+                'selected_options' => 'nullable|array',
             ]);
 
             $product = Product::findOrFail($request->product_id);
 
-            // Check if product is soft-deleted
             if ($product->trashed()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Product is no longer available'
-                ], 400);
+                return response()->json(['success' => false, 'message' => 'Product is no longer available'], 400);
             }
 
-            // Check product availability
             if (!$product->is_active) {
+                return response()->json(['success' => false, 'message' => 'Product is not available'], 400);
+            }
+
+            // ── Variant-aware stock check ─────────────────────────────────
+            $variant = null;
+            if ($request->filled('variant_id')) {
+                $variant = $product->variants()
+                    ->where('id', $request->variant_id)
+                    ->where('is_active', true)
+                    ->first();
+
+                if (!$variant) {
+                    return response()->json(['success' => false, 'message' => 'Selected variant is not available'], 400);
+                }
+
+                if ($product->product_type === 'physical' && $variant->quantity < $request->quantity) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Insufficient stock. Only ' . (int) $variant->quantity . ' items available'
+                    ], 400);
+                }
+            } elseif ($product->hasVariants()) {
+                return response()->json(['success' => false, 'message' => 'Please select a variant before adding to cart'], 400);
+            } else {
+                if ($product->product_type === 'physical' && !$product->isInStock()) {
+                    return response()->json(['success' => false, 'message' => 'This product is out of stock'], 400);
+                }
+            }
+
+            $effectiveMoq = $variant ? $variant->effectiveMoq() : ($product->moq ?? 1);
+            if ($request->quantity < $effectiveMoq) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product is not available'
+                    'message' => 'Minimum order quantity is ' . $effectiveMoq
                 ], 400);
             }
 
-            if ($product->quantity < $request->quantity) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Insufficient stock. Only ' . $product->quantity . ' items available'
-                ], 400);
-            }
+            $cartPrice = $variant ? (float) $variant->price : (float) $product->price;
+            $unitLabel  = $variant ? $variant->effectiveUnit() : $product->effectiveUnit();
 
-            $minOrder = $product->min_order ?? 1;
-            if ($request->quantity < $minOrder) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Minimum order quantity is ' . $minOrder
-                ], 400);
-            }
-
-            // Check if item already in cart
+            // ── Upsert — same product + same variant = merge quantities ───
             $existingCartItem = Cart::where('user_id', $user->id)
                 ->where('product_id', $request->product_id)
+                ->where('variant_id', $variant?->id)
                 ->first();
 
             if ($existingCartItem) {
                 $newQuantity = $existingCartItem->quantity + $request->quantity;
-                if ($product->quantity < $newQuantity) {
+
+                if ($variant && $product->product_type === 'physical' && $variant->quantity < $newQuantity) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Cannot add more items. Only ' . $product->quantity . ' items available'
+                        'message' => 'Cannot add more. Only ' . (int) $variant->quantity . ' items available'
                     ], 400);
                 }
 
-                $existingCartItem->update([
-                    'quantity' => $newQuantity,
-                    'price' => $product->price
-                ]);
-
+                $existingCartItem->update(['quantity' => $newQuantity, 'price' => $cartPrice]);
                 $cartItem = $existingCartItem;
-                $message = 'Cart updated successfully';
+                $message  = 'Cart updated successfully';
             } else {
                 $cartItem = Cart::create([
-                    'user_id' => $user->id,
-                    'product_id' => $request->product_id,
-                    'quantity' => $request->quantity,
-                    'price' => $product->price,
-                    'product_data' => [
-                        'name' => $product->name,
-                        'image' => $this->getProductImageUrl($product),
-                        'category' => $product->category?->name ?? 'Uncategorized',
-                    ]
+                    'user_id'          => $user->id,
+                    'product_id'       => $product->id,
+                    'variant_id'       => $variant?->id,
+                    'selected_options' => $request->selected_options,
+                    'quantity'         => $request->quantity,
+                    'quantity_unit'    => $unitLabel,
+                    'price'            => $cartPrice,
+                    'product_data'     => [
+                        'name'     => $product->name_en,
+                        'image'    => $this->getProductImageUrl($product),
+                        'category' => $product->category?->name_en ?? 'Uncategorized',
+                        'sku'      => $variant?->sku ?? $product->sku,
+                        'unit'     => $unitLabel,
+                    ],
                 ]);
 
                 $message = 'Product added to cart successfully';
@@ -292,30 +344,38 @@ class CartController extends Controller
             }
 
             if (!$product->is_active) {
+                return response()->json(['success' => false, 'message' => 'Product is no longer available'], 400);
+            }
+
+            // Re-resolve the variant from the cart item for stock checking
+            $variant = $cartItem->variant_id
+                ? $product->variants()->where('id', $cartItem->variant_id)->where('is_active', true)->first()
+                : null;
+
+            if ($variant) {
+                if ($product->product_type === 'physical' && $variant->quantity < $request->quantity) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Only ' . (int) $variant->quantity . ' items available in stock'
+                    ], 400);
+                }
+            } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
+                return response()->json(['success' => false, 'message' => 'This product is out of stock'], 400);
+            }
+
+            $effectiveMoq = $variant ? $variant->effectiveMoq() : ($product->moq ?? 1);
+            if ($request->quantity < $effectiveMoq) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product is no longer available'
+                    'message' => 'Minimum order quantity is ' . $effectiveMoq
                 ], 400);
             }
 
-            if ($product->quantity < $request->quantity) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Only ' . $product->quantity . ' items available in stock'
-                ], 400);
-            }
-
-            $minOrder = $product->min_order ?? 1;
-            if ($request->quantity < $minOrder) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Minimum order quantity is ' . $minOrder
-                ], 400);
-            }
+            $livePrice = $variant ? (float) $variant->price : (float) $product->price;
 
             $cartItem->update([
                 'quantity' => $request->quantity,
-                'price' => $product->price
+                'price'    => $livePrice,
             ]);
 
             return response()->json([

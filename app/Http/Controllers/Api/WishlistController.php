@@ -21,8 +21,7 @@ class WishlistController extends Controller
             $user = auth()->user();
             
             $wishlist = Wishlist::with([
-                'product.sellerProfile',
-                'product.sellerProfile.user'
+                'product.seller.sellerProfile',
             ])
             ->where('user_id', $user->id)
             ->latest()
@@ -84,21 +83,16 @@ class WishlistController extends Controller
                     'wishlist_id' => $item->id
                 ];
                 
-                // Add seller information based on your actual relationship structure
-                if ($product->sellerProfile) {
-                    $wishlistItem['seller'] = [
-                        'id' => $product->sellerProfile->id,
-                        'store_name' => $product->sellerProfile->store_name,
-                        'business_type' => $product->sellerProfile->business_type
-                    ];
-                } elseif ($product->seller) {
-                    // Fallback to seller relationship if it exists
-                    $wishlistItem['seller'] = [
-                        'id' => $product->seller->id,
-                        'store_name' => $product->seller->store_name ?? 'Unknown Store',
-                        'business_type' => $product->seller->business_type ?? 'General'
-                    ];
-                }
+                $sellerProfile = $product->seller?->sellerProfile;
+                $wishlistItem['seller'] = $sellerProfile ? [
+                    'id'            => $product->seller->id,
+                    'store_name'    => $sellerProfile->store_name,
+                    'business_type' => $sellerProfile->business_type,
+                ] : ($product->seller ? [
+                    'id'            => $product->seller->id,
+                    'store_name'    => $product->seller->name ?? 'Unknown Store',
+                    'business_type' => 'General',
+                ] : null);
                 
                 return $wishlistItem;
             })->filter();

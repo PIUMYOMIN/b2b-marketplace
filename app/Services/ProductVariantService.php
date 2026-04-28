@@ -102,19 +102,36 @@ class ProductVariantService
     /**
      * Check whether a variant with exactly these option values already exists
      * for this product (order-independent).
+     *
+     * Uses a single aggregating subquery instead of chained whereHas /
+     * whereDoesntHave calls, which avoids N+1-style correlated subqueries and
+     * is safe regardless of variant count.
+     *
+     * Strategy: for each variant that belongs to this product, count how many
+     * of its pivot rows match the requested value IDs. A variant is an exact
+     * match when:
+     *   - the number of matching pivot rows == count($valueIds)  (all requested values present)
+     *   - the total pivot row count for that variant also == count($valueIds) (no extra values)
      */
     public function variantExistsForValues(int $productId, array $valueIds): bool
     {
         sort($valueIds);
+        $count = count($valueIds);
 
-        return ProductVariant::where('product_id', $productId)
-            ->whereDoesntHave('optionValues', function ($q) use ($valueIds) {
-                $q->whereNotIn('product_option_values.id', $valueIds);
-            })
-            ->whereHas('optionValues', function ($q) use ($valueIds) {
-                $q->whereIn('product_option_values.id', $valueIds);
-            }, '=', count($valueIds))
+        if ($count === 0) {
+            return false;
+        }
+
+        $exists = DB::table('product_variants as pv')
+            ->join('product_variant_option_values as pvov', 'pv.id', '=', 'pvov.variant_id')
+            ->where('pv.product_id', $productId)
+            ->whereNull('pv.deleted_at')
+            ->groupBy('pv.id')
+            ->havingRaw('COUNT(CASE WHEN pvov.option_value_id IN (' . implode(',', array_fill(0, $count, '?')) . ') THEN 1 END) = ?', [...$valueIds, $count])
+            ->havingRaw('COUNT(pvov.option_value_id) = ?', [$count])
             ->exists();
+
+        return $exists;
     }
 
     // -------------------------------------------------------------------------

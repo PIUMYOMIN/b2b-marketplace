@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Lightweight resource used in product listing pages / search results.
@@ -10,6 +11,21 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class ProductListResource extends JsonResource
 {
+    private function formatPrimaryImage(): ?array
+    {
+        $img = collect($this->images)->firstWhere('is_primary', true)
+            ?? collect($this->images)->first();
+
+        if (!$img) return null;
+
+        $url = $img['url'] ?? $img['path'] ?? '';
+        if ($url && !str_starts_with($url, 'http')) {
+            $url = Storage::disk('public')->url(ltrim($url, '/'));
+        }
+
+        return array_merge($img, ['url' => $url]);
+    }
+
     public function toArray($request): array
     {
         return [
@@ -27,10 +43,10 @@ class ProductListResource extends JsonResource
             'average_rating' => $this->average_rating,
             'review_count'   => $this->review_count,
             'is_featured'    => $this->is_featured,
+            'is_active'      => $this->is_active,
             'in_stock'       => $this->isInStock(),
-            // Primary image only
-            'image'          => collect($this->images)->firstWhere('is_primary', true)
-                ?? collect($this->images)->first(),
+            // Primary image only — with full storage URL
+            'image'          => $this->formatPrimaryImage(),
             'seller'         => $this->whenLoaded('seller', fn() => [
                 'id'         => $this->seller->id,
                 'store_name' => $this->seller->sellerProfile?->store_name,

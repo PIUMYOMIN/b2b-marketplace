@@ -136,10 +136,15 @@ class OrderController extends Controller
         foreach ($request->items as $item) {
             $product = Product::findOrFail($item['product_id']);
             if (!$product->is_active) {
-                return response()->json(['success' => false, 'message' => "Product \"{$product->name}\" is no longer available."], 422);
+                return response()->json(['success' => false, 'message' => "Product \"{$product->name_en}\" is no longer available."], 422);
             }
-            if ($product->quantity < $item['quantity']) {
-                return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name}\"."], 422);
+            if (!empty($item['variant_id'])) {
+                $variant = $product->variants()->where('id', $item['variant_id'])->where('is_active', true)->first();
+                if (!$variant || ($product->product_type === 'physical' && $variant->quantity < $item['quantity'])) {
+                    return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name_en}\"."], 422);
+                }
+            } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
+                return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name_en}\"."], 422);
             }
         }
 
@@ -363,15 +368,26 @@ class OrderController extends Controller
                 }
 
                 if (!$product->is_active) {
-                    throw new \Exception("Product is not available: " . $product->name);
+                    throw new \Exception("Product is not available: " . $product->name_en);
                 }
 
-                if ($product->quantity < $item['quantity']) {
-                    throw new \Exception("Insufficient stock for: " . $product->name);
+                // Variant-aware stock check
+                $variant = null;
+                if (!empty($item['variant_id'])) {
+                    $variant = $product->variants()->where('id', $item['variant_id'])->where('is_active', true)->first();
+                    if (!$variant) {
+                        throw new \Exception("Selected variant is not available for: " . $product->name_en);
+                    }
+                    if ($product->product_type === 'physical' && $variant->quantity < $item['quantity']) {
+                        throw new \Exception("Insufficient stock for: " . $product->name_en);
+                    }
+                } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
+                    throw new \Exception("Insufficient stock for: " . $product->name_en);
                 }
 
+                $itemPrice = $variant ? (float) $variant->price : (float) $product->price;
                 $sellerId = $product->seller_id;
-                $itemTotal = $product->price * $item['quantity'];
+                $itemTotal = $itemPrice * $item['quantity'];
                 $subtotal += $itemTotal;
 
                 if (!isset($itemsBySeller[$sellerId])) {
@@ -379,10 +395,11 @@ class OrderController extends Controller
                 }
 
                 $itemsBySeller[$sellerId][] = [
-                    'product' => $product,
-                    'quantity' => $item['quantity'],
-                    'price' => $product->price,
-                    'subtotal' => $itemTotal
+                    'product'    => $product,
+                    'variant'    => $variant,
+                    'quantity'   => $item['quantity'],
+                    'price'      => $itemPrice,
+                    'subtotal'   => $itemTotal,
                 ];
             }
 
@@ -475,25 +492,38 @@ class OrderController extends Controller
                 // Create order items
                 foreach ($sellerItems as $item) {
                     OrderItem::create([
-                        'order_id' => $order->id,
-                        'product_id' => $item['product']->id,
-                        'product_name' => $item['product']->name,
-                        'product_sku' => $item['product']->sku,
-                        'price' => $item['price'],
-                        'quantity' => $item['quantity'],
-                        'subtotal' => $item['subtotal'],
-                        'product_data' => [
-                            'name' => $item['product']->name,
-                            'description' => $item['product']->description,
-                            'images' => $item['product']->images,
+                        'order_id'         => $order->id,
+                        'product_id'       => $item['product']->id,
+                        'variant_id'       => $item['variant']?->id,
+                        'product_name'     => $item['product']->name_en,
+                        'product_sku'      => $item['product']->sku,
+                        'variant_sku'      => $item['variant']?->sku,
+                        'selected_options' => $item['variant']
+                            ? $item['variant']->optionValues->mapWithKeys(
+                                fn($v) => [$v->option->name => $v->label]
+                              )->toArray()
+                            : null,
+                        'quantity_unit'    => $item['variant']
+                            ? $item['variant']->effectiveUnit()
+                            : $item['product']->effectiveUnit(),
+                        'price'            => $item['price'],
+                        'quantity'         => $item['quantity'],
+                        'subtotal'         => $item['subtotal'],
+                        'product_data'     => [
+                            'name'         => $item['product']->name_en,
+                            'description'  => $item['product']->description_en,
+                            'images'       => $item['product']->images,
                             'specifications' => $item['product']->specifications,
-                            'category' => $item['product']->category->name ?? 'Uncategorized',
-                            'seller_name' => $item['product']->seller->name ?? 'Unknown Seller'
-                        ]
+                            'category'     => $item['product']->category?->name_en ?? 'Uncategorized',
+                            'seller_name'  => $item['product']->seller?->name ?? 'Unknown Seller',
+                        ],
                     ]);
 
-                    // Update product stock
-                    $item['product']->decrement('quantity', $item['quantity']);
+                    // Deduct stock from the specific variant (physical products only).
+                    // Uses ProductVariant::deductStock() which throws if stock would go negative.
+                    if ($item['variant'] && $item['product']->product_type === 'physical') {
+                        $item['variant']->deductStock($item['quantity']);
+                    }
                 }
 
                 // Create delivery record for each order
@@ -732,11 +762,13 @@ class OrderController extends Controller
                 'cancelled_at' => now(),
             ]);
 
-            $order->load('items.product');
+            $order->load('items.product', 'items.variant');
 
             foreach ($order->items as $item) {
-                if ($item->product) {
-                    $item->product->increment('quantity', $item->quantity);
+                // Restore stock to the specific variant that was decremented at order time.
+                // Only physical products have tracked stock.
+                if ($item->variant && $item->product?->product_type === 'physical') {
+                    $item->variant->increment('quantity', $item->quantity);
                 }
             }
 

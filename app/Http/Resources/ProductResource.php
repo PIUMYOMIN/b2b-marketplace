@@ -126,12 +126,14 @@ class ProductResource extends JsonResource
             'updated_at'       => $this->updated_at,
 
             // ── Seller-only fields (only included when seller views their own) ─
+            // Uses $request->user() via the proper Resource API rather than the
+            // global request() helper, which is unavailable in queued/CLI contexts.
             'status'           => $this->when(
-                request()->user()?->hasRole(['seller', 'admin']),
+                $request->user()?->hasRole(['seller', 'admin']),
                 $this->status
             ),
             'rejection_reason' => $this->when(
-                request()->user()?->hasRole(['seller', 'admin']),
+                $request->user()?->hasRole(['seller', 'admin']),
                 $this->rejection_reason
             ),
         ];

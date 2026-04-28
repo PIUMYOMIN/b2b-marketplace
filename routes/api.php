@@ -388,12 +388,12 @@ Route::group([
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
                 Route::get('/search', [ProductController::class, 'search']);
 
-                Route::get('/{product}/option', [ProductOptionController::class, 'index']);     // List all options + values
-                Route::post('/{product}/option', [ProductOptionController::class, 'store']);     // Replace all options + values
-                Route::delete('/{product}/option', [ProductOptionController::class, 'destroyAll']); // Remove all options + variants
+                Route::get('/{product}/options', [ProductOptionController::class, 'index']);     // List all options + values
+                Route::post('/{product}/options', [ProductOptionController::class, 'store']);     // Replace all options + values
+                Route::delete('/{product}/options', [ProductOptionController::class, 'destroyAll']); // Remove all options + variants
                 
                 Route::get('/{product}/variants', [ProductVariantController::class, 'index']);    // List all variants
-                Route::post('/{product}/variant/generate', [ProductVariantController::class, 'generate']); // Auto-generate all combinations
+                Route::post('/{product}/variants/generate', [ProductVariantController::class, 'generate']); // Auto-generate all combinations
                 Route::post('/{product}/variants',[ProductVariantController::class, 'store']);    // Manually add one variant
                 Route::put('/{product}/variants/{variant}', [ProductVariantController::class, 'update']);   // Edit price/qty/sku/moq
                 Route::delete('/{product}/variants/{variant}', [ProductVariantController::class, 'destroy']); // Soft-delete a variant

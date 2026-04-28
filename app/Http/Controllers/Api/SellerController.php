@@ -276,7 +276,7 @@ class SellerController extends Controller
             ->join('products', 'reviews.product_id', '=', 'products.id')
             ->join('users', 'reviews.user_id', '=', 'users.id')
             ->where('products.seller_id', $sellerId)
-            ->select('reviews.*', 'products.name as product_name', 'users.name as   user_name')
+            ->select('reviews.*', 'products.name_en as product_name', 'users.name as user_name')
             ->orderBy('reviews.created_at', 'desc')
             ->limit(5)
             ->get();
@@ -4230,8 +4230,15 @@ class SellerController extends Controller
             $activeProducts = Product::where('seller_id', $user->id)
                 ->where('is_active', true)
                 ->count();
+            // Low-stock: physical products where the sum of active variant quantities <= 5.
+            // Non-physical products (digital/service) never count as low-stock.
             $lowStockProducts = Product::where('seller_id', $user->id)
-                ->where('quantity', '<=', 5)
+                ->where('is_active', true)
+                ->where('product_type', 'physical')
+                ->whereHas('activeVariants')         // must have at least one variant
+                ->withSum('activeVariants as total_stock', 'quantity')
+                ->get()
+                ->filter(fn($p) => ($p->total_stock ?? 0) <= 5)
                 ->count();
 
             // Sales data
@@ -4377,11 +4384,12 @@ class SellerController extends Controller
 
                 $imageUrl = null;
                 if ($primaryImage && isset($primaryImage['url'])) {
-                    $imageUrl = $primaryImage['url'];
-                    // Convert to full URL if it's a storage path
-                    if (!str_starts_with($imageUrl, 'http')) {
-                        $imageUrl = url('storage/' . ltrim($imageUrl, '/'));
+                    $rawPath = $primaryImage['url'];
+                    // Normalise to relative path then build via Storage driver
+                    if (str_starts_with($rawPath, 'http')) {
+                        $rawPath = preg_replace('#^https?://[^/]+/storage/#', '', $rawPath);
                     }
+                    $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url(ltrim($rawPath, '/'));
                 }
 
                 return [

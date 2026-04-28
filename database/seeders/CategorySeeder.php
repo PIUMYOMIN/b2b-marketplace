@@ -90,9 +90,9 @@ class CategorySeeder extends Seeder
 
         $beauty = Category::create([
             'name_en' => 'Beauty & Personal Care',
-            'name_mm' => 'အလှအပနှင့် ကိုယ်ရေးကိုယ်တာစောင့်ရှောက်မှု',
+            'name_mm' => 'အလှအပနှင့် တကိုယ်ရေအသုံးဆောင်',
             'description_en' => 'Beauty products and personal care items',
-            'description_mm' => 'အလှအပပစ္စည်းများနှင့် ကိုယ်ရေးကိုယ်တာစောင့်ရှောက်မှုပစ္စည်းများ',
+            'description_mm' => 'အလှအပပစ္စည်းများနှင့် တကိုယ်ရေအသုံးဆောင်ပစ္စည်းများ',
             'slug_en' => 'beauty-personal-care',
             'slug_mm' => 'အလှအပ-ကိုယ်ရေးကိုယ်တာ',
             'commission_rate' => 0.11,
@@ -199,7 +199,7 @@ class CategorySeeder extends Seeder
 
         $toys = Category::create([
             'name_en' => 'Toys & Games',
-            'name_mm' => 'ကစားစရာများနှင့် ဂိမ်းများ',
+            'name_mm' => 'အရုပ်နှင့် ဂိမ်းများ',
             'description_en' => 'Toys, games, and entertainment items',
             'description_mm' => 'ကစားစရာများ၊ ဂိမ်းများနှင့် ဖျော်ဖြေရေးပစ္စည်းများ',
             'slug_en' => 'toys-games',
@@ -235,7 +235,7 @@ class CategorySeeder extends Seeder
 
         $garden = Category::create([
             'name_en' => 'Garden & Outdoor',
-            'name_mm' => 'ဥယျာဉ်ခြံနှင့် အပြင်ပန်း',
+            'name_mm' => 'ဥယျာဉ်နှင့် ရိဘောဂ',
             'description_en' => 'Gardening tools, outdoor furniture, and supplies',
             'description_mm' => 'ဥယျာဉ်ခြံကိရိယာများ၊ အပြင်ပန်းပရိဘောဂနှင့် ပစ္စည်းများ',
             'slug_en' => 'garden-outdoor',
@@ -247,7 +247,7 @@ class CategorySeeder extends Seeder
 
         $baby = Category::create([
             'name_en' => 'Baby & Kids',
-            'name_mm' => 'ကလေးများနှင့် ကလေးငယ်များ',
+            'name_mm' => 'ကလေးအသုံးဆောင်ပစ္စည်းများ',
             'description_en' => 'Baby products, kids clothing, and toys',
             'description_mm' => 'ကလေးပစ္စည်းများ၊ ကလေးအဝတ်အစားများနှင့် ကစားစရာများ',
             'slug_en' => 'baby-kids',
@@ -259,7 +259,7 @@ class CategorySeeder extends Seeder
 
         $travel = Category::create([
             'name_en' => 'Travel & Luggage',
-            'name_mm' => 'ခရီးသွားလာရေးနှင့် ခရီးဆောင်အိတ်များ',
+            'name_mm' => 'ခရီးဆောင်အိတ်များ',
             'description_en' => 'Luggage, travel accessories, and bags',
             'description_mm' => 'ခရီးဆောင်အိတ်များ၊ ခရီးသွားအရန်ပစ္စည်းများနှင့် အိတ်များ',
             'slug_en' => 'travel-luggage',
@@ -283,11 +283,11 @@ class CategorySeeder extends Seeder
 
         $religious = Category::create([
             'name_en' => 'Religious & Spiritual',
-            'name_mm' => 'ဘာသာရေးနှင့် စိတ်ဝိညာဉ်ရေးရာ',
+            'name_mm' => 'ဘာသာရေးပစ္စည်းများ',
             'description_en' => 'Religious items, spiritual products, and offerings',
             'description_mm' => 'ဘာသာရေးပစ္စည်းများ၊ စိတ်ဝိညာဉ်ရေးရာပစ္စည်းများနှင့် လှူဒါန်းပစ္စည်းများ',
             'slug_en' => 'religious-spiritual',
-            'slug_mm' => 'ဘာသာရေး-စိတ်ဝိညာဉ်ရေး',
+            'slug_mm' => 'ဘာသာရေး-ပစ္စည်းများ',
             'commission_rate' => 0.07,
             'is_active' => true,
         ]);
@@ -299,7 +299,7 @@ class CategorySeeder extends Seeder
             'description_en' => 'Software, e-books, digital services',
             'description_mm' => 'ဆော့ဖ်ဝဲ၊ အီးစာအုပ်များ၊ ဒစ်ဂျစ်တယ်ဝန်ဆောင်မှုများ',
             'slug_en' => 'digital-products',
-            'slug_mm' => 'ဒစ်ဂျစ်တယ်ထုတ်ကုန်',
+            'slug_mm' => 'ဒစ်ဂျစ်တယ်ထုတ်ကုန်များ',
             'commission_rate' => 0.20,
             'is_active' => true,
         ]);
@@ -348,9 +348,9 @@ class CategorySeeder extends Seeder
 
         $laptops = Category::create([
             'name_en' => 'Laptops & Computers',
-            'name_mm' => 'လက်တော့ပ်နှင့် ကွန်ပျူတာများ',
+            'name_mm' => 'လက်ပ်တော့ပ်နှင့် ကွန်ပျူတာများ',
             'slug_en' => 'laptops-computers',
-            'slug_mm' => 'လက်တော့ပ်-ကွန်ပျူတာ',
+            'slug_mm' => 'လက်ပ်တော့ပ်-ကွန်ပျူတာ',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -368,9 +368,9 @@ class CategorySeeder extends Seeder
 
         $audio = Category::create([
             'name_en' => 'Audio & Headphones',
-            'name_mm' => 'အသံနှင့် နားကြပ်များ',
+            'name_mm' => 'အသံကိရိယာနှင့် နားကြပ်များ',
             'slug_en' => 'audio-headphones',
-            'slug_mm' => 'အသံ-နားကြပ်',
+            'slug_mm' => 'အသံကိရိယာ-နားကြပ်',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -408,9 +408,9 @@ class CategorySeeder extends Seeder
 
         $gaming = Category::create([
             'name_en' => 'Gaming Consoles',
-            'name_mm' => 'ဂိမ်းကြိုးဝိုင်းများ',
+            'name_mm' => 'ဂိမ်းနှင့် ဂိမ်းပစ္စည်းများ',
             'slug_en' => 'gaming-consoles',
-            'slug_mm' => 'ဂိမ်းကြိုးဝိုင်း',
+            'slug_mm' => 'ဂိမ်းပစ္စည်း',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -431,9 +431,9 @@ class CategorySeeder extends Seeder
     {
         $cases = Category::create([
             'name_en' => 'Phone Cases',
-            'name_mm' => 'ဖုန်းအခွံများ',
+            'name_mm' => 'ဖုန်းအဖုံးများ',
             'slug_en' => 'phone-cases',
-            'slug_mm' => 'ဖုန်းအခွံ',
+            'slug_mm' => 'ဖုန်းအဖုံး',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -451,9 +451,9 @@ class CategorySeeder extends Seeder
 
         $screenProtectors = Category::create([
             'name_en' => 'Screen Protectors',
-            'name_mm' => 'မျက်နှာပြင်ကာကွယ်ရေးများ',
+            'name_mm' => 'မှန်ပြင်အကာကွယ်များ',
             'slug_en' => 'screen-protectors',
-            'slug_mm' => 'မျက်နှာပြင်ကာကွယ်ရေး',
+            'slug_mm' => 'မှန်ပြင်အကာကွယ်',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -461,9 +461,9 @@ class CategorySeeder extends Seeder
 
         $earphones = Category::create([
             'name_en' => 'Earphones & Headsets',
-            'name_mm' => 'နားကြပ်နှင့် ခေါင်းဆောင်းများ',
+            'name_mm' => 'နားကြပ်များ',
             'slug_en' => 'earphones-headsets',
-            'slug_mm' => 'နားကြပ်-ခေါင်းဆောင်း',
+            'slug_mm' => 'နားကြပ်',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -484,9 +484,9 @@ class CategorySeeder extends Seeder
     {
         $keyboards = Category::create([
             'name_en' => 'Keyboards & Mice',
-            'name_mm' => 'ကွန်ပျူတာကီးဘုတ်နှင့် မောင်းများ',
+            'name_mm' => 'ကွန်ပျူတာကီးဘုတ်နှင့် မောက်စ်များ',
             'slug_en' => 'keyboards-mice',
-            'slug_mm' => 'ကီးဘုတ်-မောက်',
+            'slug_mm' => 'ကီးဘုတ်-မောက်စ်',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -524,9 +524,9 @@ class CategorySeeder extends Seeder
 
         $networking = Category::create([
             'name_en' => 'Networking',
-            'name_mm' => 'ကွန်ယက်ချိတ်ဆက်ရေး',
+            'name_mm' => 'ကွန်ယက်ချိတ်ဆက်ရေးပစ္စည်း',
             'slug_en' => 'networking',
-            'slug_mm' => 'ကွန်ယက်ချိတ်ဆက်ရေး',
+            'slug_mm' => 'ကွန်ယက်ချိတ်ဆက်ရေးပစ္စည်း',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -537,9 +537,9 @@ class CategorySeeder extends Seeder
     {
         $mensClothing = Category::create([
             'name_en' => "Men's Clothing",
-            'name_mm' => 'ယောက်ျားဝတ်အဝတ်အစား',
+            'name_mm' => 'အမျိုးသားဝတ်အဝတ်အစား',
             'slug_en' => 'mens-clothing',
-            'slug_mm' => 'ယောက်ျားဝတ်အဝတ်အစား',
+            'slug_mm' => 'အမျိုးသားဝတ်အဝတ်အစား',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -547,9 +547,9 @@ class CategorySeeder extends Seeder
 
         $womensClothing = Category::create([
             'name_en' => "Women's Clothing",
-            'name_mm' => 'မိန်းမဝတ်အဝတ်အစား',
+            'name_mm' => 'အမျိုးသမီးဝတ်အဝတ်အစား',
             'slug_en' => 'womens-clothing',
-            'slug_mm' => 'မိန်းမဝတ်အဝတ်အစား',
+            'slug_mm' => 'အမျိုးသမီးဝတ်အဝတ်အစား',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -567,9 +567,9 @@ class CategorySeeder extends Seeder
 
         $shoes = Category::create([
             'name_en' => 'Shoes & Footwear',
-            'name_mm' => 'ဖိနပ်နှင့် ခြေနင်းများ',
+            'name_mm' => 'ဖိနပ်နှင့် ခြေစွပ်များ',
             'slug_en' => 'shoes-footwear',
-            'slug_mm' => 'ဖိနပ်-ခြေနင်း',
+            'slug_mm' => 'ဖိနပ်-ခြေစွပ်',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -640,9 +640,9 @@ class CategorySeeder extends Seeder
 
         $storage = Category::create([
             'name_en' => 'Storage & Organization',
-            'name_mm' => 'သိုလှောင်ရေးနှင့် စနစ်တကျထားရှိမှု',
+            'name_mm' => 'ဒီဂျစ်တယ်သိမ်းစည်းကိရိယာများ',
             'slug_en' => 'storage-organization',
-            'slug_mm' => 'သိုလှောင်ရေး-စနစ်တကျထားရှိမှု',
+            'slug_mm' => 'ဒီဂျစ်တယ်သိမ်းစည်းကိရိယာ',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
@@ -683,9 +683,9 @@ class CategorySeeder extends Seeder
 
         $spices = Category::create([
             'name_en' => 'Spices & Condiments',
-            'name_mm' => 'ဟင်းခတ်အမွှေးအကြိုင်နှင့် အချိုပွဲများ',
+            'name_mm' => 'ဟင်းခတ်အမွှေးအကြိုင်များ',
             'slug_en' => 'spices-condiments',
-            'slug_mm' => 'ဟင်းခတ်အမွှေးအကြိုင်-အချိုပွဲ',
+            'slug_mm' => 'ဟင်းခတ်အမွှေးအကြိုင်',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);
