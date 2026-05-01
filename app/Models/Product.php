@@ -186,13 +186,31 @@ class Product extends Model
         return $min ?? (float) $this->price;
     }
 
-    /**
+/**
      * Returns the effective quantity unit for display.
      * Reads from the product-level unit (variants can override per-variant).
      */
     public function effectiveUnit(): string
     {
         return $this->quantity_unit ?? 'piece';
+    }
+
+    /**
+     * Whether this product is currently on sale.
+     * Checks is_on_sale flag AND valid discount window AND discount_price exists.
+     * Mirrors CartController sale logic.
+     */
+    public function isCurrentlyOnSale(): bool
+    {
+        if (!$this->is_on_sale) {
+            return false;
+        }
+
+        $today = now()->toDateString();
+        $inWindow = (!$this->discount_start || $this->discount_start->toDateString() <= $today)
+                && (!$this->discount_end || $this->discount_end->toDateString() >= $today);
+
+        return $inWindow && $this->discount_price !== null;
     }
 
     // -------------------------------------------------------------------------
