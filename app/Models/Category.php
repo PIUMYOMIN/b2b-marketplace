@@ -84,7 +84,7 @@ class Category extends Model
         return $query->withCount('products');
     }
 
-    // Nested set helper methods
+// Nested set helper methods
     public function isRoot()
     {
         return is_null($this->parent_id);
@@ -100,6 +100,45 @@ class Category extends Model
     {
         $this->parent_id = $parent->id;
         return $this;
+    }
+
+    /**
+     * Get all descendants of this category (children at all levels).
+     * Uses recursive CTE query for efficiency.
+     */
+    public function descendants()
+    {
+        $ids = collect([$this->id]);
+        
+        // Get all children recursively
+        $this->loadDescendants($this->id, $ids);
+        
+        return static::whereIn('id', $ids->filter(fn($id) => $id !== $this->id));
+    }
+
+    /**
+     * Recursively load all descendant IDs.
+     */
+    protected function loadDescendants($parentId, &$ids)
+    {
+        $children = static::where('parent_id', $parentId)->pluck('id');
+        
+        foreach ($children as $childId) {
+            if (!$ids->contains($childId)) {
+                $ids->push($childId);
+                $this->loadDescendants($childId, $ids);
+            }
+        }
+    }
+
+    /**
+     * Get all descendant IDs as a collection (for use in queries).
+     */
+    public function getDescendantIds()
+    {
+        $ids = collect([$this->id]);
+        $this->loadDescendants($this->id, $ids);
+        return $ids;
     }
 
     protected static function generateUniqueSlug(string $name, string $column, ?int $ignoreId = null): string

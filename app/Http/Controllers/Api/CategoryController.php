@@ -26,7 +26,7 @@ class CategoryController extends Controller
             ->with('children')
             ->get();
 
-        // Per-child product count (drives the animated list on the card)
+// Per-child product count (drives the animated list on the card)
         foreach ($categories as $category) {
             foreach ($category->children as $child) {
                 $child->products_count = Product::where('category_id', $child->id)
@@ -36,7 +36,7 @@ class CategoryController extends Controller
             }
 
             // Root total = all descendants (any active product counts)
-            $allIds = $category->descendants()->pluck('id')->push($category->id);
+            $allIds = $category->getDescendantIds();
             $category->products_count = Product::whereIn('category_id', $allIds)
                 ->where('is_active', true)
                 ->count();
@@ -67,7 +67,7 @@ class CategoryController extends Controller
             ->orderBy('name_en')
             ->get();
 
-        foreach ($categories as $category) {
+foreach ($categories as $category) {
             foreach ($category->children as $child) {
                 $child->products_count = Product::where('category_id', $child->id)
                     ->where('is_active', true)
@@ -75,7 +75,7 @@ class CategoryController extends Controller
                 $child->children_count = 0;
             }
 
-            $allIds = $category->descendants()->pluck('id')->push($category->id);
+            $allIds = $category->getDescendantIds();
             $category->products_count = Product::whereIn('category_id', $allIds)
                 ->where('is_active', true)
                 ->count();
