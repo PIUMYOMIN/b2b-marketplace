@@ -14,7 +14,7 @@
             <p style="margin-top:8px; font-style:italic;">"{{ $review->comment }}"</p>
         @endif
         <p style="margin-top:6px; font-size:12px; color:#6b7280;">
-            — {{ $review->user->name ?? 'Anonymous' }}, {{ $review->created_at->format('d M Y') }}
+            — {{ $review->user->name ?? 'Anonymous' }}, {{ $review->created_at->timezone(config('app.timezone'))->translatedFormat('d M Y') }}
         </p>
     </div>
 

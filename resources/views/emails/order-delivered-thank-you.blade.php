@@ -37,7 +37,7 @@
 {{-- ── Order summary box ── --}}
 <div class="info-box">
     <p><strong>Order #{{ $order->order_number }}</strong></p>
-    <p>Delivered on {{ now()->format('d M Y, g:i A') }}</p>
+    <p>Delivered on {{ now()->timezone(config('app.timezone'))->translatedFormat('d M Y, h:i A') }}</p>
     @if($order->seller?->sellerProfile?->store_name)
         <p>Sold by {{ $order->seller->sellerProfile->store_name }}</p>
     @endif

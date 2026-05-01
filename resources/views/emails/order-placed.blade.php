@@ -6,7 +6,7 @@
 
 <div class="info-box">
   <p><strong>Order #{{ $order->order_number }}</strong></p>
-  <p>Placed on {{ $order->created_at->format('d M Y, g:i A') }}</p>
+  <p>Placed on {{ $order->created_at->timezone(config('app.timezone'))->translatedFormat('d M Y, h:i A') }}</p>
 </div>
 
 <table class="data-table">

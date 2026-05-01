@@ -22,9 +22,19 @@ class RfqController extends Controller
     // ── BUYER: list my sent RFQs ───────────────────────────────────────────────
     public function listSent(Request $request)
     {
-        $rfqs = Rfq::where('buyer_id', $request->user()->id)
+        $user = $request->user();
+        $query = Rfq::query();
+
+        if (!$user->hasRole('admin')) {
+            $query->where('buyer_id', $user->id);
+        }
+
+        $rfqs = $query
             ->withCount('quotes')
-            ->with(['acceptedQuote.seller.sellerProfile:user_id,store_name'])
+            ->with([
+                'buyer:id,name,email',
+                'acceptedQuote.seller.sellerProfile:user_id,store_name',
+            ])
             ->orderByDesc('created_at')
             ->paginate(20);
 
@@ -34,23 +44,30 @@ class RfqController extends Controller
     // ── SELLER: list RFQs visible to me ────────────────────────────────────────
     public function listReceived(Request $request)
     {
-        $userId = $request->user()->id;
+        $user = $request->user();
+        $userId = $user->id;
 
-        $rfqs = Rfq::active()
-            ->visibleTo($userId)
-            ->with([
-                'buyer:id,name,email',
-                'quotes' => fn($q) => $q->where('seller_id', $userId),
-            ])
-            ->orderByDesc('created_at')
-            ->paginate(20);
+        $query = Rfq::active()->with(['buyer:id,name,email']);
 
-        // Add my_quote convenience field
-        $rfqs->getCollection()->transform(function ($rfq) use ($userId) {
-            $rfq->my_quote = $rfq->quotes->first();
-            unset($rfq->quotes);
-            return $rfq;
-        });
+        if ($user->hasRole('admin')) {
+            $query->withCount('quotes');
+        } else {
+            $query->visibleTo($userId)
+                ->with([
+                    'quotes' => fn($q) => $q->where('seller_id', $userId),
+                ]);
+        }
+
+        $rfqs = $query->orderByDesc('created_at')->paginate(20);
+
+        // Add my_quote convenience field for sellers.
+        if (!$user->hasRole('admin')) {
+            $rfqs->getCollection()->transform(function ($rfq) {
+                $rfq->my_quote = $rfq->quotes->first();
+                unset($rfq->quotes);
+                return $rfq;
+            });
+        }
 
         return response()->json(['success' => true, 'data' => $rfqs]);
     }
@@ -67,7 +84,8 @@ class RfqController extends Controller
         ])->findOrFail($id);
 
         // Authorization: must be buyer, OR (seller AND has access)
-        $canView = $rfq->buyer_id === $user->id
+        $canView = $user->hasRole('admin')
+            || $rfq->buyer_id === $user->id
             || $rfq->broadcast
             || $rfq->recipients()->where('seller_id', $user->id)->exists()
             || $rfq->quotes()->where('seller_id', $user->id)->exists();
@@ -77,7 +95,7 @@ class RfqController extends Controller
         }
 
         // For sellers: hide other sellers' quotes — only show their own
-        if ($rfq->buyer_id !== $user->id) {
+        if (!$user->hasRole('admin') && $rfq->buyer_id !== $user->id) {
             $rfq->setRelation(
                 'quotes',
                 $rfq->quotes->where('seller_id', $user->id)->values()

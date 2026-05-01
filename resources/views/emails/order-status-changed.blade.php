@@ -28,7 +28,7 @@
 
 @if($order->status === 'shipped' || $order->status === 'out_for_delivery')
 <div class="warning-box">
-  <p>Estimated delivery: {{ $order->delivery?->estimated_delivery_date?->format('d M Y') ?? '2–5 business days' }}</p>
+  <p>Estimated delivery: {{ $order->delivery?->estimated_delivery_date?->timezone(config('app.timezone'))->translatedFormat('d M Y') ?? '2–5 business days' }}</p>
 </div>
 @endif
 

@@ -666,9 +666,11 @@ Route::group([
         // ── RFQ (Request For Quotation) ────────────────────────────────────────
         Route::prefix('rfq')->group(function () {
 
+            // ── Buyer/admin read route ─────────────────────────────────────
+            Route::get('/sent', [RfqController::class, 'listSent'])->middleware('role:buyer|admin');
+
             // ── Buyer-only routes ──────────────────────────────────────────
             Route::middleware('role:buyer')->group(function () {
-                Route::get('/sent',                          [RfqController::class, 'listSent']);
                 Route::post('/',                             [RfqController::class, 'create'])->middleware('throttle:10,1');
                 Route::patch('/{id}/close',                  [RfqController::class, 'close']);
                 Route::patch('/{id}/cancel',                 [RfqController::class, 'cancel']);
@@ -676,9 +678,11 @@ Route::group([
                 Route::patch('/{rfqId}/quotes/{quoteId}/reject', [RfqController::class, 'rejectQuote']);
             });
 
+            // ── Seller/admin read route ────────────────────────────────────
+            Route::get('/received', [RfqController::class, 'listReceived'])->middleware('role:seller|admin');
+
             // ── Seller-only routes ─────────────────────────────────────────
             Route::middleware('role:seller')->group(function () {
-                Route::get('/received',                      [RfqController::class, 'listReceived']);
                 Route::post('/{id}/quotes',                  [RfqController::class, 'submitQuote'])->middleware('throttle:30,1');
             });
 
