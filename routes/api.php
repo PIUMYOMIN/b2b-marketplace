@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\RfqController;
 use App\Http\Controllers\Api\SellerExportController;
 use App\Http\Controllers\Api\ProductOptionController;
 use App\Http\Controllers\Api\ProductVariantController;
+use App\Http\Controllers\Api\PaymentSettingController;
 
 
 /*
@@ -304,6 +305,13 @@ Route::group([
             // Admin referral stats
             Route::middleware('role:admin')->group(function () {
                 Route::get('/referrals', [ReferralController::class, 'adminIndex']);
+            });
+
+            // Payment method settings (admin toggle per method)
+            Route::prefix('payment-settings')->group(function () {
+                Route::get('/', [PaymentSettingController::class, 'adminIndex']);
+                Route::patch('/{method}', [PaymentSettingController::class, 'adminToggle']);
+                Route::put('/', [PaymentSettingController::class, 'adminBulkUpdate']);
             });
         });
 
@@ -688,6 +696,11 @@ Route::group([
         // User referral link (auth required)
         Route::get('/referral/my-link', [ReferralController::class, 'myLink']);
     });
+
+    // --------------------
+    // Public: Payment methods (no auth required - checkout page reads this)
+    // --------------------
+    Route::get('/payment-methods', [PaymentSettingController::class, 'publicIndex']);
 
     // --------------------
     // Webhooks (no auth)
