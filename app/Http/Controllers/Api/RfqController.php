@@ -4,18 +4,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Commission;
+use App\Models\Delivery;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Rfq;
 use App\Models\RfqQuote;
 use App\Models\RfqRecipient;
+use App\Models\SellerOrder;
+use App\Models\SellerProfile;
 use App\Models\User;
+use App\Notifications\NewOrderForSeller;
+use App\Notifications\OrderPlaced;
 use App\Notifications\RfqCreated;
 use App\Notifications\RfqQuoteAccepted;
 use App\Notifications\RfqQuoteReceived;
 use App\Notifications\RfqQuoteRejected;
+use App\Services\CommissionRateResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class RfqController extends Controller
 {
@@ -34,6 +43,7 @@ class RfqController extends Controller
             ->with([
                 'buyer:id,name,email',
                 'acceptedQuote.seller.sellerProfile:user_id,store_name',
+                'order:id,order_number,status',   // ← include order reference
             ])
             ->orderByDesc('created_at')
             ->paginate(20);
@@ -44,7 +54,7 @@ class RfqController extends Controller
     // ── SELLER: list RFQs visible to me ────────────────────────────────────────
     public function listReceived(Request $request)
     {
-        $user = $request->user();
+        $user   = $request->user();
         $userId = $user->id;
 
         $query = Rfq::active()->with(['buyer:id,name,email']);
@@ -81,6 +91,7 @@ class RfqController extends Controller
             'buyer:id,name,email',
             'quotes.seller.sellerProfile:user_id,store_name,store_logo',
             'acceptedQuote.seller.sellerProfile:user_id,store_name',
+            'order:id,order_number,status',   // ← include order reference
         ])->findOrFail($id);
 
         // Authorization: must be buyer, OR (seller AND has access)
@@ -130,7 +141,7 @@ class RfqController extends Controller
         ]);
         if ($v->fails()) return response()->json(['success' => false, 'errors' => $v->errors()], 422);
 
-        $data = $v->validated();
+        $data      = $v->validated();
         $broadcast = $data['broadcast'] ?? true;
         $sellerIds = $data['seller_ids'] ?? [];
 
@@ -169,8 +180,6 @@ class RfqController extends Controller
         });
 
         // ── Notify targeted sellers (non-broadcast only) ───────────────────
-        // Broadcast RFQs are discoverable on the platform — we don't email
-        // every seller to avoid spam. Targeted sellers get an immediate alert.
         if (!$broadcast && !empty($sellerIds)) {
             $notification = new RfqCreated($rfq->load('buyer'));
             User::whereIn('id', $sellerIds)->each(function ($seller) use ($notification) {
@@ -281,7 +290,7 @@ class RfqController extends Controller
     // ── BUYER: accept a quote ──────────────────────────────────────────────────
     public function acceptQuote(Request $request, $rfqId, $quoteId)
     {
-        $rfq = Rfq::findOrFail($rfqId);
+        $rfq = Rfq::with('buyer')->findOrFail($rfqId);
 
         if ((int) $rfq->buyer_id !== (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => 'Not authorized to accept quotes for this RFQ.'], 403);
@@ -299,32 +308,145 @@ class RfqController extends Controller
             return response()->json(['success' => false, 'message' => 'Quote has expired.'], 422);
         }
 
-        DB::transaction(function () use ($rfq, $quote) {
-            // Accept this quote
+        // ── Create the order inside the same transaction ───────────────────────
+        $order = DB::transaction(function () use ($rfq, $quote) {
+
+            // ── 1. Accept this quote, reject all others ────────────────────
             $quote->update(['status' => RfqQuote::STATUS_ACCEPTED]);
 
-            // Reject all other pending quotes
             $rfq->quotes()
                 ->where('id', '!=', $quote->id)
                 ->where('status', RfqQuote::STATUS_PENDING)
                 ->update(['status' => RfqQuote::STATUS_REJECTED]);
 
-            // Mark RFQ as accepted
+            // ── 2. Resolve commission via the same priority chain as normal orders ──
+            //    account_level (tier) → business_type → category → default
+            //    No catalogue product exists, so category resolution is skipped
+            //    and it naturally falls through to the seller's tier or default.
+            $resolved         = app(CommissionRateResolver::class)->resolveForSeller($quote->seller_id, []);
+            $commissionRate   = $resolved['rate'];
+            $taxRate          = 0.05;
+
+            $subtotal         = (float) $quote->total_price;
+            $commissionAmount = round($subtotal * $commissionRate, 2);
+            $taxAmount        = round($subtotal * $taxRate, 2);
+            $platformRevenue  = $commissionAmount + $taxAmount;
+            $sellerPayout     = $subtotal - $commissionAmount;
+            $totalAmount      = $subtotal + $taxAmount; // shipping = 0 (negotiated separately)
+
+            // ── 3. Build a minimal shipping address from the buyer's profile ──
+            $buyer           = $rfq->buyer;
+            $shippingAddress = $this->buildShippingAddress($buyer);
+
+            // ── 4. Create the Order ───────────────────────────────────────
+            $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(Order::count() + 1, 5, '0', STR_PAD_LEFT);
+
+            $order = Order::create([
+                'order_number'     => $orderNumber,
+                'buyer_id'         => $rfq->buyer_id,
+                'seller_id'        => $quote->seller_id,
+                'subtotal_amount'  => $subtotal,
+                'shipping_fee'     => 0,     // B2B: delivery terms in quote.delivery_days
+                'tax_amount'       => $taxAmount,
+                'tax_rate'         => $taxRate,
+                'total_amount'     => $totalAmount,
+                'status'           => Order::STATUS_PENDING,
+                'payment_method'   => Order::PAYMENT_CASH_ON_DELIVERY, // default; buyer settles with seller
+                'payment_status'   => Order::PAYMENT_STATUS_PENDING,
+                'shipping_address' => $shippingAddress,
+                'order_notes'      => implode("\n", array_filter([
+                    "RFQ Reference: {$rfq->rfq_number}",
+                    "Quoted delivery: {$quote->delivery_days} days",
+                    $rfq->notes,
+                    $quote->notes,
+                ])),
+                'commission_rate'   => $commissionRate,
+                'commission_amount' => $commissionAmount,
+            ]);
+
+            // ── 5. Create the single OrderItem (RFQ line) ─────────────────
+            OrderItem::create([
+                'order_id'      => $order->id,
+                'product_id'    => null,   // no catalogue product; RFQ-sourced
+                'product_name'  => $rfq->product_name,
+                'product_sku'   => $rfq->rfq_number,
+                'quantity_unit' => $rfq->unit,
+                'price'         => (float) $quote->unit_price,
+                'quantity'      => (float) $rfq->quantity,
+                'subtotal'      => $subtotal,
+                'product_data'  => [
+                    'source'         => 'rfq',
+                    'rfq_id'         => $rfq->id,
+                    'rfq_number'     => $rfq->rfq_number,
+                    'product_name'   => $rfq->product_name,
+                    'category'       => $rfq->category,
+                    'specifications' => $rfq->specifications,
+                    'quantity'       => (float) $rfq->quantity,
+                    'unit'           => $rfq->unit,
+                    'delivery_days'  => $quote->delivery_days,
+                ],
+            ]);
+
+            // ── 6. Commission record (admin revenue tracking) ──────────────
+            Commission::create([
+                'order_id'          => $order->id,
+                'seller_id'         => $quote->seller_id,
+                'amount'            => $commissionAmount,
+                'commission_rate'   => $commissionRate,
+                'tax_amount'        => $taxAmount,
+                'tax_rate'          => $taxRate,
+                'platform_revenue'  => $platformRevenue,
+                'seller_payout'     => $sellerPayout,
+                'status'            => 'pending',
+                'due_date'          => now()->addDays(30),
+                'notes'             => "RFQ {$rfq->rfq_number} → Order {$orderNumber}: "
+                    . "{$commissionRate}% commission + 5% tax (rule: {$resolved['rule_type']})",
+                'commission_rule_id' => $resolved['rule_id'],
+            ]);
+
+            // ── 7. SellerOrder sub-record ─────────────────────────────────
+            SellerOrder::create([
+                'order_id'          => $order->id,
+                'seller_id'         => $quote->seller_id,
+                'order_number'      => $orderNumber . '-A',
+                'subtotal_amount'   => $subtotal,
+                'shipping_fee'      => 0,
+                'tax_amount'        => $taxAmount,
+                'commission_amount' => $commissionAmount,
+                'total_amount'      => $totalAmount,
+                'delivery_method'   => 'seller',
+                'status'            => 'pending',
+                'payment_method'    => Order::PAYMENT_CASH_ON_DELIVERY,
+                'zone_matched'      => false,
+                'fee_source'        => 'rfq',
+            ]);
+
+            // ── 8. Mark RFQ as accepted, link order ───────────────────────
             $rfq->update([
                 'status'            => Rfq::STATUS_ACCEPTED,
                 'accepted_quote_id' => $quote->id,
+                'order_id'          => $order->id,
                 'closed_at'         => now(),
             ]);
+
+            return $order;
         });
 
-        // ── Notify the winning seller ──────────────────────────────────────
+        // ── Notifications (outside transaction so a mail failure doesn't rollback) ──
+
+        // Winning seller: quote accepted + new order
         try {
-            $quote->seller->notify(new RfqQuoteAccepted($rfq, $quote));
+            $quote->seller->notify(new RfqQuoteAccepted($rfq, $quote, $order));
         } catch (\Exception $e) {
             Log::warning("RfqQuoteAccepted notification failed for seller {$quote->seller_id}: " . $e->getMessage());
         }
+        try {
+            $quote->seller->notify(new NewOrderForSeller($order->load('items', 'buyer')));
+        } catch (\Exception $e) {
+            Log::warning("NewOrderForSeller (RFQ) notification failed for seller {$quote->seller_id}: " . $e->getMessage());
+        }
 
-        // ── Notify auto-rejected sellers (silent — database only) ─────────
+        // Auto-rejected sellers (silent — database only)
         $rfq->quotes()
             ->where('id', '!=', $quote->id)
             ->where('status', RfqQuote::STATUS_REJECTED)
@@ -340,8 +462,11 @@ class RfqController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Quote accepted. The seller has been notified.',
-            'data'    => $rfq->fresh()->load('acceptedQuote.seller:id,name'),
+            'message' => 'Quote accepted. Order created and seller notified.',
+            'data'    => $rfq->fresh()->load([
+                'acceptedQuote.seller:id,name',
+                'order:id,order_number,status,total_amount',
+            ]),
         ]);
     }
 
@@ -370,5 +495,28 @@ class RfqController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => $quote]);
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────────
+
+    /**
+     * Build a shipping-address array from the buyer User record.
+     * Used as the order's shipping_address snapshot for RFQ orders.
+     * Actual delivery logistics are negotiated by buyer + seller off-platform.
+     */
+    private function buildShippingAddress(User $buyer): array
+    {
+        // Try seller profile address first (some buyers may also be sellers)
+        $profile = SellerProfile::where('user_id', $buyer->id)->first();
+
+        return [
+            'full_name' => $buyer->name,
+            'phone'     => $buyer->phone ?? $profile?->phone ?? '',
+            'address'   => $profile?->address ?? '',
+            'city'      => $profile?->city ?? '',
+            'state'     => $profile?->state ?? '',
+            'country'   => $profile?->country ?? 'Myanmar',
+            'note'      => 'Delivery address to be confirmed with seller.',
+        ];
     }
 }

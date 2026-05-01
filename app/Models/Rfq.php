@@ -36,6 +36,7 @@ class Rfq extends Model
         'broadcast',
         'status',
         'accepted_quote_id',
+        'order_id',           // ← NEW: FK to the order created on quote acceptance
         'closed_at',
         'expired_at',
     ];
@@ -82,11 +83,19 @@ class Rfq extends Model
     {
         return $this->belongsTo(RfqQuote::class, 'accepted_quote_id');
     }
-
     public function recipientSellers()
     {
         return $this->belongsToMany(User::class, 'rfq_recipients', 'rfq_id', 'seller_id')
             ->withTimestamps()->withPivot('viewed_at');
+    }
+
+    /**
+     * The order generated when a quote on this RFQ was accepted.
+     * Null until a quote is accepted.
+     */
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
     }
 
     // ── Scopes ─────────────────────────────────────────────────────────────────

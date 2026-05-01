@@ -385,7 +385,11 @@ class OrderController extends Controller
                     throw new \Exception("Insufficient stock for: " . $product->name_en);
                 }
 
-                $itemPrice = $variant ? (float) $variant->price : (float) $product->price;
+                // Use the discounted price when an active sale applies (no variant discount — product-level only)
+                $baseItemPrice = $variant ? (float) $variant->price : (float) $product->price;
+                $itemPrice = (!$variant && $product->isCurrentlyOnSale())
+                    ? (float) $product->discount_price
+                    : $baseItemPrice;
                 $sellerId = $product->seller_id;
                 $itemTotal = $itemPrice * $item['quantity'];
                 $subtotal += $itemTotal;

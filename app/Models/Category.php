@@ -2,14 +2,13 @@
 
 namespace App\Models;
 
-use Kalnoy\Nestedset\NodeTrait;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Category extends Model
 {
-    use NodeTrait, SoftDeletes;
+    use SoftDeletes;
 
     protected $fillable = [
         'name_en',
@@ -28,6 +27,9 @@ class Category extends Model
         'commission_rate' => 'float',
     ];
 
+    /**
+     * Boot the model.
+     */
     protected static function boot()
     {
         parent::boot();
@@ -53,37 +55,51 @@ class Category extends Model
         });
     }
 
-    public function parent()
-    {
-        return $this->belongsTo(Category::class, 'parent_id');
-    }
-
-    public function children()
-    {
-        return $this->hasMany(Category::class, 'parent_id');
-    }
-
     // Relations
     public function products()
     {
         return $this->hasMany(Product::class, 'category_id');
     }
 
-    // Optional: parent category
-    public function parentCategory()
+    // Parent relation (for nested set)
+    public function parent()
     {
         return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    // Children relation (for nested set)
+    public function children()
+    {
+        return $this->hasMany(Category::class, 'parent_id');
     }
 
     // Scopes
     public function scopeRootCategories($query)
     {
-        return $query->whereIsRoot();
+        return $query->whereNull('parent_id');
     }
 
     public function scopeWithProductCount($query)
     {
         return $query->withCount('products');
+    }
+
+    // Nested set helper methods
+    public function isRoot()
+    {
+        return is_null($this->parent_id);
+    }
+
+    public function makeRoot()
+    {
+        $this->parent_id = null;
+        return $this;
+    }
+
+    public function appendToNode(Category $parent)
+    {
+        $this->parent_id = $parent->id;
+        return $this;
     }
 
     protected static function generateUniqueSlug(string $name, string $column, ?int $ignoreId = null): string

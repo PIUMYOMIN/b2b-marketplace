@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Category;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Seeder;
 
 class CategorySeeder extends Seeder
@@ -10,10 +11,14 @@ class CategorySeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run()
+public function run()
     {
-        // Clear existing categories
-        Category::query()->delete();
+        // Disable foreign key checks and delete all categories
+        // then re-enable and reset the auto-increment
+DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        DB::table('categories')->delete();
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+        DB::statement('ALTER TABLE categories AUTO_INCREMENT = 1;');
 
         // First, create all main categories (roots)
         $electronics = Category::create([
@@ -257,9 +262,9 @@ class CategorySeeder extends Seeder
         ]);
         $baby->makeRoot()->save();
 
-        $travel = Category::create([
+$travel = Category::create([
             'name_en' => 'Travel & Luggage',
-            'name_mm' => 'ခရီးဆောင်အိတ်များ',
+            'name_mm' => 'ခရီးသွားနှင့် ခရီးဆောင်အိတ်',
             'description_en' => 'Luggage, travel accessories, and bags',
             'description_mm' => 'ခရီးဆောင်အိတ်များ၊ ခရီးသွားအရန်ပစ္စည်းများနှင့် အိတ်များ',
             'slug_en' => 'travel-luggage',
@@ -1449,11 +1454,11 @@ class CategorySeeder extends Seeder
 
     private function createTravelSubCategories(Category $parent)
     {
-        $luggage = Category::create([
+$luggage = Category::create([
             'name_en' => 'Luggage',
-            'name_mm' => 'ခရီးဆောင်အိတ်များ',
+            'name_mm' => 'ခရီးဆောင်အိတ်ကြီးများ',
             'slug_en' => 'luggage',
-            'slug_mm' => 'ခရီးဆောင်အိတ်',
+            'slug_mm' => 'ခရီးဆောင်အိတ်ကြီး',
             'commission_rate' => $parent->commission_rate + 0.02,
             'is_active' => true,
         ]);

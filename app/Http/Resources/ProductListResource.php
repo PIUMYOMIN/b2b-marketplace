@@ -37,9 +37,14 @@ class ProductListResource extends JsonResource
             'price'          => $this->price,          // base / "From" price
             'quantity_unit'  => $this->quantity_unit,
             'moq'            => $this->moq,
-            'is_on_sale'     => $this->is_on_sale,
-            'discount_price' => $this->discount_price,
-            'sale_badge'     => $this->sale_badge,
+            'is_on_sale'              => $this->is_on_sale,
+            'discount_price'          => $this->discount_price,
+            'discount_percentage'     => $this->discount_percentage,
+            'sale_badge'              => $this->sale_badge,
+            // ── Computed sale fields (mirrors CartController logic) ────────────
+            'is_currently_on_sale'    => $this->isCurrentlyOnSale(),
+            'selling_price'           => $this->isCurrentlyOnSale() ? (float) $this->discount_price : (float) $this->price,
+            'discount_saved'          => $this->isCurrentlyOnSale() ? round((float) $this->price - (float) $this->discount_price, 2) : 0,
             'average_rating' => $this->average_rating,
             'review_count'   => $this->review_count,
             'is_featured'    => $this->is_featured,

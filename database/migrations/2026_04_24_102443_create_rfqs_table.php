@@ -41,6 +41,10 @@ return new class extends Migration
             ])->default('open');
 
             $table->unsignedBigInteger('accepted_quote_id')->nullable();
+            $table->foreignId('order_id')
+                ->nullable()
+                ->constrained('orders')
+                ->nullOnDelete();
             $table->timestamp('closed_at')->nullable();
             $table->timestamp('expired_at')->nullable();
 

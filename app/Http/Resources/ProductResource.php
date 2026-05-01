@@ -41,6 +41,10 @@ class ProductResource extends JsonResource
             'is_on_sale'       => $this->is_on_sale,
             'discount_start'   => $this->discount_start,
             'discount_end'     => $this->discount_end,
+            // ── Computed sale fields (mirrors CartController logic) ────────────
+            'is_currently_on_sale' => $this->isCurrentlyOnSale(),
+            'selling_price'        => $this->isCurrentlyOnSale() ? (float) $this->discount_price : (float) $this->price,
+            'discount_saved'       => $this->isCurrentlyOnSale() ? round((float) $this->price - (float) $this->discount_price, 2) : 0,
 
             // ── B2B ───────────────────────────────────────────────────────────
             'moq'              => $this->moq,
