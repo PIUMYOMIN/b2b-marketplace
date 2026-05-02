@@ -26,7 +26,7 @@ class SellerController extends Controller
      */
     public function index(Request $request)
     {
-        // ✅ Handle "top sellers" case
+// ✅ Handle "top sellers" case
         if ($request->boolean('top')) {
             $topSellers = SellerProfile::with(['user', 'reviews'])
                 ->withAvg('reviews', 'rating')
@@ -42,9 +42,21 @@ class SellerController extends Controller
                 ->take((int) $request->input('limit', 6))
                 ->get();
 
+            // Helper: sanitise a string value to valid UTF-8 before json_encode.
+            // Malformed Myanmar Unicode characters cause "Malformed UTF-8" errors.
+            $utf8 = fn($v) => $v !== null
+                ? mb_convert_encoding((string) $v, 'UTF-8', 'UTF-8')
+                : null;
+
             // Convert store logo and banner to full URLs for top sellers
-            $topSellers->transform(function ($seller) {
+            $topSellers->transform(function ($seller) use ($utf8) {
                 $sellerData = $seller->toArray();
+                // Sanitize all string values to prevent malformed UTF-8
+                array_walk_recursive($sellerData, function (&$value) use ($utf8) {
+                    if (is_string($value)) {
+                        $value = $utf8($value);
+                    }
+                });
                 $sellerData['store_logo'] = !empty($sellerData['store_logo'])
                     ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
                     : null;
@@ -124,9 +136,21 @@ class SellerController extends Controller
 
         $sellers = $query->paginate($perPage);
 
+// Helper: sanitise a string value to valid UTF-8 before json_encode.
+        // Malformed Myanmar Unicode characters cause "Malformed UTF-8" errors.
+        $utf8 = fn($v) => $v !== null
+            ? mb_convert_encoding((string) $v, 'UTF-8', 'UTF-8')
+            : null;
+
         // Convert store logo and banner to full URLs for paginated results
-        $sellers->getCollection()->transform(function ($seller) {
+        $sellers->getCollection()->transform(function ($seller) use ($utf8) {
             $sellerData = $seller->toArray();
+            // Sanitize all string values to prevent malformed UTF-8
+            array_walk_recursive($sellerData, function (&$value) use ($utf8) {
+                if (is_string($value)) {
+                    $value = $utf8($value);
+                }
+            });
             $sellerData['store_logo'] = !empty($sellerData['store_logo'])
                 ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
                 : null;
@@ -551,42 +575,139 @@ class SellerController extends Controller
      */
     public function myStore(Request $request)
     {
-        $sellerProfile = SellerProfile::where('user_id', $request->user()->id)->first();
+        $s = SellerProfile::where('user_id', $request->user()->id)->first();
 
-        if (!$sellerProfile) {
+        if (!$s) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.seller.profile_not_found')
             ], 404);
         }
 
-        $sellerProfileData = $sellerProfile->toArray();
+        // Helper: sanitise a string value to valid UTF-8 before it enters json_encode.
+        // Malformed bytes (e.g. Myanmar text stored under a latin1 connection) cause
+        // json_encode to throw "Malformed UTF-8 characters" and return a 500.
+        $utf8 = fn($v) => $v !== null
+            ? mb_convert_encoding((string) $v, 'UTF-8', 'UTF-8')
+            : null;
 
-        // Convert store logo/banner to full URLs
-        $sellerProfileData['store_logo'] = $this->formatMediaUrl($sellerProfileData['store_logo'] ?? null);
-        $sellerProfileData['store_banner'] = $this->formatMediaUrl($sellerProfileData['store_banner'] ?? null);
-
-        // Convert product images to full URLs (if products are loaded)
-        if (isset($sellerProfileData['products']['data'])) {
-            foreach ($sellerProfileData['products']['data'] as &$product) {
-                if (isset($product['images'])) {
-                    $images = is_string($product['images']) ? json_decode($product['images'], true) : $product['images'];
-                    if (is_array($images)) {
-                        foreach ($images as &$image) {
-                            if (isset($image['url'])) {
-                                $image['url'] = $this->formatMediaUrl($image['url']);
-                            }
-                        }
-                        $product['images'] = $images;
-                    }
-                }
+        // Helper: safely decode a json-cast column, falling back to [] on error.
+        $safeArray = function ($v) {
+            if (is_array($v)) return $v;
+            if (empty($v))   return [];
+            try {
+                $decoded = is_string($v) ? json_decode($v, true, 512, JSON_THROW_ON_ERROR) : $v;
+                return is_array($decoded) ? $decoded : [];
+            } catch (\Throwable $e) {
+                return [];
             }
-        }
+        };
 
-        return response()->json([
-            'success' => true,
-            'data' => $sellerProfileData
-        ]);
+        // Build a curated response — never call toArray() / fresh() directly because
+        // that triggers $appends accessors (nrc_full_mm uses Myanmar Unicode) and
+        // serialises json-cast columns (additional_documents, business_hours) which
+        // may contain malformed bytes stored under a non-utf8mb4 DB connection.
+        $data = [
+            // Identity
+            'id'                          => $s->id,
+            'user_id'                     => $s->user_id,
+            'store_name'                  => $s->store_name,
+            'store_slug'                  => $s->store_slug,
+            'store_description'           => $s->store_description,
+
+            // Business
+            'business_type'               => $s->business_type,
+            'business_type_id'            => $s->business_type_id,
+            'business_registration_number'=> $s->business_registration_number,
+            'tax_id'                      => $s->tax_id,
+
+            // Contact
+            'contact_email'               => $s->contact_email,
+            'contact_phone'               => $s->contact_phone,
+            'website'                     => $s->website,
+            'account_number'              => $s->account_number,
+
+            // Address
+            'address'                     => $s->address,
+            'city'                        => $s->city,
+            'state'                       => $s->state,
+            'country'                     => $s->country,
+            'postal_code'                 => $s->postal_code,
+
+            // Media — convert relative paths to full URLs
+            'store_logo'                  => $this->formatMediaUrl($s->store_logo),
+            'store_banner'                => $this->formatMediaUrl($s->store_banner),
+
+            // Social
+            'social_facebook'             => $s->social_facebook,
+            'social_twitter'              => $s->social_twitter,
+            'social_instagram'            => $s->social_instagram,
+            'social_linkedin'             => $s->social_linkedin,
+            'social_youtube'              => $s->social_youtube,
+
+            // Policies
+            'return_policy'               => $s->return_policy,
+            'shipping_policy'             => $s->shipping_policy,
+            'warranty_policy'             => $s->warranty_policy,
+            'privacy_policy'              => $s->privacy_policy,
+            'terms_of_service'            => $s->terms_of_service,
+
+            // Business hours — safely decoded array
+            'business_hours_enabled'      => (bool) $s->business_hours_enabled,
+            'business_hours'              => $safeArray($s->getRawOriginal('business_hours')),
+
+            // Vacation
+            'vacation_mode'               => (bool) $s->vacation_mode,
+            'vacation_message'            => $s->vacation_message,
+            'vacation_start_date'         => $s->vacation_start_date,
+            'vacation_end_date'           => $s->vacation_end_date,
+
+            // NRC — Myanmar Unicode sanitised through mb_convert_encoding
+            'nrc_division'                => $s->nrc_division,
+            'nrc_township_code'           => $s->nrc_township_code,
+            'nrc_township_mm'             => $utf8($s->getRawOriginal('nrc_township_mm')),
+            'nrc_type'                    => $s->nrc_type,
+            'nrc_number'                  => $s->nrc_number,
+            // Safe computed NRC strings (avoid the appended accessor which can throw)
+            'nrc_full'                    => $s->nrc_division && $s->nrc_township_code && $s->nrc_type && $s->nrc_number
+                ? "{$s->nrc_division}/{$s->nrc_township_code}({$s->nrc_type}){$s->nrc_number}"
+                : null,
+
+            // Documents — convert relative paths to full URLs
+            'business_registration_document' => $this->formatMediaUrl($s->business_registration_document),
+            'tax_registration_document'      => $this->formatMediaUrl($s->tax_registration_document),
+            'identity_document_front'        => $this->formatMediaUrl($s->identity_document_front),
+            'identity_document_back'         => $this->formatMediaUrl($s->identity_document_back),
+            'business_certificate'           => $this->formatMediaUrl($s->business_certificate ?? null),
+
+            // Document & verification status
+            'documents_submitted'         => (bool) $s->documents_submitted,
+            'documents_submitted_at'      => $s->documents_submitted_at,
+            'document_status'             => $s->document_status,
+            'document_rejection_reason'   => $s->document_rejection_reason,
+            'verification_status'         => $s->verification_status,
+            'verification_notes'          => $s->verification_notes,
+            'nrc_verification_status'     => $s->nrc_verification_status,
+
+            // Store status & onboarding
+            'status'                      => $s->status,
+            'onboarding_status'           => $s->onboarding_status,
+            'current_step'                => $s->current_step,
+            'is_active'                   => (bool) $s->is_active,
+            'seller_tier'                 => $s->seller_tier,
+            'badge_type'                  => $s->badge_type,
+
+            // Misc
+            'year_established'            => $s->year_established,
+            'employees_count'             => $s->employees_count,
+            'currency'                    => $s->currency,
+            'commission_rate'             => $s->commission_rate,
+
+            'created_at'                  => $s->created_at,
+            'updated_at'                  => $s->updated_at,
+        ];
+
+        return response()->json(['success' => true, 'data' => $data]);
     }
 
     /**
@@ -1087,17 +1208,63 @@ class SellerController extends Controller
             }
 
             // Perform update
+            // Sanitize nrc_township_mm — Myanmar Unicode must be valid UTF-8 before
+            // storage otherwise json_encode() will throw on the response.
+            if (isset($validated['nrc_township_mm'])) {
+                $validated['nrc_township_mm'] = mb_convert_encoding(
+                    $validated['nrc_township_mm'], 'UTF-8', 'UTF-8'
+                );
+            }
+
             $updated = $seller->update($validated);
             \Log::info('Update result', [
-                'updated' => $updated,
-                'new_store_name' => $seller->fresh()->store_name,
-                'validated_name' => $validated['store_name'] ?? null
+                'updated'        => $updated,
+                'validated_name' => $validated['store_name'] ?? null,
             ]);
+
+            // Reload only the scalar/safe columns we actually need in the response.
+            // Avoid returning $seller->fresh() directly — it serialises json-cast
+            // columns (e.g. additional_documents) that may contain previously
+            // malformed bytes, causing json_encode() to throw a 500.
+            $seller->refresh();
+            $safeData = [
+                'id'                => $seller->id,
+                'store_name'        => $seller->store_name,
+                'store_slug'        => $seller->store_slug,
+                'store_description' => $seller->store_description,
+                'business_type'     => $seller->business_type,
+                'business_type_id'  => $seller->business_type_id,
+                'contact_email'     => $seller->contact_email,
+                'contact_phone'     => $seller->contact_phone,
+                'address'           => $seller->address,
+                'city'              => $seller->city,
+                'state'             => $seller->state,
+                'country'           => $seller->country,
+                'postal_code'       => $seller->postal_code,
+                'website'           => $seller->website,
+                'year_established'  => $seller->year_established,
+                'employees_count'   => $seller->employees_count,
+                'account_number'    => $seller->account_number,
+                'nrc_division'      => $seller->nrc_division,
+                'nrc_township_code' => $seller->nrc_township_code,
+                'nrc_township_mm'   => $seller->nrc_township_mm
+                    ? mb_convert_encoding($seller->nrc_township_mm, 'UTF-8', 'UTF-8')
+                    : null,
+                'nrc_type'          => $seller->nrc_type,
+                'nrc_number'        => $seller->nrc_number,
+                'status'            => $seller->status,
+                'store_logo'        => $seller->store_logo
+                    ? (filter_var($seller->store_logo, FILTER_VALIDATE_URL) ? $seller->store_logo : url('storage/' . ltrim($seller->store_logo, '/')))
+                    : null,
+                'store_banner'      => $seller->store_banner
+                    ? (filter_var($seller->store_banner, FILTER_VALIDATE_URL) ? $seller->store_banner : url('storage/' . ltrim($seller->store_banner, '/')))
+                    : null,
+            ];
 
             return response()->json([
                 'success' => true,
-                'data' => $seller->fresh(),
-                'message' => __('messages.store.profile_updated')
+                'data'    => $safeData,
+                'message' => __('messages.store.profile_updated'),
             ]);
         } catch (\Exception $e) {
             \Log::error('updateMyStore exception', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -1392,9 +1559,8 @@ class SellerController extends Controller
                     'current_step' => $currentStep,
                     'completed_steps' => $stepsCompleted,
                     'progress' => $progress,
-                    'progress_percentage' => $progress,    // FIX: hook reads progress_percentage
+                    'progress_percentage' => $progress,
                     'profile_status' => $sellerProfile->status,
-                    // FIX: hook reads business_type_info but it was never returned here
                     'business_type_info' => $sellerProfile->businessType ? [
                         'id' => $sellerProfile->businessType->id,
                         'name_en' => $sellerProfile->businessType->name_en,

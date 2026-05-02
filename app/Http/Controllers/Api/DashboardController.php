@@ -83,7 +83,7 @@ class DashboardController extends Controller
 
         $perPage = $request->input('per_page', 15);
 
-        $query = SellerProfile::with(['user', 'reviews'])
+        $query = SellerProfile::with(['user:id,name,email,phone,status,is_active,created_at'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
             ->withCount('products');
@@ -107,11 +107,64 @@ class DashboardController extends Controller
         }
 
         $sellers = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $sellers->getCollection()->transform(fn (SellerProfile $seller) => [
+            'id' => $seller->id,
+            'user_id' => $seller->user_id,
+            'store_id' => $this->jsonSafeString($seller->store_id),
+            'store_name' => $this->jsonSafeString($seller->store_name),
+            'store_slug' => $this->jsonSafeString($seller->store_slug),
+            'business_type' => $this->jsonSafeString($seller->business_type),
+            'business_registration_number' => $this->jsonSafeString($seller->business_registration_number),
+            'tax_id' => $this->jsonSafeString($seller->tax_id),
+            'contact_email' => $this->jsonSafeString($seller->contact_email),
+            'contact_phone' => $this->jsonSafeString($seller->contact_phone),
+            'address' => $this->jsonSafeString($seller->address),
+            'city' => $this->jsonSafeString($seller->city),
+            'state' => $this->jsonSafeString($seller->state),
+            'country' => $this->jsonSafeString($seller->country),
+            'postal_code' => $this->jsonSafeString($seller->postal_code),
+            'store_logo' => $this->jsonSafeString($seller->store_logo),
+            'store_banner' => $this->jsonSafeString($seller->store_banner),
+            'status' => $seller->status,
+            'verification_status' => $seller->verification_status,
+            'verification_level' => $seller->verification_level,
+            'document_status' => $seller->document_status,
+            'documents_submitted' => (bool) $seller->documents_submitted,
+            'is_active' => (bool) $seller->is_active,
+            'products_count' => (int) ($seller->products_count ?? 0),
+            'reviews_count' => (int) ($seller->reviews_count ?? 0),
+            'reviews_avg_rating' => $seller->reviews_avg_rating !== null
+                ? round((float) $seller->reviews_avg_rating, 2)
+                : null,
+            'created_at' => $seller->created_at?->toIso8601String(),
+            'updated_at' => $seller->updated_at?->toIso8601String(),
+            'verified_at' => $seller->verified_at?->toIso8601String(),
+            'user' => $seller->user ? [
+                'id' => $seller->user->id,
+                'name' => $this->jsonSafeString($seller->user->name),
+                'email' => $this->jsonSafeString($seller->user->email),
+                'phone' => $this->jsonSafeString($seller->user->phone),
+                'status' => $seller->user->status,
+                'is_active' => (bool) $seller->user->is_active,
+                'created_at' => $seller->user->created_at?->toIso8601String(),
+            ] : null,
+        ]);
 
         return response()->json([
             'success' => true,
             'data' => $sellers
-        ]);
+        ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    private function jsonSafeString(?string $value): ?string
+    {
+        if ($value === null || mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+
+        return $converted === false ? null : $converted;
     }
 
     /**

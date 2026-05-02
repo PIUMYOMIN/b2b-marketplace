@@ -52,59 +52,176 @@ class OrderController extends Controller
         // Check user role to determine which orders to show
         if ($user->hasRole('seller')) {
             // For sellers, show orders where they are the seller
-            $orders = Order::with(['items', 'buyer'])
+            $orders = Order::with([
+                    'items',
+                    'buyer:id,name,email,phone',
+                    'seller:id,name,email,phone',
+                    'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
+                ])
                 ->where('seller_id', $user->id)
                 ->orderBy('created_at', 'desc')
                 ->get();
         } else if ($user->hasRole('buyer')) {
             // For buyers, show their own orders with seller store name
-            $orders = Order::with(['items', 'seller.sellerProfile'])
+            $orders = Order::with([
+                    'items',
+                    'buyer:id,name,email,phone',
+                    'seller:id,name,email,phone',
+                    'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
+                ])
                 ->where('buyer_id', $user->id)
                 ->orderBy('created_at', 'desc')
                 ->get();
         } else {
             // For admins, show all orders
-            $orders = Order::with(['items', 'buyer', 'seller'])
+            $orders = Order::with([
+                    'items',
+                    'buyer:id,name,email,phone',
+                    'seller:id,name,email,phone',
+                    'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
+                ])
                 ->orderBy('created_at', 'desc')
                 ->get();
         }
 
-        // Map items to prepend full URL for images
-        $orders->transform(function ($order) use ($baseUrl) {
-            $order->items->transform(function ($item) use ($baseUrl) {
-                $productData = $item->product_data;
-                if (isset($productData['images']) && is_array($productData['images'])) {
-                    foreach ($productData['images'] as &$image) {
-                        if (!empty($image['url']) && !str_starts_with($image['url'], 'http')) {
-                            $image['url'] = config('app.url') . '/storage/' . ltrim($image['url'], '/');
-                        }
-                    }
-                }
-
-                // handle fallback
-                if (!empty($productData['image']) && !str_starts_with($productData['image'], 'http')) {
-                    $productData['image'] = config('app.url') . '/storage/' . ltrim($productData['image'], '/');
-                }
-
-                // assign back
-                $item->product_data = $productData;
-
-                return $item;
-            });
-
-            if ($order->seller && $order->seller->sellerProfile) {
-                $order->store_name = $order->seller->sellerProfile->store_name;
-            } elseif ($order->seller) {
-                $order->store_name = $order->seller->name; // fallback to user name
-            }
-
-            return $order;
-        });
+        $orders = $orders->map(fn (Order $order) => $this->formatOrderForList($order, $baseUrl));
 
         return response()->json([
             'success' => true,
             'data' => $orders
-        ]);
+        ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    private function formatOrderForList(Order $order, string $baseUrl): array
+    {
+        $storeName = $order->seller?->sellerProfile?->store_name ?? $order->seller?->name;
+
+        return [
+            'id' => $order->id,
+            'order_number' => $this->jsonSafeString($order->order_number),
+            'buyer_id' => $order->buyer_id,
+            'seller_id' => $order->seller_id,
+            'total_amount' => $order->total_amount,
+            'subtotal_amount' => $order->subtotal_amount,
+            'shipping_fee' => $order->shipping_fee,
+            'tax_amount' => $order->tax_amount,
+            'tax_rate' => $order->tax_rate,
+            'status' => $order->status,
+            'payment_method' => $order->payment_method,
+            'payment_status' => $order->payment_status,
+            'shipping_address' => $this->jsonSafeValue($order->shipping_address),
+            'billing_address' => $this->jsonSafeValue($order->billing_address),
+            'order_notes' => $this->jsonSafeString($order->order_notes),
+            'tracking_number' => $this->jsonSafeString($order->tracking_number),
+            'shipping_carrier' => $this->jsonSafeString($order->shipping_carrier),
+            'estimated_delivery' => $order->estimated_delivery?->toIso8601String(),
+            'commission_rate' => $order->commission_rate,
+            'commission_amount' => $order->commission_amount,
+            'coupon_id' => $order->coupon_id,
+            'coupon_code' => $this->jsonSafeString($order->coupon_code),
+            'coupon_discount_amount' => $order->coupon_discount_amount,
+            'delivered_at' => $order->delivered_at?->toIso8601String(),
+            'cancelled_at' => $order->cancelled_at?->toIso8601String(),
+            'created_at' => $order->created_at?->toIso8601String(),
+            'updated_at' => $order->updated_at?->toIso8601String(),
+            'store_name' => $this->jsonSafeString($storeName),
+            'buyer' => $this->formatOrderUser($order->buyer),
+            'seller' => $this->formatOrderUser($order->seller, true),
+            'items' => $order->items->map(fn (OrderItem $item) => $this->formatOrderItemForList($item, $baseUrl))->values(),
+        ];
+    }
+
+    private function formatOrderUser(?UserModel $user, bool $includeStore = false): ?array
+    {
+        if (!$user) {
+            return null;
+        }
+
+        $data = [
+            'id' => $user->id,
+            'name' => $this->jsonSafeString($user->name),
+            'email' => $this->jsonSafeString($user->email),
+            'phone' => $this->jsonSafeString($user->phone),
+        ];
+
+        if ($includeStore) {
+            $data['seller_profile'] = $user->sellerProfile ? [
+                'id' => $user->sellerProfile->id,
+                'store_name' => $this->jsonSafeString($user->sellerProfile->store_name),
+                'store_slug' => $this->jsonSafeString($user->sellerProfile->store_slug),
+                'store_logo' => $this->jsonSafeString($user->sellerProfile->store_logo),
+            ] : null;
+        }
+
+        return $data;
+    }
+
+    private function formatOrderItemForList(OrderItem $item, string $baseUrl): array
+    {
+        $productData = is_array($item->product_data) ? $item->product_data : [];
+        $productData = $this->normalizeProductDataImageUrls($productData, $baseUrl);
+
+        return [
+            'id' => $item->id,
+            'order_id' => $item->order_id,
+            'product_id' => $item->product_id,
+            'variant_id' => $item->variant_id,
+            'product_name' => $this->jsonSafeString($item->product_name),
+            'product_sku' => $this->jsonSafeString($item->product_sku),
+            'variant_sku' => $this->jsonSafeString($item->variant_sku),
+            'selected_options' => $this->jsonSafeValue($item->selected_options),
+            'quantity_unit' => $this->jsonSafeString($item->quantity_unit),
+            'price' => $item->price,
+            'quantity' => $item->quantity,
+            'subtotal' => $item->subtotal,
+            'product_data' => $this->jsonSafeValue($productData),
+            'created_at' => $item->created_at?->toIso8601String(),
+            'updated_at' => $item->updated_at?->toIso8601String(),
+        ];
+    }
+
+    private function normalizeProductDataImageUrls(array $productData, string $baseUrl): array
+    {
+        if (isset($productData['images']) && is_array($productData['images'])) {
+            foreach ($productData['images'] as &$image) {
+                if (is_array($image) && !empty($image['url']) && !str_starts_with($image['url'], 'http')) {
+                    $image['url'] = $baseUrl . ltrim($image['url'], '/');
+                } elseif (is_string($image) && !str_starts_with($image, 'http')) {
+                    $image = $baseUrl . ltrim($image, '/');
+                }
+            }
+            unset($image);
+        }
+
+        if (!empty($productData['image']) && is_string($productData['image']) && !str_starts_with($productData['image'], 'http')) {
+            $productData['image'] = $baseUrl . ltrim($productData['image'], '/');
+        }
+
+        return $productData;
+    }
+
+    private function jsonSafeValue(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return $this->jsonSafeString($value);
+        }
+
+        if (is_array($value)) {
+            return array_map(fn ($item) => $this->jsonSafeValue($item), $value);
+        }
+
+        return $value;
+    }
+
+    private function jsonSafeString(?string $value): ?string
+    {
+        if ($value === null || mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+
+        return $converted === false ? null : $converted;
     }
 
     // ── OTP ────────────────────────────────────────────────────────────────────
