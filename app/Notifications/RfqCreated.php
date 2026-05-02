@@ -36,6 +36,7 @@ class RfqCreated extends Notification
             ->greeting("Hello {$notifiable->name},")
             ->line("A buyer has sent you a Request for Quotation.")
             ->line("**Product:** {$this->rfq->product_name}")
+            ->line("**Category:** " . ($this->rfq->category ?: 'General'))
             ->line("**Quantity:** {$this->rfq->quantity} {$this->rfq->unit}")
             ->line("**Deadline:** {$this->rfq->deadline->format('d M Y')}")
             ->action('View RFQ & Submit Quote', config('app.frontend_url') . '/rfq')

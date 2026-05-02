@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Commission;
+use App\Models\Category;
 use App\Models\Delivery;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
 use App\Models\Rfq;
 use App\Models\RfqQuote;
 use App\Models\RfqRecipient;
@@ -126,6 +128,7 @@ class RfqController extends Controller
     {
         $v = Validator::make($request->all(), [
             'product_name'    => 'required|string|max:255',
+            'category_id'     => 'required|integer|exists:categories,id',
             'category'        => 'nullable|string|max:100',
             'quantity'        => 'required|numeric|min:0.001',
             'unit'            => 'required|string|max:20',
@@ -144,6 +147,18 @@ class RfqController extends Controller
         $data      = $v->validated();
         $broadcast = $data['broadcast'] ?? true;
         $sellerIds = $data['seller_ids'] ?? [];
+        $category  = Category::find($data['category_id']);
+        $matchedSellerIds = $this->findSellersByCategory((int) $data['category_id']);
+
+        // If category is provided, auto-target sellers who already sell in that category.
+        // This applies even when buyer picks specific sellers, so matching sellers are not missed.
+        $sellerIds = array_values(array_unique(array_merge($sellerIds, $matchedSellerIds)));
+
+        // For category-based RFQ targeting, we explicitly create recipients and avoid
+        // exposing this RFQ to unrelated sellers.
+        if (!empty($sellerIds)) {
+            $broadcast = false;
+        }
 
         // If not broadcast, require at least one seller
         if (!$broadcast && empty($sellerIds)) {
@@ -153,12 +168,13 @@ class RfqController extends Controller
             ], 422);
         }
 
-        $rfq = DB::transaction(function () use ($data, $request, $broadcast, $sellerIds) {
+        $rfq = DB::transaction(function () use ($data, $request, $broadcast, $sellerIds, $category) {
             $rfq = Rfq::create([
                 'rfq_number'      => Rfq::generateRfqNumber(),
                 'buyer_id'        => $request->user()->id,
                 'product_name'    => $data['product_name'],
-                'category'        => $data['category'] ?? null,
+                'category_id'     => $data['category_id'],
+                'category'        => $category?->name_en ?? ($data['category'] ?? null),
                 'quantity'        => $data['quantity'],
                 'unit'            => $data['unit'],
                 'specifications'  => $data['specifications'] ?? null,
@@ -171,16 +187,14 @@ class RfqController extends Controller
                 'status'          => Rfq::STATUS_OPEN,
             ]);
 
-            if (!$broadcast) {
-                foreach ($sellerIds as $sid) {
-                    RfqRecipient::create(['rfq_id' => $rfq->id, 'seller_id' => $sid]);
-                }
+            foreach ($sellerIds as $sid) {
+                RfqRecipient::create(['rfq_id' => $rfq->id, 'seller_id' => $sid]);
             }
             return $rfq;
         });
 
-        // ── Notify targeted sellers (non-broadcast only) ───────────────────
-        if (!$broadcast && !empty($sellerIds)) {
+        // ── Notify targeted sellers ─────────────────────────────────────────
+        if (!empty($sellerIds)) {
             $notification = new RfqCreated($rfq->load('buyer'));
             User::whereIn('id', $sellerIds)->each(function ($seller) use ($notification) {
                 try {
@@ -193,7 +207,9 @@ class RfqController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'RFQ created and sent to sellers.',
+            'message' => !empty($sellerIds)
+                ? 'RFQ created and sent to matching sellers.'
+                : 'RFQ created successfully.',
             'data'    => $rfq->fresh()->load('buyer:id,name'),
         ], 201);
     }
@@ -542,5 +558,38 @@ class RfqController extends Controller
             'country'   => $profile?->country ?? 'Myanmar',
             'note'      => 'Delivery address to be confirmed with seller.',
         ];
+    }
+
+    /**
+     * Return seller IDs that currently have active approved products in the given category.
+     * Includes descendants so selecting a parent category also matches child-category sellers.
+     */
+    private function findSellersByCategory(int $categoryId): array
+    {
+        $category = Category::find($categoryId);
+        if (!$category) {
+            return [];
+        }
+
+        $categoryIds = $category->getDescendantIds()->push($categoryId)->unique()->values();
+
+        $sellerIds = Product::query()
+            ->whereIn('category_id', $categoryIds)
+            ->where('is_active', true)
+            ->where('status', 'approved')
+            ->whereNotNull('seller_id')
+            ->distinct()
+            ->pluck('seller_id')
+            ->toArray();
+
+        if (empty($sellerIds)) {
+            return [];
+        }
+
+        return User::role('seller')
+            ->whereIn('id', $sellerIds)
+            ->where('is_active', true)
+            ->pluck('id')
+            ->toArray();
     }
 }

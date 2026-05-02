@@ -13,7 +13,6 @@ use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
-use App\Notifications\WelcomeUser;
 use App\Notifications\NewUserRegistered;
 use Illuminate\Support\Facades\Notification;
 use Carbon\Carbon;
@@ -120,13 +119,6 @@ class AuthController extends Controller
 
             // 🔔 Send email verification notification
             event(new Registered($user));
-
-            // Welcome email to new user
-            try {
-                $user->notify(new WelcomeUser());
-            } catch (\Exception $e) {
-                Log::warning('Welcome email failed: ' . $e->getMessage());
-            }
 
             // Notify all admins of new registration
             try {

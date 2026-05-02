@@ -23,6 +23,7 @@ class Rfq extends Model
         'rfq_number',
         'buyer_id',
         'product_name',
+        'category_id',
         'category',
         'quantity',
         'unit',
@@ -45,6 +46,7 @@ class Rfq extends Model
         'attachments'        => 'array',
         'broadcast'          => 'boolean',
         'quantity'           => 'decimal:3',
+        'category_id'        => 'integer',
         'budget_min'         => 'decimal:2',
         'budget_max'         => 'decimal:2',
         'deadline'           => 'date',
@@ -74,6 +76,10 @@ class Rfq extends Model
     public function recipients()
     {
         return $this->hasMany(RfqRecipient::class);
+    }
+    public function categoryRef()
+    {
+        return $this->belongsTo(Category::class, 'category_id');
     }
     public function quotes()
     {

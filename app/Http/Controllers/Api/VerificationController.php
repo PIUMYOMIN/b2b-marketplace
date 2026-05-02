@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Notifications\WelcomeUser;
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class VerificationController extends Controller
 
         if ($user->markEmailAsVerified()) {
             event(new Verified($user));
+            $this->sendWelcomeAfterVerification($user);
         }
 
         return response()->json([
@@ -97,6 +99,7 @@ class VerificationController extends Controller
 
         if ($user->markEmailAsVerified()) {
             event(new Verified($user));
+            $this->sendWelcomeAfterVerification($user);
         }
 
         // Clear the used code
@@ -105,6 +108,26 @@ class VerificationController extends Controller
         Log::info('Email verified via code', ['user_id' => $user->id]);
 
         return response()->json(['success' => true, 'message' => 'Email verified successfully.']);
+    }
+
+    /**
+     * Send welcome notification after first successful email verification.
+     */
+    private function sendWelcomeAfterVerification(User $user): void
+    {
+        try {
+            $alreadySent = $user->notifications()
+                ->where('type', WelcomeUser::class)
+                ->exists();
+
+            if (!$alreadySent) {
+                $user->notify(new WelcomeUser());
+            }
+        } catch (\Exception $e) {
+            Log::warning('Welcome email after verification failed: ' . $e->getMessage(), [
+                'user_id' => $user->id,
+            ]);
+        }
     }
 
 }
