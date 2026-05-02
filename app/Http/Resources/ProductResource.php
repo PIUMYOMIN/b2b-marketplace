@@ -1,4 +1,6 @@
 <?php
+// app/Http/Resources/ProductResource.php
+// CHANGE: add the four computed discount fields to the Pricing section
 
 namespace App\Http\Resources;
 
@@ -31,20 +33,25 @@ class ProductResource extends JsonResource
             'condition'        => $this->condition,
 
             // ── Pricing ───────────────────────────────────────────────────────
-            'price'            => $this->price,
-            'lowest_price'     => $this->lowestVariantPrice(),
-            'discount_price'   => $this->discount_price,
-            'discount_type'    => $this->discount_type,
-            'discount_percentage' => $this->discount_percentage,
-            'compare_at_price' => $this->compare_at_price,
-            'sale_badge'       => $this->sale_badge,
-            'is_on_sale'       => $this->is_on_sale,
-            'discount_start'   => $this->discount_start,
-            'discount_end'     => $this->discount_end,
-            // ── Computed sale fields (mirrors CartController logic) ────────────
-            'is_currently_on_sale' => $this->isCurrentlyOnSale(),
-            'selling_price'        => $this->isCurrentlyOnSale() ? (float) $this->discount_price : (float) $this->price,
-            'discount_saved'       => $this->isCurrentlyOnSale() ? round((float) $this->price - (float) $this->discount_price, 2) : 0,
+            'price'                    => $this->price,           // base / "From" price
+            'lowest_price'             => $this->lowestVariantPrice(),
+            'discount_price'           => $this->discount_price,
+            'discount_type'            => $this->discount_type,
+            'discount_percentage'      => $this->discount_percentage,
+            'compare_at_price'         => $this->compare_at_price,
+            'sale_badge'               => $this->sale_badge,
+            'is_on_sale'               => $this->is_on_sale,
+            'discount_start'           => $this->discount_start,
+            'discount_end'             => $this->discount_end,
+
+            // ── Computed sale fields (used directly by frontend) ──────────────
+            // These mirror what CartController computes per cart-item so that
+            // ProductDetail.jsx, ProductCard.jsx, and Checkout.jsx all share
+            // the same source of truth without duplicating the date-window logic.
+            'is_currently_on_sale'     => $this->isCurrentlyOnSale(),        // bool
+            'selling_price'            => $this->getSellingPrice(),           // effective buyer price
+            'discount_saved'           => $this->getDiscountSaved(),          // MMK saved
+            'effective_discount_pct'   => $this->getEffectiveDiscountPercentage(), // % for badge
 
             // ── B2B ───────────────────────────────────────────────────────────
             'moq'              => $this->moq,
@@ -55,20 +62,16 @@ class ProductResource extends JsonResource
 
             // ── Stock ─────────────────────────────────────────────────────────
             'in_stock'         => $this->isInStock(),
-            'total_stock'      => $this->totalStock(),   // null for digital/service
+            'total_stock'      => $this->totalStock(),
 
             // ── Variant system ────────────────────────────────────────────────
-            // `has_variants` tells the frontend to show the option picker UI
             'has_variants'     => $this->whenLoaded(
                 'options',
-                fn() =>
-                $this->options->isNotEmpty()
+                fn() => $this->options->isNotEmpty()
             ),
-            // Options drive the UI widget (color swatches, size buttons, etc.)
             'options'          => ProductOptionResource::collection(
                 $this->whenLoaded('options')
             ),
-            // All purchasable variant combinations with their prices/stock
             'variants'         => ProductVariantResource::collection(
                 $this->whenLoaded('activeVariants')
             ),
@@ -94,14 +97,11 @@ class ProductResource extends JsonResource
 
             // ── Digital product fields ────────────────────────────────────────
             'file_type'        => $this->when(
-                $this->product_type === 'digital',
-                $this->file_type
+                $this->product_type === 'digital', $this->file_type
             ),
             'file_size'        => $this->when(
-                $this->product_type === 'digital',
-                $this->file_size
+                $this->product_type === 'digital', $this->file_size
             ),
-            // file_url intentionally excluded from public resource (served via signed URL)
 
             // ── Stats ─────────────────────────────────────────────────────────
             'average_rating'   => $this->average_rating,
@@ -112,26 +112,24 @@ class ProductResource extends JsonResource
 
             // ── Relations ─────────────────────────────────────────────────────
             'seller'           => $this->whenLoaded('seller', fn() => [
-                'id'                => $this->seller->id,
-                'store_name'        => $this->seller->sellerProfile?->store_name,
-                'store_slug'        => $this->seller->sellerProfile?->store_slug,
-                'logo'              => $this->seller->sellerProfile?->logo,
-                'average_rating'    => $this->seller->sellerProfile?->average_rating,
+                'id'             => $this->seller->id,
+                'store_name'     => $this->seller->sellerProfile?->store_name,
+                'store_slug'     => $this->seller->sellerProfile?->store_slug,
+                'logo'           => $this->seller->sellerProfile?->logo,
+                'average_rating' => $this->seller->sellerProfile?->average_rating,
             ]),
             'category'         => $this->whenLoaded('category', fn() => [
-                'id'    => $this->category->id,
-                'name'  => $this->category->name,
-                'slug'  => $this->category->slug ?? null,
+                'id'   => $this->category->id,
+                'name' => $this->category->name,
+                'slug' => $this->category->slug ?? null,
             ]),
 
-            // ── Timestamps ───────────────────────────────────────────────────
+            // ── Timestamps ────────────────────────────────────────────────────
             'listed_at'        => $this->listed_at,
             'created_at'       => $this->created_at,
             'updated_at'       => $this->updated_at,
 
-            // ── Seller-only fields (only included when seller views their own) ─
-            // Uses $request->user() via the proper Resource API rather than the
-            // global request() helper, which is unavailable in queued/CLI contexts.
+            // ── Seller-only fields ─────────────────────────────────────────────
             'status'           => $this->when(
                 $request->user()?->hasRole(['seller', 'admin']),
                 $this->status

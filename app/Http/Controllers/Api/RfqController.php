@@ -421,7 +421,31 @@ class RfqController extends Controller
                 'fee_source'        => 'rfq',
             ]);
 
-            // ── 8. Mark RFQ as accepted, link order ───────────────────────
+            // ── 8. Delivery record ────────────────────────────────────────
+            // OrderController::confirm() expects a Delivery row to exist so it
+            // can flip status to 'awaiting_pickup'. store() creates one at
+            // order placement — we must do the same here.
+            // We use quote->delivery_days for the estimate instead of the
+            // hardcoded 5-day default, since the seller already committed.
+            $sellerProfile   = \App\Models\SellerProfile::where('user_id', $quote->seller_id)->first();
+            $pickupAddress   = $sellerProfile?->address ?? '';
+            $deliveryAddress = implode(', ', array_filter([
+                $shippingAddress['address'] ?? '',
+                $shippingAddress['city']    ?? '',
+                $shippingAddress['state']   ?? '',
+            ]));
+
+            Delivery::create([
+                'order_id'                => $order->id,
+                'supplier_id'             => $quote->seller_id,
+                'delivery_method'         => 'supplier',
+                'pickup_address'          => $pickupAddress,
+                'delivery_address'        => $deliveryAddress,
+                'status'                  => 'pending',
+                'estimated_delivery_date' => now()->addDays((int) $quote->delivery_days),
+            ]);
+
+            // ── 9. Mark RFQ as accepted, link order ───────────────────────
             $rfq->update([
                 'status'            => Rfq::STATUS_ACCEPTED,
                 'accepted_quote_id' => $quote->id,

@@ -206,6 +206,10 @@ Route::group([
                 Route::get('/pending-verification', [SellerController::class, 'getPendingVerification']);
                 Route::get('/sellers-with-documents', [SellerController::class, 'getSellersWithDocuments']);
 
+                // ── Verified Seller List & Export ──────────────────────────
+                Route::get('/verified-list', [SellerController::class, 'getVerifiedSellerList']);
+                Route::get('/verified-list/export', [SellerController::class, 'exportVerifiedSellers']);
+
                 // Full detail view (profile + documents + history)
                 Route::get('/{id}/detail', [SellerController::class, 'getSellerDetail']);
 

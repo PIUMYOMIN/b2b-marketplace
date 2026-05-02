@@ -108,7 +108,14 @@ class DeliveryController extends Controller
             $delivery->delivery_method      = $validated['delivery_method'];
             $delivery->platform_delivery_fee= $validated['platform_delivery_fee'] ?? 0;
             $delivery->pickup_address       = $validated['pickup_address'] ?? $delivery->pickup_address;
-            $delivery->delivery_address     = $order->shipping_address ?? '';
+            $addr = $order->shipping_address;
+            $delivery->delivery_address = is_array($addr)
+                ? implode(', ', array_filter([
+                    $addr['address'] ?? '',
+                    $addr['city']    ?? '',
+                    $addr['state']   ?? '',
+                  ]))
+                : ($addr ?? '');
             $delivery->status               = 'awaiting_pickup';
             $delivery->tracking_number      = $delivery->tracking_number ?? strtoupper(Str::random(12));
 

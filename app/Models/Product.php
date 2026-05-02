@@ -195,24 +195,6 @@ class Product extends Model
         return $this->quantity_unit ?? 'piece';
     }
 
-    /**
-     * Whether this product is currently on sale.
-     * Checks is_on_sale flag AND valid discount window AND discount_price exists.
-     * Mirrors CartController sale logic.
-     */
-    public function isCurrentlyOnSale(): bool
-    {
-        if (!$this->is_on_sale) {
-            return false;
-        }
-
-        $today = now()->toDateString();
-        $inWindow = (!$this->discount_start || $this->discount_start->toDateString() <= $today)
-                && (!$this->discount_end || $this->discount_end->toDateString() >= $today);
-
-        return $inWindow && $this->discount_price !== null;
-    }
-
     // -------------------------------------------------------------------------
     // Scopes
     // -------------------------------------------------------------------------
@@ -230,5 +212,88 @@ class Product extends Model
     public function scopeOfType($query, string $type)
     {
         return $query->where('product_type', $type);
+    }
+
+    /**
+     * Whether the product currently has an active, valid sale.
+     *
+     * Checks:
+     *   1. is_on_sale flag is true
+     *   2. A discount_price or discount_percentage is actually set
+     *   3. Today falls within discount_start / discount_end (if set)
+     */
+    public function isCurrentlyOnSale(): bool
+    {
+        if (!$this->is_on_sale) {
+            return false;
+        }
+ 
+        // Must have an actual discount value
+        if (!$this->discount_price && !$this->discount_percentage) {
+            return false;
+        }
+ 
+        $today = now()->startOfDay();
+ 
+        if ($this->discount_start && $this->discount_start->gt($today)) {
+            return false;
+        }
+ 
+        if ($this->discount_end && $this->discount_end->lt($today)) {
+            return false;
+        }
+ 
+        return true;
+    }
+ 
+    /**
+     * The price the buyer actually pays.
+     *
+     * - When on sale with a discount_price:       returns discount_price
+     * - When on sale with a discount_percentage:  calculates from base price
+     * - Otherwise:                                returns the base price
+     */
+    public function getSellingPrice(): float
+    {
+        if (!$this->isCurrentlyOnSale()) {
+            return (float) $this->price;
+        }
+ 
+        if ($this->discount_price && (float) $this->discount_price < (float) $this->price) {
+            return (float) $this->discount_price;
+        }
+ 
+        if ($this->discount_percentage > 0) {
+            return round((float) $this->price * (1 - (float) $this->discount_percentage / 100), 2);
+        }
+ 
+        return (float) $this->price;
+    }
+ 
+    /**
+     * Amount saved vs the base price. 0 when not on sale.
+     */
+    public function getDiscountSaved(): float
+    {
+        return max(0, round((float) $this->price - $this->getSellingPrice(), 2));
+    }
+ 
+    /**
+     * Effective discount percentage for badge display.
+     * Calculates from prices when discount_percentage is not stored explicitly.
+     */
+    public function getEffectiveDiscountPercentage(): float
+    {
+        if (!$this->isCurrentlyOnSale() || (float) $this->price <= 0) {
+            return 0.0;
+        }
+ 
+        if ($this->discount_percentage > 0) {
+            return (float) $this->discount_percentage;
+        }
+ 
+        // Derive from prices
+        $selling = $this->getSellingPrice();
+        return round(((float) $this->price - $selling) / (float) $this->price * 100, 1);
     }
 }

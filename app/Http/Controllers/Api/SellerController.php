@@ -5809,4 +5809,205 @@ class SellerController extends Controller
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Verified Seller List  (Admin)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/admin/seller/verified-list
+     * Returns a paginated, searchable, filterable list of verified sellers.
+     */
+    public function getVerifiedSellerList(Request $request)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin') {
+                return response()->json(['success' => false, 'message' => 'Admin access required.'], 403);
+            }
+
+            $perPage        = (int) $request->input('per_page', 20);
+            $search         = $request->input('search');
+            $verifiedLevel  = $request->input('verification_level');
+            $badgeType      = $request->input('badge_type');
+            $nrcStatus      = $request->input('nrc_status');
+            $sortBy         = $request->input('sort_by', 'verified_at');
+            $sortDir        = $request->input('sort_dir', 'desc');
+
+            $allowedSorts = ['verified_at', 'store_name', 'contact_email', 'verification_level'];
+            if (!in_array($sortBy, $allowedSorts)) { $sortBy = 'verified_at'; }
+            $sortDir = strtolower($sortDir) === 'asc' ? 'asc' : 'desc';
+
+            $query = SellerProfile::where('verification_status', SellerProfile::VERIFICATION_VERIFIED)
+                ->with(['user:id,name,email,phone,created_at', 'verifier:id,name']);
+
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('store_name', 'like', "%{$search}%")
+                      ->orWhere('store_id', 'like', "%{$search}%")
+                      ->orWhere('contact_email', 'like', "%{$search}%")
+                      ->orWhere('contact_phone', 'like', "%{$search}%")
+                      ->orWhere('business_registration_number', 'like', "%{$search}%")
+                      ->orWhereHas('user', fn ($u) =>
+                          $u->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%")
+                      );
+                });
+            }
+            if ($verifiedLevel) { $query->where('verification_level', $verifiedLevel); }
+            if ($badgeType)     { $query->where('badge_type', $badgeType); }
+            if ($nrcStatus)     { $query->where('nrc_verification_status', $nrcStatus); }
+
+            $sellers = $query->orderBy($sortBy, $sortDir)->paginate($perPage);
+
+            $sellers->getCollection()->transform(function ($seller) {
+                return [
+                    'id'                           => $seller->id,
+                    'store_id'                     => $seller->store_id,
+                    'store_name'                   => $seller->store_name,
+                    'store_slug'                   => $seller->store_slug,
+                    'contact_email'                => $seller->contact_email,
+                    'contact_phone'                => $seller->contact_phone,
+                    'business_type'                => $seller->business_type_name,
+                    'business_registration_number' => $seller->business_registration_number,
+                    'tax_id'                       => $seller->tax_id,
+                    'address'                      => $seller->address,
+                    'city'                         => $seller->city,
+                    'state'                        => $seller->state,
+                    'country'                      => $seller->country,
+                    'verification_level'           => $seller->verification_level,
+                    'badge_type'                   => $seller->badge_type,
+                    'nrc_full'                     => $seller->nrc_full,
+                    'nrc_verification_status'      => $seller->nrc_verification_status,
+                    'verified_at'                  => $seller->verified_at?->toIso8601String(),
+                    'verified_by'                  => $seller->verifier?->name ?? null,
+                    'status'                       => $seller->status,
+                    'owner_name'                   => $seller->user?->name,
+                    'owner_email'                  => $seller->user?->email,
+                    'owner_phone'                  => $seller->user?->phone,
+                    'member_since'                 => $seller->user?->created_at?->toDateString(),
+                    'store_logo_url'               => $seller->store_logo
+                                                        ? (str_starts_with($seller->store_logo, 'http') ? $seller->store_logo : "/storage/{$seller->store_logo}")
+                                                        : null,
+                ];
+            });
+
+            $sq = SellerProfile::where('verification_status', SellerProfile::VERIFICATION_VERIFIED);
+            $summary = [
+                'total'        => (clone $sq)->count(),
+                'basic'        => (clone $sq)->where('verification_level', 'basic')->count(),
+                'verified'     => (clone $sq)->where('verification_level', 'verified')->count(),
+                'premium'      => (clone $sq)->where('verification_level', 'premium')->count(),
+                'nrc_verified' => (clone $sq)->where('nrc_verification_status', 'verified')->count(),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data'    => $sellers,
+                'summary' => $summary,
+                'meta'    => [
+                    'current_page' => $sellers->currentPage(),
+                    'per_page'     => $sellers->perPage(),
+                    'total'        => $sellers->total(),
+                    'last_page'    => $sellers->lastPage(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('getVerifiedSellerList failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Failed to fetch verified seller list.'], 500);
+        }
+    }
+
+    /**
+     * GET /api/admin/seller/verified-list/export
+     * Streams a CSV download of all verified sellers.
+     */
+    public function exportVerifiedSellers(Request $request)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin') {
+                return response()->json(['success' => false, 'message' => 'Admin access required.'], 403);
+            }
+
+            $search        = $request->input('search');
+            $verifiedLevel = $request->input('verification_level');
+            $badgeType     = $request->input('badge_type');
+            $nrcStatus     = $request->input('nrc_status');
+
+            $query = SellerProfile::where('verification_status', SellerProfile::VERIFICATION_VERIFIED)
+                ->with(['user:id,name,email,phone,created_at', 'verifier:id,name'])
+                ->orderBy('verified_at', 'desc');
+
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('store_name', 'like', "%{$search}%")
+                      ->orWhere('contact_email', 'like', "%{$search}%")
+                      ->orWhereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"));
+                });
+            }
+            if ($verifiedLevel) { $query->where('verification_level', $verifiedLevel); }
+            if ($badgeType)     { $query->where('badge_type', $badgeType); }
+            if ($nrcStatus)     { $query->where('nrc_verification_status', $nrcStatus); }
+
+            $filename = 'verified_sellers_' . now()->format('Ymd_His') . '.csv';
+            $headers = [
+                'Content-Type'        => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+                'Cache-Control'       => 'no-cache, no-store, must-revalidate',
+                'Pragma'              => 'no-cache',
+                'Expires'             => '0',
+            ];
+
+            $columns = [
+                'Store ID', 'Store Name', 'Owner Name', 'Owner Email', 'Owner Phone',
+                'Contact Email', 'Contact Phone', 'Business Type',
+                'Business Reg. No.', 'Tax ID', 'Verification Level', 'Badge Type',
+                'NRC Number', 'NRC Verification Status',
+                'Address', 'City', 'State', 'Country',
+                'Store Status', 'Verified At', 'Verified By', 'Member Since',
+            ];
+
+            $callback = function () use ($query, $columns) {
+                $handle = fopen('php://output', 'w');
+                fputs($handle, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
+                fputcsv($handle, $columns);
+                $query->chunk(500, function ($sellers) use ($handle) {
+                    foreach ($sellers as $s) {
+                        fputcsv($handle, [
+                            $s->store_id,
+                            $s->store_name,
+                            $s->user?->name,
+                            $s->user?->email,
+                            $s->user?->phone,
+                            $s->contact_email,
+                            $s->contact_phone,
+                            $s->getBusinessTypeName(),
+                            $s->business_registration_number,
+                            $s->tax_id,
+                            $s->verification_level,
+                            $s->badge_type,
+                            $s->nrc_full,
+                            $s->nrc_verification_status,
+                            $s->address,
+                            $s->city,
+                            $s->state,
+                            $s->country,
+                            $s->status,
+                            $s->verified_at?->format('Y-m-d H:i:s'),
+                            $s->verifier?->name,
+                            $s->user?->created_at?->toDateString(),
+                        ]);
+                    }
+                });
+                fclose($handle);
+            };
+
+            return response()->stream($callback, 200, $headers);
+        } catch (\Exception $e) {
+            Log::error('exportVerifiedSellers failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Export failed.'], 500);
+        }
+    }
+
+
 }
