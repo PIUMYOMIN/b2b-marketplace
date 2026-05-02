@@ -1359,6 +1359,11 @@ class SellerController extends Controller
                 $stepsCompleted[] = 'address';
             }
 
+            // Check delivery-zones
+            if ($sellerProfile->deliveryAreas()->exists()) {
+                $stepsCompleted[] = 'delivery-zones';
+            }
+
             // Check documents
             if ($sellerProfile->documents_submitted) {
                 $stepsCompleted[] = 'documents';
@@ -1367,7 +1372,7 @@ class SellerController extends Controller
             // Trust the current_step column — it is set to 'store-basic' at
             // registration and advanced explicitly by saveStep(). Do NOT compute
             // it from field values; auto-filled defaults would push past store-basic.
-            $stepOrder = ['store-basic', 'business-details', 'address', 'documents', 'review-submit'];
+            $stepOrder = ['store-basic', 'business-details', 'address', 'delivery-zones', 'documents', 'review-submit'];
             $currentStep = $sellerProfile->current_step ?: 'store-basic';
 
             // Clamp: if DB has a step not in the known order, fall back
@@ -1761,12 +1766,18 @@ class SellerController extends Controller
 
             // Build validation rules dynamically
             $rules = [
-                'website' => 'nullable|url|max:255',
-                'account_number' => 'nullable|string|max:255',
-                'social_facebook' => 'nullable|url|max:255',
+                'website'          => 'nullable|url|max:255',
+                'account_number'   => 'nullable|string|max:255',
+                'social_facebook'  => 'nullable|url|max:255',
                 'social_instagram' => 'nullable|url|max:255',
-                'social_twitter' => 'nullable|url|max:255',
-                'social_linkedin' => 'nullable|url|max:255',
+                'social_twitter'   => 'nullable|url|max:255',
+                'social_linkedin'  => 'nullable|url|max:255',
+                // NRC (National Registration Card) fields — always accepted
+                'nrc_division'      => 'nullable|string|max:2',
+                'nrc_township_code' => 'nullable|string|max:20',
+                'nrc_township_mm'   => 'nullable|string|max:30',
+                'nrc_type'          => 'nullable|in:N,E,P,T,TH,Naing',
+                'nrc_number'        => ['nullable', 'string', 'max:10', 'regex:/^[0-9]{1,10}$/'],
             ];
 
             // Add conditional rules
@@ -2922,13 +2933,19 @@ class SellerController extends Controller
                 ],
                 'business_details' => [
                     'business_registration_number' => $sellerProfile->business_registration_number,
-                    'tax_id' => $sellerProfile->tax_id,
-                    'website' => $sellerProfile->website,
-                    'account_number' => $sellerProfile->account_number,
-                    'social_facebook' => $sellerProfile->social_facebook,
+                    'tax_id'           => $sellerProfile->tax_id,
+                    'website'          => $sellerProfile->website,
+                    'account_number'   => $sellerProfile->account_number,
+                    'social_facebook'  => $sellerProfile->social_facebook,
                     'social_instagram' => $sellerProfile->social_instagram,
-                    'social_twitter' => $sellerProfile->social_twitter,
-                    'social_linkedin' => $sellerProfile->social_linkedin,
+                    'social_twitter'   => $sellerProfile->social_twitter,
+                    'social_linkedin'  => $sellerProfile->social_linkedin,
+                    // NRC fields — needed to pre-fill the NrcInput on revisit
+                    'nrc_division'      => $sellerProfile->nrc_division,
+                    'nrc_township_code' => $sellerProfile->nrc_township_code,
+                    'nrc_township_mm'   => $sellerProfile->nrc_township_mm,
+                    'nrc_type'          => $sellerProfile->nrc_type,
+                    'nrc_number'        => $sellerProfile->nrc_number,
                 ],
                 'address' => [
                     'address' => $sellerProfile->address,
@@ -3326,6 +3343,7 @@ class SellerController extends Controller
             'store-basic',
             'business-details',
             'address',
+            'delivery-zones',
             'documents',
             'review-submit',
         ];

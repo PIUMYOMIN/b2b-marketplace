@@ -134,6 +134,11 @@ class DeliveryAreaController extends Controller
 
             $deliveryArea = DeliveryArea::create($validated);
 
+            // Advance onboarding step when the seller saves their first delivery zone
+            if ($sellerProfile->current_step === 'delivery-zones') {
+                $sellerProfile->update(['current_step' => 'documents']);
+            }
+
             Log::info('Delivery area created', [
                 'user_id' => $user->id,
                 'seller_profile_id' => $sellerProfile->id,
