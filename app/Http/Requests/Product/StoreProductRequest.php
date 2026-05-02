@@ -74,6 +74,9 @@ class StoreProductRequest extends FormRequest
             'discount_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'discount_start'   => ['nullable', 'date'],
             'discount_end'     => ['nullable', 'date', 'after_or_equal:discount_start'],
+            'is_active'        => ['nullable', 'boolean'],
+            'is_featured'      => ['nullable', 'boolean'],
+            'is_new'           => ['nullable', 'boolean'],
         ];
     }
 

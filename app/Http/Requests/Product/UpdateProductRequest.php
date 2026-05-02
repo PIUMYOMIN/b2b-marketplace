@@ -20,9 +20,10 @@ class UpdateProductRequest extends FormRequest
 
     public function rules(): array
     {
-        $productId = optional($this->route('product'))->id
-            ?? $this->route('id')
-            ?? null;
+        $slugOrId  = $this->route('slugOrId');
+        $productId = Product::where('slug_en', $slugOrId)
+            ->orWhere('id', $slugOrId)
+            ->value('id');
 
         return [
             'name_en'          => ['sometimes', 'string', 'max:255'],
@@ -69,7 +70,8 @@ class UpdateProductRequest extends FormRequest
             'discount_start'   => ['nullable', 'date'],
             'discount_end'     => ['nullable', 'date', 'after_or_equal:discount_start'],
             'is_active'        => ['nullable', 'boolean'],
+            'is_featured'      => ['nullable', 'boolean'],
+            'is_new'           => ['nullable', 'boolean'],
         ];
     }
 }
-

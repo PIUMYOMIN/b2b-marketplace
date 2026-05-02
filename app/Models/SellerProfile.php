@@ -52,14 +52,14 @@ class SellerProfile extends Model
         'unverified', 'pending', 'verified', 'mismatch', 'rejected',
     ];
 
-    // NRC type codes → Myanmar script labels
+    // NRC type codes to Myanmar script labels.
     const NRC_TYPE_LABELS = [
-        'N'     => 'နိုင်',
-        'E'     => 'ဧည့်',
-        'P'     => 'ဧည့်ပြု',
-        'T'     => 'သာသနာ',
-        'TH'    => 'သာသနာ',
-        'Naing' => 'နိုင်',
+        'N'     => "\u{1014}\u{102D}\u{102F}\u{1004}\u{103A}",
+        'E'     => "\u{1027}\u{100A}\u{1037}\u{103A}",
+        'P'     => "\u{1027}\u{100A}\u{1037}\u{103A}\u{1015}\u{103C}\u{102F}",
+        'T'     => "\u{101E}\u{102C}\u{101E}\u{1014}\u{102C}",
+        'TH'    => "\u{101E}\u{102C}\u{101E}\u{1014}\u{102C}",
+        'Naing' => "\u{1014}\u{102D}\u{102F}\u{1004}\u{103A}",
     ];
 
     protected $fillable = [
@@ -201,7 +201,7 @@ class SellerProfile extends Model
     }
 
     /**
-     * NRC in Myanmar script: e.g. ၈/ကပတ(နိုင်)၁၂၃၄၅၆
+     * NRC in Myanmar script, for example: 8/KaPaTa(Naing)123456 rendered with Myanmar digits and type label.
      */
     public function getNrcFullMmAttribute(): ?string
     {
@@ -209,9 +209,32 @@ class SellerProfile extends Model
             !$this->nrc_type    || !$this->nrc_number) {
             return null;
         }
-        $divMm   = strtr($this->nrc_division, '0123456789', '၀၁၂၃၄၅၆၇၈၉');
-        $numMm   = strtr($this->nrc_number,   '0123456789', '၀၁၂၃၄၅၆၇၈၉');
-        $typeMm  = self::NRC_TYPE_LABELS[$this->nrc_type] ?? $this->nrc_type;
+
+        // Use PHP Unicode escapes so the computed accessor always returns
+        // valid UTF-8 for JSON responses.
+        $myanmarDigits = [
+            '0' => "\u{1040}",
+            '1' => "\u{1041}",
+            '2' => "\u{1042}",
+            '3' => "\u{1043}",
+            '4' => "\u{1044}",
+            '5' => "\u{1045}",
+            '6' => "\u{1046}",
+            '7' => "\u{1047}",
+            '8' => "\u{1048}",
+            '9' => "\u{1049}",
+        ];
+        $typeLabels = [
+            'N'     => "\u{1014}\u{102D}\u{102F}\u{1004}\u{103A}",
+            'E'     => "\u{1027}\u{100A}\u{1037}\u{103A}",
+            'P'     => "\u{1027}\u{100A}\u{1037}\u{103A}\u{1015}\u{103C}\u{102F}",
+            'T'     => "\u{101E}\u{102C}\u{101E}\u{1014}\u{102C}",
+            'TH'    => "\u{101E}\u{102C}\u{101E}\u{1014}\u{102C}",
+            'Naing' => "\u{1014}\u{102D}\u{102F}\u{1004}\u{103A}",
+        ];
+        $divMm  = strtr($this->nrc_division, $myanmarDigits);
+        $numMm  = strtr($this->nrc_number, $myanmarDigits);
+        $typeMm = $typeLabels[$this->nrc_type] ?? $this->nrc_type;
         return "{$divMm}/{$this->nrc_township_mm}({$typeMm}){$numMm}";
     }
 
@@ -321,22 +344,22 @@ class SellerProfile extends Model
             'verified' => [
                 'name' => 'Verified Seller',
                 'color' => 'bg-green-100 text-green-800 border-green-300',
-                'icon' => '✓',
+                'icon' => 'Ã¢Å“â€œ',
             ],
             'premium' => [
                 'name' => 'Premium Seller',
                 'color' => 'bg-purple-100 text-purple-800 border-purple-300',
-                'icon' => '★',
+                'icon' => 'Ã¢Ëœâ€¦',
             ],
             'featured' => [
                 'name' => 'Featured Store',
                 'color' => 'bg-blue-100 text-blue-800 border-blue-300',
-                'icon' => '✩',
+                'icon' => 'Ã¢Å“Â©',
             ],
             'top_rated' => [
                 'name' => 'Top Rated',
                 'color' => 'bg-yellow-100 text-yellow-800 border-yellow-300',
-                'icon' => '♥',
+                'icon' => 'Ã¢â„¢Â¥',
             ],
         ];
 
@@ -892,9 +915,9 @@ class SellerProfile extends Model
     public function getTierLabelAttribute(): string
     {
         return match ($this->seller_tier ?? 'bronze') {
-            'gold' => '🥇 Gold',
-            'silver' => '🥈 Silver',
-            default => '🥉 Bronze',
+            'gold' => 'Ã°Å¸Â¥â€¡ Gold',
+            'silver' => 'Ã°Å¸Â¥Ë† Silver',
+            default => 'Ã°Å¸Â¥â€° Bronze',
         };
     }
 
