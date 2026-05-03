@@ -16,46 +16,51 @@ return new class extends Migration
             $table->foreignId('buyer_id')->constrained('users')->onDelete('cascade');
 
             $table->string('product_name');
-            $table->string('category')->nullable();
-            $table->decimal('quantity', 14, 3);
-            $table->string('unit', 20);
-            $table->text('specifications')->nullable();
-            $table->json('attachments')->nullable();
-
-            $table->decimal('budget_min', 16, 2)->nullable();
-            $table->decimal('budget_max', 16, 2)->nullable();
-            $table->string('currency', 8)->default('MMK');
-            $table->date('deadline');
-            $table->text('notes')->nullable();
-
-            $table->boolean('broadcast')->default(true);
-
-            $table->enum('status', [
-                'draft',
-                'open',
-                'quoted',
-                'accepted',
-                'closed',
-                'cancelled',
-                'expired',
-            ])->default('open');
-
-            $table->unsignedBigInteger('accepted_quote_id')->nullable();
-            $table->foreignId('order_id')
+            $table->foreignId('category_id')
                 ->nullable()
-                ->constrained('orders')
+                ->constrained('categories')
                 ->nullOnDelete();
-            $table->timestamp('closed_at')->nullable();
-            $table->timestamp('expired_at')->nullable();
-
-            $table->timestamps();
-            $table->softDeletes();
-
-            $table->index('status');
-            $table->index('deadline');
-            $table->index(['buyer_id', 'status']);
-            $table->index('broadcast');
-            $table->index('category');
+                $table->string('category')->nullable();
+                $table->decimal('quantity', 14, 2);
+                $table->string('unit', 20);
+                $table->text('specifications')->nullable();
+                $table->json('attachments')->nullable();
+                
+                $table->decimal('budget_min', 16, 2)->nullable();
+                $table->decimal('budget_max', 16, 2)->nullable();
+                $table->string('currency', 8)->default('MMK');
+                $table->date('deadline');
+                $table->text('notes')->nullable();
+                
+                $table->boolean('broadcast')->default(true);
+                
+                $table->enum('status', [
+                    'draft',
+                    'open',
+                    'quoted',
+                    'accepted',
+                    'closed',
+                    'cancelled',
+                    'expired',
+                    ])->default('open');
+                    
+                    $table->unsignedBigInteger('accepted_quote_id')->nullable();
+                    $table->foreignId('order_id')
+                    ->nullable()
+                    ->constrained('orders')
+                    ->nullOnDelete();
+                    $table->timestamp('closed_at')->nullable();
+                    $table->timestamp('expired_at')->nullable();
+                    
+                    $table->timestamps();
+                    $table->softDeletes();
+                    
+                    $table->index('status');
+                    $table->index('category_id');
+                    $table->index('deadline');
+                    $table->index(['buyer_id', 'status']);
+                    $table->index('broadcast');
+                    $table->index('category');
         });
 
         Schema::create('rfq_recipients', function (Blueprint $table) {
