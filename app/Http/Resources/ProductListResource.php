@@ -63,9 +63,14 @@ class ProductListResource extends JsonResource
                 'store_name' => $this->seller->sellerProfile?->store_name,
                 'store_slug' => $this->seller->sellerProfile?->store_slug,
             ]),
+            // BUG FIX: was returning only 'name', but seller dashboard reads name_en/name_mm.
+            // Added category_id at top level for the category filter comparison.
+            'category_id'    => $this->category_id,
             'category'       => $this->whenLoaded('category', fn() => [
-                'id'   => $this->category->id,
-                'name' => $this->category->name,
+                'id'      => $this->category->id,
+                'name_en' => $this->category->name_en,
+                'name_mm' => $this->category->name_mm,
+                'name'    => $this->category->name_en ?? $this->category->name,
             ]),
         ];
     }

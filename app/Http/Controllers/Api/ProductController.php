@@ -111,7 +111,8 @@ class ProductController extends Controller
         }
 
         $perPage = $request->input('per_page', 15);
-        $query = Product::with(['category', 'seller']);
+        $query = Product::with(['category', 'seller'])
+                        ->withSum('activeVariants', 'quantity');
 
         // Apply filters
         if ($request->has('status')) {
@@ -139,7 +140,10 @@ class ProductController extends Controller
                 'min_order' => $product->moq,
                 'min_order_unit' => $product->min_order_unit,
                 'price' => (float) $product->price,
-                'quantity' => $product->quantity,
+                'total_stock' => $product->product_type === 'physical'
+                    ? (int) ($product->active_variants_sum_quantity ?? 0)
+                    : null,
+                'product_type' => $product->product_type,
                 'status' => $product->status,
                 'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
                 'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
