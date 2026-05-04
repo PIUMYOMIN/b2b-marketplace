@@ -15,7 +15,7 @@ class GenerateVariantsRequest extends FormRequest
     {
         $product = $this->route('product');
         return $this->user()->hasRole('admin') ||
-               ($this->user()->hasRole('seller') && $product?->seller_id === $this->user()->id);
+               ($this->user()->hasRole('seller') && (int) $product?->seller_id === (int) $this->user()->id);
     }
 
     public function rules(): array

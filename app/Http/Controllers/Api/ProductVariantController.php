@@ -162,7 +162,7 @@ class ProductVariantController extends Controller
     private function authorizeProduct(Product $product): void
     {
         $user = request()->user();
-        if (!$user->hasRole('admin') && $product->seller_id !== $user->id) {
+        if (!$user->hasRole('admin') && (int) $product->seller_id !== (int) $user->id) {
             abort(403, __('messages.products.unauthorized_update'));
         }
     }
