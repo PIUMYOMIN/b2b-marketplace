@@ -438,7 +438,7 @@ class ProductController extends Controller
             fn($q) => $q->where('slug_en', $slugOrId)->orWhere('id', $slugOrId)
         )->firstOrFail();
  
-        if (!$request->user()->hasRole('admin') && $product->seller_id !== $request->user()->id) {
+        if (!$request->user()->hasRole('admin') && (int) $product->seller_id !== (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => __('messages.products.unauthorized_update')], 403);
         }
  
