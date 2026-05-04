@@ -6066,9 +6066,39 @@ class SellerController extends Controller
             if ($badgeType)     { $query->where('badge_type', $badgeType); }
             if ($nrcStatus)     { $query->where('nrc_verification_status', $nrcStatus); }
 
+            $storageUrl = static function (?string $path): ?string {
+                if ($path === null || $path === '') {
+                    return null;
+                }
+                if (str_starts_with($path, 'http')) {
+                    return $path;
+                }
+                $path = ltrim($path, '/');
+                if (str_starts_with($path, 'storage/')) {
+                    return url($path);
+                }
+
+                return url('storage/'.$path);
+            };
+
             $sellers = $query->orderBy($sortBy, $sortDir)->paginate($perPage);
 
-            $sellers->getCollection()->transform(function ($seller) {
+            $sellers->getCollection()->transform(function ($seller) use ($storageUrl) {
+                $additionalUrls = [];
+                foreach ($seller->additional_documents ?? [] as $index => $doc) {
+                    if (! is_array($doc)) {
+                        continue;
+                    }
+                    $p = $doc['path'] ?? null;
+                    if (empty($p)) {
+                        continue;
+                    }
+                    $additionalUrls[] = [
+                        'name' => $doc['name'] ?? ('Additional_'.($index + 1)),
+                        'url'  => $storageUrl($p),
+                    ];
+                }
+
                 return [
                     'id' => $seller->id,
                     'store_id'     => $seller->store_id,
@@ -6094,9 +6124,14 @@ class SellerController extends Controller
                     'owner_email'  => $seller->user?->email,
                     'owner_phone'  => $seller->user?->phone,
                     'member_since' => $seller->user?->created_at?->toDateString(),
-                    'store_logo_url' => $seller->store_logo
-                            ? (str_starts_with($seller->store_logo, 'http') ? $seller->store_logo : url('storage/' . ltrim($seller->store_logo, '/')))
-                                                        : null,
+                    'store_logo_url' => $storageUrl($seller->store_logo),
+                    'identity_document_front_url' => $storageUrl($seller->identity_document_front),
+                    'identity_document_back_url' => $storageUrl($seller->identity_document_back),
+                    'business_registration_document_url' => $storageUrl($seller->business_registration_document),
+                    'tax_registration_document_url' => $storageUrl($seller->tax_registration_document),
+                    'business_certificate_url' => $storageUrl($seller->business_certificate ?? null),
+                    'certificate_url' => $storageUrl($seller->certificate ?? null),
+                    'additional_documents' => $additionalUrls,
                 ];
             });
 
