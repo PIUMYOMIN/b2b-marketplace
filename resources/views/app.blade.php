@@ -29,8 +29,12 @@
   <meta property="og:title"       content="{{ $pageTitle ?? 'Pyonea Marketplace' }}" />
   <meta property="og:description" content="{{ $pageDescription ?? 'Buy and sell products easily across Myanmar with Pyonea marketplace.' }}" />
   <meta property="og:image"       content="{{ $pageImage ?? 'https://pyonea.com/og-image.png' }}" />
+  <meta property="og:image:width"  content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt"    content="{{ $pageTitle ?? 'Pyonea Marketplace' }}" />
   <meta property="og:url"         content="{{ $pageUrl ?? 'https://pyonea.com/' }}" />
   <meta property="og:site_name"   content="Pyonea" />
+  <meta property="og:locale"      content="en_US" />
 
   <!-- Twitter Card -->
   <meta name="twitter:card"        content="summary_large_image" />

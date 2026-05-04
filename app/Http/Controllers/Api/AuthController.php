@@ -117,8 +117,9 @@ class AuthController extends Controller
                 ]);
             }
 
-            // 🔔 Send email verification notification
-            event(new Registered($user));
+            if ($user->email) {
+                event(new Registered($user));
+            }
 
             // Notify all admins of new registration
             try {

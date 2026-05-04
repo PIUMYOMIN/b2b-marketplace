@@ -51,20 +51,37 @@ class FrontendController extends Controller
         // Product detail: /products/some-slug
         elseif (preg_match('#^products/([^/]+)$#', $trimmed, $matches)) {
             $slug = $matches[1];
-            $product = Product::where('slug', $slug)
-                ->with(['seller', 'reviews.user'])
+            $product = Product::where('slug_en', $slug)
+                ->orWhere('slug_mm', $slug)
+                ->with(['seller', 'images', 'reviews.user'])
                 ->first();
 
             if ($product) {
-                $metadata['pageTitle'] = $product->name . ' | Pyonea';
-                $metadata['pageDescription'] = Str::limit($product->description, 150);
-                $metadata['pageImage'] = $product->primary_image ?? $metadata['pageImage'];
-                $metadata['pageType'] = 'product';
-                $metadata['product'] = $this->formatProductForJsonLd($product);
+                $displayName = $product->name_en ?? $product->name_mm ?? 'Product';
+                $displayDesc = $product->description_en ?? $product->description_mm ?? '';
+
+                // Resolve first image URL safely (images is a JSON array of objects or strings)
+                $firstImage = null;
+                $images = is_array($product->images) ? $product->images : [];
+                if (!empty($images)) {
+                    $img = $images[0];
+                    $rawPath = is_array($img) ? ($img['url'] ?? $img['path'] ?? null) : $img;
+                    if ($rawPath) {
+                        $firstImage = str_starts_with($rawPath, 'http')
+                            ? $rawPath
+                            : rtrim(env('APP_URL', 'https://api.pyonea.com'), '/') . '/storage/' . ltrim(str_replace('public/', '', $rawPath), '/');
+                    }
+                }
+
+                $metadata['pageTitle']       = $displayName . ' | Pyonea';
+                $metadata['pageDescription'] = Str::limit($displayDesc, 155);
+                $metadata['pageImage']       = $firstImage ?? $metadata['pageImage'];
+                $metadata['pageType']        = 'product';
+                $metadata['product']         = $this->formatProductForJsonLd($product);
                 $metadata['breadcrumbs'] = [
-                    ['name' => 'Home', 'url' => '/'],
+                    ['name' => 'Home',     'url' => '/'],
                     ['name' => 'Products', 'url' => '/products'],
-                    ['name' => $product->name, 'url' => $path],
+                    ['name' => $displayName, 'url' => $path],
                 ];
             } else {
                 abort(404);
@@ -109,23 +126,35 @@ class FrontendController extends Controller
 
     protected function formatProductForJsonLd($product): array
     {
+        // images is stored as a JSON array — may be array of strings or array of objects
+        $images = is_array($product->images) ? $product->images : [];
+        $imageUrls = collect($images)->map(function ($img) {
+            $rawPath = is_array($img) ? ($img['url'] ?? $img['path'] ?? null) : $img;
+            if (!$rawPath) return null;
+            return str_starts_with($rawPath, 'http')
+                ? $rawPath
+                : rtrim(env('APP_URL', 'https://api.pyonea.com'), '/') . '/storage/' . ltrim(str_replace('public/', '', $rawPath), '/');
+        })->filter()->values()->toArray();
+
         return [
-            'name' => $product->name_en,
-            'images' => $product->images->map(fn($img) => ['url' => $img->url])->toArray(),
-            'description' => $product->description_en,
-            'sku' => $product->sku,
-            'brand' => $product->seller->store_name,
-            'slug' => $product->slug,
-            'price' => $product->price,
-            'inStock' => $product->quantity > 0,
-            'average_rating' => $product->reviews_avg_rating,
-            'review_count' => $product->reviews_count,
-            'reviews' => $product->reviews->map(fn($r) => [
-                'user_name' => $r->user->name,
-                'created_at' => $r->created_at->toIso8601String(),
-                'comment' => $r->comment,
-                'rating' => $r->rating,
-            ])->toArray(),
+            'name'           => $product->name_en ?? $product->name_mm,
+            'images'         => array_map(fn($url) => ['url' => $url], $imageUrls),
+            'description'    => $product->description_en ?? $product->description_mm,
+            'sku'            => $product->sku,
+            'brand'          => $product->seller->store_name ?? null,
+            'slug'           => $product->slug_en ?? $product->slug_mm,
+            'price'          => $product->price ?? 0,
+            'inStock'        => ($product->quantity ?? 0) > 0,
+            'average_rating' => $product->reviews_avg_rating ?? 0,
+            'review_count'   => $product->reviews_count ?? 0,
+            'reviews'        => $product->relationLoaded('reviews')
+                ? $product->reviews->map(fn($r) => [
+                    'user_name'  => $r->user->name ?? 'Anonymous',
+                    'created_at' => $r->created_at->toIso8601String(),
+                    'comment'    => $r->comment,
+                    'rating'     => $r->rating,
+                ])->toArray()
+                : [],
         ];
     }
 

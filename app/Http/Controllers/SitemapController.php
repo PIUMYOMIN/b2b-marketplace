@@ -35,12 +35,12 @@ class SitemapController extends Controller
         // Products — only active, non-deleted
         $products = Product::where('is_active', true)
             ->whereNull('deleted_at')
-            ->select('slug', 'updated_at')
+            ->select('slug_en', 'slug_mm', 'updated_at')
             ->get();
 
         // Sellers — only approved
         $sellers = SellerProfile::where('status', 'approved')
-            ->select('slug', 'updated_at')
+            ->select('store_slug', 'updated_at')
             ->get();
 
         // Categories
@@ -64,9 +64,10 @@ $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
   }
 
   foreach ($products as $product) {
-  if (!$product->slug) continue;
+  $slug = $product->slug_en ?? $product->slug_mm;
+  if (!$slug) continue;
   $xml .= $this->urlEntry(
-  $baseUrl . '/products/' . $product->slug,
+  $baseUrl . '/products/' . $slug,
   $product->updated_at,
   'weekly',
   '0.8'
@@ -74,9 +75,9 @@ $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
   }
 
   foreach ($sellers as $seller) {
-  if (!$seller->slug) continue;
+  if (!$seller->store_slug) continue;
   $xml .= $this->urlEntry(
-  $baseUrl . '/sellers/' . $seller->slug,
+  $baseUrl . '/sellers/' . $seller->store_slug,
   $seller->updated_at,
   'weekly',
   '0.7'
