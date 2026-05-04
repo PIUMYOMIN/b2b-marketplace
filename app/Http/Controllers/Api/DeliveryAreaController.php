@@ -474,6 +474,11 @@ class DeliveryAreaController extends Controller
                 'zone_count' => $saved->count(),
             ]);
 
+            $sellerProfile->refresh();
+            if ($saved->count() > 0 && $sellerProfile->current_step === 'delivery-zones') {
+                $sellerProfile->update(['current_step' => 'documents']);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => __('messages.delivery.zones_saved'),

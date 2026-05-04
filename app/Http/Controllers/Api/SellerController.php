@@ -1866,6 +1866,9 @@ class SellerController extends Controller
             // Load the business type relationship
             $sellerProfile->load('businessType');
 
+            $sellerProfile->refresh();
+            $this->advanceSellerProfileStep($sellerProfile, 'store-basic');
+
             Log::info('Store basic info updated', [
                 'user_id' => $user->id,
                 'seller_profile_id' => $sellerProfile->id,
@@ -1972,6 +1975,9 @@ class SellerController extends Controller
             $validated = $validator->validated();
             $sellerProfile->update($validated);
 
+            $sellerProfile->refresh();
+            $this->advanceSellerProfileStep($sellerProfile, 'business-details');
+
             return response()->json([
                 'success' => true,
                 'message' => __('messages.business_details.updated'),
@@ -2066,10 +2072,13 @@ class SellerController extends Controller
                 $sellerProfile->update(['status' => SellerProfile::STATUS_PENDING]);
             }
 
+            $sellerProfile->refresh();
+            $this->advanceSellerProfileStep($sellerProfile, 'address');
+
             return response()->json([
                 'success' => true,
                 'message' => __('messages.address.updated'),
-                'next_step' => 'documents',   // FIX: was missing
+                'next_step' => 'delivery-zones',
                 'data' => $sellerProfile->fresh(),
             ]);
         } catch (\Exception $e) {
@@ -2545,6 +2554,9 @@ class SellerController extends Controller
                 'verification_status' => 'under_review',
                 'status' => $sellerProfile->status === 'setup_pending' ? 'pending' : $sellerProfile->status
             ]);
+
+            $sellerProfile->refresh();
+            $this->advanceSellerProfileStep($sellerProfile, 'documents');
 
             // Log document submission
             Log::info('Documents marked as complete', [
@@ -3492,7 +3504,7 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => ucfirst(str_replace('-', ' ', $step)) . ' saved successfully',
-                'next_step' => $this->getNextStep($step),
+                'next_step' => $this->nextOnboardingStepAfter($step),
                 'progress' => $this->calculateProgress($sellerProfile)
             ]);
         } catch (\Exception $e) {
@@ -3501,11 +3513,12 @@ class SellerController extends Controller
         }
     }
 
-    private function updateOnboardingProgress($sellerProfile, $step)
+    /**
+     * Ordered onboarding steps (must match frontend StepGuard + onboarding pages).
+     */
+    private function onboardingStepSequence(): array
     {
-        // Advance current_step to the NEXT step after the one just saved.
-        // getOnboardingStatus() now trusts this column directly.
-        $stepOrder = [
+        return [
             'store-basic',
             'business-details',
             'address',
@@ -3513,15 +3526,27 @@ class SellerController extends Controller
             'documents',
             'review-submit',
         ];
+    }
 
-        $currentIndex = array_search($step, $stepOrder);
-        if ($currentIndex !== false && isset($stepOrder[$currentIndex + 1])) {
-            $nextStep = $stepOrder[$currentIndex + 1];
-        } else {
-            $nextStep = $step; // already at last step
+    private function nextOnboardingStepAfter(string $completedStep): string
+    {
+        $steps = $this->onboardingStepSequence();
+        $i = array_search($completedStep, $steps, true);
+        if ($i !== false && isset($steps[$i + 1])) {
+            return $steps[$i + 1];
         }
 
-        $sellerProfile->update(['current_step' => $nextStep]);
+        return $completedStep;
+    }
+
+    private function advanceSellerProfileStep(SellerProfile $sellerProfile, string $completedStep): void
+    {
+        $sellerProfile->update(['current_step' => $this->nextOnboardingStepAfter($completedStep)]);
+    }
+
+    private function updateOnboardingProgress($sellerProfile, $step)
+    {
+        $this->advanceSellerProfileStep($sellerProfile, $step);
     }
 
     /**
