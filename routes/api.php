@@ -297,6 +297,7 @@ Route::group([
             Route::prefix('deliveries')->middleware('role:admin')->group(function () {
                 Route::post('/{id}/collect-fee', [DashboardController::class, 'adminCollectDeliveryFee']);
                 Route::patch('/{id}/confirm-fee', [DashboardController::class, 'adminConfirmDeliveryFee']);
+                Route::patch('/{id}/platform-fee', [DashboardController::class, 'adminAdjustPlatformDeliveryFee']);
             });
 
             // ── Admin: COD commission invoice management ───────────────────────

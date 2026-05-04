@@ -1109,6 +1109,75 @@ class DashboardController extends Controller
         ]);
     }
 
+    /**
+     * PATCH /admin/deliveries/{id}/platform-fee
+     * Admin sets or corrects the quoted platform delivery fee before collection.
+     */
+    public function adminAdjustPlatformDeliveryFee(Request $request, $id)
+    {
+        $user = $request->user();
+        if (!$user->hasRole('admin') && $user->type !== 'admin') {
+            return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+        }
+
+        $validated = $request->validate([
+            'platform_delivery_fee' => 'required|numeric|min:0',
+            'adjustment_note'       => 'nullable|string|max:500',
+        ]);
+
+        $delivery = Delivery::findOrFail($id);
+
+        if ($delivery->delivery_method !== 'platform') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Fee adjustment applies only to platform logistics deliveries.',
+            ], 422);
+        }
+
+        if ($delivery->delivery_fee_status === 'collected') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot change fee after it has been marked collected. Use a manual wallet or finance adjustment if needed.',
+            ], 422);
+        }
+
+        $previous = (float) $delivery->platform_delivery_fee;
+        $newFee   = (float) $validated['platform_delivery_fee'];
+
+        $delivery->update([
+            'platform_delivery_fee' => $newFee,
+        ]);
+
+        $noteLine = sprintf(
+            'Admin adjusted platform delivery fee from %s to %s MMK.',
+            number_format($previous, 0, '.', ''),
+            number_format($newFee, 0, '.', '')
+        );
+        if (!empty($validated['adjustment_note'])) {
+            $noteLine .= ' Note: ' . $validated['adjustment_note'];
+        }
+
+        $delivery->deliveryUpdates()->create([
+            'user_id' => $user->id,
+            'status'  => $delivery->status,
+            'notes'   => $noteLine,
+        ]);
+
+        Log::info('admin_platform_delivery_fee_adjusted', [
+            'delivery_id'  => $delivery->id,
+            'order_id'     => $delivery->order_id,
+            'admin_id'     => $user->id,
+            'previous_mmk' => $previous,
+            'new_mmk'      => $newFee,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Platform delivery fee updated.',
+            'data'    => $delivery->fresh(['order', 'supplier']),
+        ]);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // ADMIN — COD COMMISSION INVOICE MANAGEMENT
     // ═══════════════════════════════════════════════════════════════════════

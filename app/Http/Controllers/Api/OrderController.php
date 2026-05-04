@@ -54,6 +54,7 @@ class OrderController extends Controller
             // For sellers, show orders where they are the seller
             $orders = Order::with([
                     'items',
+                    'delivery',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
                     'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
@@ -65,6 +66,7 @@ class OrderController extends Controller
             // For buyers, show their own orders with seller store name
             $orders = Order::with([
                     'items',
+                    'delivery',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
                     'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
@@ -76,6 +78,7 @@ class OrderController extends Controller
             // For admins, show all orders
             $orders = Order::with([
                     'items',
+                    'delivery',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
                     'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
@@ -128,6 +131,26 @@ class OrderController extends Controller
             'buyer' => $this->formatOrderUser($order->buyer),
             'seller' => $this->formatOrderUser($order->seller, true),
             'items' => $order->items->map(fn (OrderItem $item) => $this->formatOrderItemForList($item, $baseUrl))->values(),
+            'delivery' => $this->formatDeliveryForList($order->delivery),
+        ];
+    }
+
+    /**
+     * Compact delivery row for order list (seller / buyer / admin dashboards).
+     */
+    private function formatDeliveryForList(?Delivery $delivery): ?array
+    {
+        if (! $delivery) {
+            return null;
+        }
+
+        return [
+            'id' => $delivery->id,
+            'order_id' => $delivery->order_id,
+            'delivery_method' => $this->jsonSafeString($delivery->delivery_method),
+            'status' => $this->jsonSafeString($delivery->status),
+            'tracking_number' => $this->jsonSafeString($delivery->tracking_number),
+            'carrier_name' => $this->jsonSafeString($delivery->carrier_name),
         ];
     }
 
