@@ -3,14 +3,36 @@
 namespace App\Http\Requests\ProductVariant;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Log;
 
 class UpdateProductVariantRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        $product = $this->route('product');
-        return $this->user()->hasRole('admin') ||
-               ($this->user()->hasRole('seller') && $product?->seller_id === $this->user()->id);
+        $user = $this->user();
+        $productParam = $this->route('product'); // can be Product model OR raw value depending on binding
+        $product = $productParam instanceof \App\Models\Product ? $productParam : null;
+
+        // NOTE: you requested to remove admin bypass elsewhere; we keep the current rule
+        // but log failures so production can be traced quickly.
+        $allowed = $user?->hasRole('admin')
+            || ($user?->hasRole('seller') && (int) ($product?->seller_id) === (int) $user->id);
+
+        if (!$allowed) {
+            Log::warning('variant_update_unauthorized', [
+                'user_id' => $user?->id,
+                'user_type' => $user?->type,
+                'user_roles' => method_exists($user, 'getRoleNames') ? $user->getRoleNames()->toArray() : null,
+                'route_product_raw' => is_object($productParam) ? get_class($productParam) : $productParam,
+                'resolved_product_id' => $product?->id,
+                'resolved_product_seller_id' => $product?->seller_id,
+                'route_variant_id' => optional($this->route('variant'))->id,
+                'path' => $this->path(),
+                'ip' => $this->ip(),
+            ]);
+        }
+
+        return $allowed;
     }
 
     public function rules(): array
