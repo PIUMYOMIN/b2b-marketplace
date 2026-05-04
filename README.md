@@ -1,62 +1,242 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Pyonea Backend (Laravel API)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This is the backend API for the Pyonea B2B marketplace.  
+It powers buyer, seller, and admin workflows for catalog, orders, checkout, payments, RFQ, delivery, moderation, and reporting.
 
-## About Laravel
+Base API namespace: `/api/v1`
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 1) Tech stack
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- Laravel 12
+- PHP 8.2+
+- Sanctum auth + role middleware (Spatie Permission)
+- MySQL/SQLite (configurable)
+- Queue workers for async jobs
+- Optional integrations for MMQR / KBZ Pay / Wave Pay
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## 2) Core architecture
 
-## Learning Laravel
+Main application modules:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+- Authentication and user profile
+- Seller onboarding and verification
+- Product catalog, categories, options, variants
+- Cart, checkout OTP, orders, and payments
+- Delivery operations (seller, platform, courier, tracking)
+- RFQ (request-for-quotation) between buyers and sellers
+- Reviews, follows, wishlist
+- Admin analytics, moderation, reports, finance
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+Primary folders:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- `app/Http/Controllers/Api/` - API controllers
+- `app/Models/` - Eloquent models
+- `routes/api.php` - route registry
+- `database/migrations/` - schema
+- `database/seeders/` - initial/reference data
+- `config/` - environment-driven settings
 
-## Laravel Sponsors
+## 3) Environment configuration
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+Create `.env` from `.env.example`.
 
-### Premium Partners
+Important keys:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+- App:
+  - `APP_NAME`, `APP_ENV`, `APP_KEY`, `APP_URL`, `APP_DEBUG`, `APP_TIMEZONE`
+- Frontend/cross-origin:
+  - `APP_FRONTEND_URL`
+  - `CORS_SUPPORTS_CREDENTIALS`
+- Database:
+  - `DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
+- Session / queue / cache:
+  - `SESSION_*`, `QUEUE_CONNECTION`, `CACHE_STORE`
+- Mail:
+  - `MAIL_*`
+- Payments and verification:
+  - `MMQR_*`, `KBZPAY_*`, `WAVEPAY_*`
+  - `RECAPTCHA_SITE_KEY`, `RECAPTCHA_SECRET_KEY`
+- Optional:
+  - `ELASTICSEARCH_HOST`
 
-## Contributing
+Generate key after first setup:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+php artisan key:generate
+```
 
-## Code of Conduct
+## 4) Local setup
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan storage:link
+php artisan serve
+```
 
-## Security Vulnerabilities
+If you use Vite assets from Laravel context:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+npm install
+npm run dev
+```
 
-## License
+## 5) Running workers and logs
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-"# b2b-marketplace" 
+Queue worker:
+
+```bash
+php artisan queue:listen --tries=1
+```
+
+Logs:
+
+```bash
+php artisan pail
+```
+
+Composer helper script exists:
+
+```bash
+composer run dev
+```
+
+## 6) API auth and roles
+
+Authentication:
+
+- Register/login endpoints issue auth context.
+- Protected routes use `auth:sanctum`.
+
+Role-based access:
+
+- `role:admin`
+- `role:seller`
+- `role:buyer`
+- some endpoints allow combined roles (`role:buyer|admin`, etc.)
+
+## 7) Route domains (high-level)
+
+All in `routes/api.php` under `/api/v1`.
+
+Public:
+
+- auth login/register
+- password reset
+- contact/report submissions
+- newsletter subscribe/confirm/unsubscribe
+- announcements
+- checkout location lookup
+- seller/product/category browsing
+- order tracking by order number
+- payment methods list
+
+Authenticated:
+
+- user profile and account operations
+- notifications
+- wishlist/follow
+- buyer cart/coupon validation
+- orders and checkout fees
+- payments and history
+- deliveries and tracking updates
+- RFQ send/receive/quote flow
+
+Admin:
+
+- seller verification and status management
+- product/review moderation
+- commission rules
+- delivery fee and COD invoice management
+- analytics and exports
+- contact/report admin queues
+
+Seller:
+
+- onboarding steps and document upload
+- store settings/policies/business hours
+- products/options/variants/images/discounts/coupons
+- delivery area configuration
+- wallet and COD invoice submission
+
+## 8) Delivery and fee management (important)
+
+Delivery model supports:
+
+- method: `supplier` or `platform`
+- lifecycle status: pickup -> transit -> delivered/failed/etc.
+- platform fee fields:
+  - `platform_delivery_fee`
+  - `delivery_fee_status` (`not_applicable`, `outstanding`, `collected`)
+  - collection metadata (`delivery_fee_collected_at`, `delivery_fee_collection_ref`, etc.)
+
+Admin operations include:
+
+- list platform delivery fees
+- mark fee collected
+- confirm fee submissions
+- adjust platform fee quote before collection
+
+New adjustment endpoint:
+
+- `PATCH /api/v1/admin/deliveries/{id}/platform-fee`
+- Constraints:
+  - admin only
+  - platform delivery only
+  - blocked after fee marked collected
+- Creates an internal tracking update note for auditability.
+
+## 9) Checkout, commission, and visibility policy
+
+- Checkout fees are resolved server-side (`/orders/checkout-fees`) using shipping-zone and commission/tax logic.
+- Buyer-facing UI can present combined shipping/handling without exposing internal platform settlement details.
+- Commission and settlement details are still persisted for seller/platform financial reporting.
+
+## 10) RFQ flow summary
+
+- Buyers create RFQs with item/specification requirements.
+- Sellers submit quotes per RFQ.
+- Buyers accept/reject quotes.
+- Read endpoints are scoped to sent/received plus record-level auth checks.
+
+## 11) Testing and quality
+
+Run test suite:
+
+```bash
+php artisan test
+```
+
+Useful checks:
+
+```bash
+php -l app/Http/Controllers/Api/SomeController.php
+```
+
+Formatting/linting:
+
+- Laravel Pint is available in dev dependencies.
+
+## 12) Deployment checklist
+
+- Set `APP_ENV=production`, `APP_DEBUG=false`
+- Use strong DB credentials and restricted CORS origins
+- Configure queue workers and process manager (Supervisor/systemd)
+- Run migrations safely on deploy
+- Configure storage symlink and writable directories
+- Configure payment and webhook secrets
+- Ensure HTTPS and secure cookie/session settings
+
+## 13) Troubleshooting
+
+- 401/419 auth issues:
+  - validate token/session handling and frontend credentials mode
+  - check sanctum + CORS settings
+- CORS failures:
+  - verify `APP_FRONTEND_URL` and CORS config
+- Missing uploaded files:
+  - ensure `storage:link` exists and filesystem permissions are correct
+- Queue-backed tasks not running:
+  - confirm queue worker is online and using same `.env`
