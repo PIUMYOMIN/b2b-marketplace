@@ -22,6 +22,8 @@ return [
 
     'max_age' => 86400,
 
-    'supports_credentials' => true,
+    // Required for Sanctum SPA cookie auth / cross-origin credentialed requests.
+    // Set CORS_SUPPORTS_CREDENTIALS=false only if the app uses Bearer-only (no cookies to API).
+    'supports_credentials' => filter_var(env('CORS_SUPPORTS_CREDENTIALS', true), FILTER_VALIDATE_BOOLEAN),
 
 ];
