@@ -438,7 +438,8 @@ class ProductController extends Controller
             fn($q) => $q->where('slug_en', $slugOrId)->orWhere('id', $slugOrId)
         )->firstOrFail();
  
-        if (!$request->user()->hasRole('admin') && (int) $product->seller_id !== (int) $request->user()->id) {
+        // Seller-only ownership check (no admin bypass on seller endpoints)
+        if ((int) $product->seller_id !== (int) $request->user()->id) {
             return response()->json(['success' => false, 'message' => __('messages.products.unauthorized_update')], 403);
         }
  
@@ -471,7 +472,8 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
+        // Seller-only ownership check (no admin bypass on seller endpoints)
+        if ((int) Auth::id() !== (int) $product->seller_id) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_delete')
@@ -852,8 +854,8 @@ class ProductController extends Controller
         // look up by slug. Admin sends numeric IDs — resolve by primary key directly.
         $product = Product::withoutGlobalScopes()->findOrFail($id);
 
-        // Authorization: seller can toggle their own products; admin can toggle any
-        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
+        // Seller-only ownership check (no admin bypass on seller endpoints)
+        if ((int) Auth::id() !== (int) $product->seller_id) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update'),
@@ -920,7 +922,7 @@ class ProductController extends Controller
     public function uploadImageToProduct(Request $request, Product $product)
     {
         // Authorization check
-        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update')
@@ -979,7 +981,7 @@ class ProductController extends Controller
     public function deleteImage(Product $product, $imageIndex)
     {
         // Authorization check
-        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update')
@@ -1036,7 +1038,7 @@ class ProductController extends Controller
     public function setPrimaryImage(Product $product, $imageIndex)
     {
         // Authorization check
-        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if ((int) Auth::id() !== (int) $product->seller_id) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update')
