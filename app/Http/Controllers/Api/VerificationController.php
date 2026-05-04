@@ -37,7 +37,10 @@ class VerificationController extends Controller
         if ($user->hasVerifiedEmail()) {
             return response()->json([
                 'success' => true,
-                'message' => 'Email already verified.'
+                'message' => 'Email already verified.',
+                'data' => [
+                    'email_verified_at' => $user->email_verified_at,
+                ],
             ]);
         }
 
@@ -46,9 +49,22 @@ class VerificationController extends Controller
             $this->sendWelcomeAfterVerification($user);
         }
 
+        $user->refresh();
+
+        if ($user->hasVerifiedEmail()) {
+            $user->forceFill([
+                'verification_code' => null,
+                'verification_code_expires_at' => null,
+            ])->save();
+            $user->refresh();
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Email verified successfully.'
+            'message' => 'Email verified successfully.',
+            'data' => [
+                'email_verified_at' => $user->email_verified_at,
+            ],
         ]);
     }
 
@@ -86,7 +102,13 @@ class VerificationController extends Controller
         $user = $request->user();
 
         if ($user->hasVerifiedEmail()) {
-            return response()->json(['success' => true, 'message' => 'Email already verified.']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Email already verified.',
+                'data' => [
+                    'email_verified_at' => $user->email_verified_at,
+                ],
+            ]);
         }
 
         if (!$user->verificationCodeIsValid($request->code)) {
@@ -107,7 +129,15 @@ class VerificationController extends Controller
 
         Log::info('Email verified via code', ['user_id' => $user->id]);
 
-        return response()->json(['success' => true, 'message' => 'Email verified successfully.']);
+        $user->refresh();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Email verified successfully.',
+            'data' => [
+                'email_verified_at' => $user->email_verified_at,
+            ],
+        ]);
     }
 
     /**
