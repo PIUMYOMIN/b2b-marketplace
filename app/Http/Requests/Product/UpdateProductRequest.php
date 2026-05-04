@@ -14,8 +14,9 @@ class UpdateProductRequest extends FormRequest
             ->orWhere('id', $slugOrId)
             ->first();
 
-        return $this->user()->hasRole('admin') ||
-            ($this->user()->hasRole('seller') && (int) $product?->seller_id === (int) $this->user()->id);
+        // Seller-only: only the authenticated seller who owns the product can update.
+        return $this->user()?->hasRole('seller') === true
+            && (int) ($product?->seller_id) === (int) $this->user()->id;
     }
 
     public function rules(): array

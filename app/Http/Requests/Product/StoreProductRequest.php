@@ -8,7 +8,8 @@ class StoreProductRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasRole(['seller', 'admin']);
+        // Seller-only: product ownership is tied to authenticated seller_id.
+        return $this->user()?->hasRole('seller') === true;
     }
 
     public function rules(): array

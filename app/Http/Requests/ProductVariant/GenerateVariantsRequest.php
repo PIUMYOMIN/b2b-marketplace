@@ -14,8 +14,8 @@ class GenerateVariantsRequest extends FormRequest
     public function authorize(): bool
     {
         $product = $this->route('product');
-        return $this->user()->hasRole('admin') ||
-               ($this->user()->hasRole('seller') && (int) $product?->seller_id === (int) $this->user()->id);
+        return $this->user()?->hasRole('seller') === true
+            && (int) ($product?->seller_id) === (int) $this->user()->id;
     }
 
     public function rules(): array

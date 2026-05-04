@@ -13,10 +13,9 @@ class UpdateProductVariantRequest extends FormRequest
         $productParam = $this->route('product'); // can be Product model OR raw value depending on binding
         $product = $productParam instanceof \App\Models\Product ? $productParam : null;
 
-        // NOTE: you requested to remove admin bypass elsewhere; we keep the current rule
-        // but log failures so production can be traced quickly.
-        $allowed = $user?->hasRole('admin')
-            || ($user?->hasRole('seller') && (int) ($product?->seller_id) === (int) $user->id);
+        // Seller-only: only the authenticated seller who owns the product can update.
+        $allowed = $user?->hasRole('seller')
+            && (int) ($product?->seller_id) === (int) $user->id;
 
         if (!$allowed) {
             Log::warning('variant_update_unauthorized', [
