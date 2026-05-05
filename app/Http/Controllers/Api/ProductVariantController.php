@@ -170,7 +170,7 @@ class ProductVariantController extends Controller
 
     private function ensureVariantBelongsToProduct(ProductVariant $variant, Product $product): void
     {
-        if ($variant->product_id !== $product->id) {
+        if ((int) $variant->product_id !== (int) $product->id) {
             abort(404, __('messages.products.variant_not_found'));
         }
     }
