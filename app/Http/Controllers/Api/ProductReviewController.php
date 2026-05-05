@@ -31,11 +31,24 @@ class ProductReviewController extends Controller
                 ], 404);
             }
 
-            $reviews = ProductReview::where('product_id', $productId)
+            $query = ProductReview::where('product_id', $productId)
                 ->with('buyer') // Eager load buyer relationship for ReviewResource
-                ->where('status', 'approved')
-                ->orderBy('created_at', 'desc')
-                ->get();
+                ->orderBy('created_at', 'desc');
+
+            // Public: show only approved reviews.
+            // Authenticated: also include the viewer's own review (even if pending),
+            // so buyers can see what they submitted immediately.
+            if (auth('sanctum')->check()) {
+                $userId = (int) auth('sanctum')->id();
+                $query->where(function ($q) use ($userId) {
+                    $q->where('status', 'approved')
+                      ->orWhere('user_id', $userId);
+                });
+            } else {
+                $query->where('status', 'approved');
+            }
+
+            $reviews = $query->get();
 
             \Log::info('Reviews found:', ['count' => $reviews->count()]);
 
