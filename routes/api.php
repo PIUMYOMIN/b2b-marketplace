@@ -273,12 +273,12 @@ Route::group([
             //Product management by admin
             Route::prefix('products')->group(function () {
                 Route::get('/', [ProductController::class, 'adminIndex']);
-                Route::post('/{product}/approve', [ProductController::class, 'approve'])
-                    ->whereNumber('product');
-                Route::post('/{product}/reject', [ProductController::class, 'reject'])
-                    ->whereNumber('product');
-                Route::patch('/{product}/toggle-status', [ProductController::class, 'toggleStatus'])
-                    ->whereNumber('product');
+                Route::post('/{id}/approve', [ProductController::class, 'approve'])
+                    ->whereNumber('id');
+                Route::post('/{id}/reject', [ProductController::class, 'reject'])
+                    ->whereNumber('id');
+                Route::patch('/{id}/toggle-status', [ProductController::class, 'toggleStatus'])
+                    ->whereNumber('id');
             });
 
             Route::prefix('contact-messages')->group(function () {

@@ -130,41 +130,7 @@ class ProductController extends Controller
 
         $products = $query->latest()->paginate($perPage);
 
-        $formatted = $products->getCollection()->map(function ($product) {
-            return [
-                'id' => $product->id,
-                'name_en' => $product->name_en,
-                'name_mm' => $product->name_mm,
-                'sku' => $product->sku,
-                'moq' => $product->moq,
-                'min_order' => $product->moq,
-                'min_order_unit' => $product->min_order_unit,
-                'price' => (float) $product->price,
-                'total_stock' => $product->product_type === 'physical'
-                    ? (int) ($product->active_variants_sum_quantity ?? 0)
-                    : null,
-                'product_type' => $product->product_type,
-                'status' => $product->status,
-                'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
-                'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
-                'is_new' => (bool) $product->is_new,
-                'is_on_sale' => (bool) $product->is_on_sale,
-                'discount_start' => $product->discount_start,
-                'discount_end' => $product->discount_end,
-                'is_active' => (bool) $product->is_active,
-                'approved_at' => $product->approved_at,
-                'rejection_reason' => $product->rejection_reason,
-                'category' => $product->category ? [
-                    'id' => $product->category->id,
-                    'name_en' => $product->category->name_en,
-                ] : null,
-                'seller' => $product->seller ? [
-                    'id' => $product->seller->id,
-                    'name' => $product->seller->name,
-                ] : null,
-                'images' => $this->formatImages($product->images),
-            ];
-        });
+        $formatted = $products->getCollection()->map(fn ($product) => $this->formatAdminProduct($product));
 
         return response()->json([
             'success' => true,
@@ -180,12 +146,12 @@ class ProductController extends Controller
     /**
      * Approve a product (admin only)
      */
-    public function approve($id)
+    public function approve(int $id)
     {
         // Resolve by primary key, not slug — bypass getRouteKeyName()
         $product = Product::withoutGlobalScopes()->findOrFail($id);
 
-        if (!Auth::user()->hasRole('admin')) {
+        if (!Auth::user()?->hasRole('admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
@@ -203,10 +169,12 @@ class ProductController extends Controller
             'rejection_reason' => null,
         ]);
 
+        $product->load(['category', 'seller'])->loadSum('activeVariants', 'quantity');
+
         return response()->json([
             'success' => true,
             'message' => 'Product approved',
-            'data' => new ProductResource($product),
+            'data' => $this->formatAdminProduct($product),
         ]);
     }
 
@@ -218,7 +186,7 @@ class ProductController extends Controller
     {
         $product = Product::withoutGlobalScopes()->findOrFail($id);
 
-        if (!Auth::user()->hasRole('admin')) {
+        if (!Auth::user()?->hasRole('admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
@@ -238,10 +206,12 @@ class ProductController extends Controller
             'rejection_reason' => $request->reason ?: null,
         ]);
 
+        $product->load(['category', 'seller'])->loadSum('activeVariants', 'quantity');
+
         return response()->json([
             'success' => true,
             'message' => 'Product rejected',
-            'data' => ['rejection_reason' => $product->rejection_reason],
+            'data' => $this->formatAdminProduct($product),
         ]);
     }
 
@@ -869,6 +839,43 @@ class ProductController extends Controller
             'message' => 'Product status updated',
             'is_active' => $product->is_active,
         ]);
+    }
+
+    protected function formatAdminProduct(Product $product): array
+    {
+        return [
+            'id' => $product->id,
+            'name_en' => $product->name_en,
+            'name_mm' => $product->name_mm,
+            'sku' => $product->sku,
+            'moq' => $product->moq,
+            'min_order' => $product->moq,
+            'min_order_unit' => $product->min_order_unit,
+            'price' => (float) $product->price,
+            'total_stock' => $product->product_type === 'physical'
+                ? (int) ($product->active_variants_sum_quantity ?? 0)
+                : null,
+            'product_type' => $product->product_type,
+            'status' => $product->status,
+            'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
+            'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
+            'is_new' => (bool) $product->is_new,
+            'is_on_sale' => (bool) $product->is_on_sale,
+            'discount_start' => $product->discount_start,
+            'discount_end' => $product->discount_end,
+            'is_active' => (bool) $product->is_active,
+            'approved_at' => $product->approved_at,
+            'rejection_reason' => $product->rejection_reason,
+            'category' => $product->category ? [
+                'id' => $product->category->id,
+                'name_en' => $product->category->name_en,
+            ] : null,
+            'seller' => $product->seller ? [
+                'id' => $product->seller->id,
+                'name' => $product->seller->name,
+            ] : null,
+            'images' => $this->formatImages($product->images),
+        ];
     }
 
     protected function formatImages($images)
