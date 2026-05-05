@@ -8,6 +8,7 @@ use App\Notifications\SellerApproved;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use App\Models\SellerProfile;
+use App\Models\DeliveryArea;
 use App\Models\BusinessType;
 use App\Models\ShippingSetting;
 use Illuminate\Support\Carbon;
@@ -21,6 +22,31 @@ use Illuminate\Support\Str;
 
 class SellerController extends Controller
 {
+    /**
+     * Public: active delivery zones for a seller (buyer-visible).
+     * {seller} can be store_slug or id (see SellerProfile::resolveRouteBinding()).
+     */
+    public function deliveryAreasPublic(Request $request, SellerProfile $seller)
+    {
+        try {
+            $areas = $seller->activeDeliveryAreas()
+                ->orderBy('sort_order')
+                ->orderBy('area_type')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $areas,
+                'count' => $areas->count(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to fetch public delivery areas: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch delivery areas',
+            ], 500);
+        }
+    }
     /**
      * Display a listing of the resource.
      */
