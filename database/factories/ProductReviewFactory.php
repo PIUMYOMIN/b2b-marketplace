@@ -2,21 +2,18 @@
 
 namespace Database\Factories;
 
+use App\Models\Product;
+use App\Models\ProductReview;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Review>
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\ProductReview>
  */
-class ReviewFactory extends Factory
+class ProductReviewFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
+    protected $model = ProductReview::class;
 
-    protected $model = Review::class;
-    
     public function definition(): array
     {
         return [

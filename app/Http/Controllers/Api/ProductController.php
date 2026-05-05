@@ -226,7 +226,20 @@ class ProductController extends Controller
                 'category',
                 'options.values',
                 'activeVariants.optionValues.option',
+                // Include approved reviews for product detail UI
+                'reviews' => fn ($q) => $q->where('status', 'approved')
+                    ->with('buyer')
+                    ->latest()
+                    ->take(20),
             ])
+            // Compute rating + review count from product_reviews (source of truth)
+            // and override any stored/stale columns on the model.
+            ->withCount([
+                'reviews as review_count' => fn ($q) => $q->where('status', 'approved')
+            ])
+            ->withAvg([
+                'reviews as average_rating' => fn ($q) => $q->where('status', 'approved')
+            ], 'rating')
             ->where(fn($q) => $q->where('slug_en', $slugOrId)->orWhere('id', $slugOrId))
             ->firstOrFail();
  

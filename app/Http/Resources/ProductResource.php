@@ -5,6 +5,7 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Http\Resources\ReviewResource;
 
 /**
  * Full product detail resource — used on the product detail page.
@@ -109,6 +110,8 @@ class ProductResource extends JsonResource
             'views'            => $this->views,
             'is_featured'      => $this->is_featured,
             'is_new'           => $this->is_new,
+            // Optional: included by ProductController@showPublic for product detail page
+            'reviews'          => ReviewResource::collection($this->whenLoaded('reviews')),
 
             // ── Relations ─────────────────────────────────────────────────────
             'seller'           => $this->whenLoaded('seller', fn() => [

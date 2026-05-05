@@ -248,11 +248,15 @@ class Order extends Model
     }
 
     /**
-     * Get the reviews for the order.
+     * Get product reviews submitted by this order's buyer for this order's products.
      */
     public function reviews()
     {
-        return $this->hasMany(ProductReview::class);
+        $productIds = $this->items()->pluck('product_id');
+
+        return ProductReview::query()
+            ->where('user_id', $this->buyer_id)
+            ->whereIn('product_id', $productIds);
     }
 
     /**

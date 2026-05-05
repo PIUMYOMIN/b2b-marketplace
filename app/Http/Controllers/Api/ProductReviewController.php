@@ -91,7 +91,7 @@ class ProductReviewController extends Controller
                 $query->where('status', $request->status);
             }
             if ($request->has('product_id')) {
-                $query->where('product_id', $productId);
+                $query->where('product_id', $request->product_id);
             }
             if ($request->has('user_id')) {
                 $query->where('user_id', $request->user_id);
@@ -115,6 +115,34 @@ class ProductReviewController extends Controller
                 'success' => false,
                 'message' => 'Failed to fetch reviews',
                 'error' => env('APP_DEBUG') ? $e->getMessage() : null
+            ], 500);
+        }
+    }
+
+    /**
+     * Get pending reviews for admin moderation.
+     */
+    public function pendingReviews(Request $request)
+    {
+        try {
+            $reviews = ProductReview::pending()
+                ->with(['user', 'product'])
+                ->orderBy('created_at', 'desc')
+                ->paginate($request->get('per_page', 15));
+
+            return response()->json([
+                'success' => true,
+                'data' => $reviews
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to fetch pending reviews:', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch pending reviews'
             ], 500);
         }
     }
@@ -169,6 +197,13 @@ class ProductReviewController extends Controller
         }
 
         try {
+            if (!Product::whereKey($productId)->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found'
+                ], 404);
+            }
+
             // Check if user already reviewed this product
             $existingReview = ProductReview::where('user_id', auth()->id())
                 ->where('product_id', $productId)
@@ -406,7 +441,15 @@ class ProductReviewController extends Controller
     public function destroy($id)
     {
         try {
-            $review = ProductReview::where('user_id', auth()->id())->findOrFail($id);
+            $review = ProductReview::findOrFail($id);
+
+            if (!auth()->user()?->hasRole('admin') && $review->user_id !== auth()->id()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to delete this review'
+                ], 403);
+            }
+
             $productId = $review->product_id;
             $review->delete();
 
@@ -440,15 +483,19 @@ class ProductReviewController extends Controller
     private function updateProductRating($productId)
     {
         try {
-            $approvedReviews = ProductReview::where('product_id', $productId)
-                ->where('status', 'approved')
-                ->get();
-
             $product = Product::find($productId);
+            if (!$product) {
+                return;
+            }
 
-            if ($approvedReviews->count() > 0) {
-                $averageRating = $approvedReviews->avg('rating');
-                $reviewCount = $approvedReviews->count();
+            $stats = ProductReview::where('product_id', $productId)
+                ->where('status', 'approved')
+                ->selectRaw('COUNT(*) as review_count, AVG(rating) as average_rating')
+                ->first();
+
+            if ((int) $stats->review_count > 0) {
+                $averageRating = $stats->average_rating;
+                $reviewCount = (int) $stats->review_count;
 
                 $product->update([
                     'average_rating' => number_format((float) $averageRating, 2, '.', ''),
@@ -515,6 +562,8 @@ class ProductReviewController extends Controller
         }
 
         try {
+            $productId = (int) $request->product_id;
+
             // Check if user already reviewed this product
             $existingReview = ProductReview::where('user_id', auth()->id())
                 ->where('product_id', $productId)

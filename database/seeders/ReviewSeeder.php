@@ -4,7 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use App\Models\Review;
+use App\Models\ProductReview;
 use App\Models\User;
 use App\Models\Product;
 
@@ -16,7 +16,7 @@ class ReviewSeeder extends Seeder
     public function run(): void
     {
         // Clear existing reviews
-        DB::table('reviews')->truncate();
+        DB::table('product_reviews')->truncate();
 
         // Get all buyer users and products
         $buyers = User::whereHas('roles', function ($query) {
@@ -54,20 +54,20 @@ class ReviewSeeder extends Seeder
 
             // Insert reviews in batches
             if (count($reviews) >= 100) {
-                Review::insert($reviews);
+                ProductReview::insert($reviews);
                 $reviews = [];
             }
         }
 
         // Insert any remaining reviews
         if (!empty($reviews)) {
-            Review::insert($reviews);
+            ProductReview::insert($reviews);
         }
 
         // Update product ratings after creating reviews
         $this->updateProductRatings();
 
-        $this->command->info('Successfully seeded ' . Review::count() . ' reviews.');
+        $this->command->info('Successfully seeded ' . ProductReview::count() . ' reviews.');
     }
 
     /**
@@ -102,8 +102,7 @@ class ReviewSeeder extends Seeder
      */
     private function generateComment(Product $product, User $user): string
     {
-        $productName = $product->name;
-        $userName = $user->name;
+        $productName = $product->name_en ?? $product->name_mm ?? 'product';
 
         $positiveComments = [
             "Excellent {$productName}! The quality exceeded my expectations. Highly recommended!",
@@ -158,7 +157,7 @@ class ReviewSeeder extends Seeder
         $products = Product::all();
 
         foreach ($products as $product) {
-            $approvedReviews = Review::where('product_id', $product->id)
+            $approvedReviews = ProductReview::where('product_id', $product->id)
                 ->where('status', 'approved')
                 ->get();
 

@@ -296,12 +296,13 @@ class SellerController extends Controller
                 ];
             });
 
-        $recentReviews = DB::table('reviews')
-            ->join('products', 'reviews.product_id', '=', 'products.id')
-            ->join('users', 'reviews.user_id', '=', 'users.id')
+        $recentReviews = DB::table('product_reviews')
+            ->join('products', 'product_reviews.product_id', '=', 'products.id')
+            ->join('users', 'product_reviews.user_id', '=', 'users.id')
             ->where('products.seller_id', $sellerId)
-            ->select('reviews.*', 'products.name_en as product_name', 'users.name as user_name')
-            ->orderBy('reviews.created_at', 'desc')
+            ->where('product_reviews.status', 'approved')
+            ->select('product_reviews.*', 'products.name_en as product_name', 'users.name as user_name')
+            ->orderBy('product_reviews.created_at', 'desc')
             ->limit(5)
             ->get();
 
@@ -331,10 +332,11 @@ class SellerController extends Controller
         $completionRate = $totalOrders > 0 ? ($completedOrders / $totalOrders) * 100 : 0;
 
         // Average rating
-        $averageRating = DB::table('reviews')
-            ->join('products', 'reviews.product_id', '=', 'products.id')
+        $averageRating = DB::table('product_reviews')
+            ->join('products', 'product_reviews.product_id', '=', 'products.id')
             ->where('products.seller_id', $sellerId)
-            ->avg('reviews.rating');
+            ->where('product_reviews.status', 'approved')
+            ->avg('product_reviews.rating');
 
         // Response time (average time to confirm orders)
         $avgResponseTime = DB::table('orders')
@@ -4900,14 +4902,16 @@ class SellerController extends Controller
                 ->sum('total_amount');
 
             // Rating and reviews
-            $averageRating = DB::table('reviews')
-                ->join('products', 'reviews.product_id', '=', 'products.id')
+            $averageRating = DB::table('product_reviews')
+                ->join('products', 'product_reviews.product_id', '=', 'products.id')
                 ->where('products.seller_id', $user->id)
-                ->avg('reviews.rating');
+                ->where('product_reviews.status', 'approved')
+                ->avg('product_reviews.rating');
 
-            $totalReviews = DB::table('reviews')
-                ->join('products', 'reviews.product_id', '=', 'products.id')
+            $totalReviews = DB::table('product_reviews')
+                ->join('products', 'product_reviews.product_id', '=', 'products.id')
                 ->where('products.seller_id', $user->id)
+                ->where('product_reviews.status', 'approved')
                 ->count();
 
             $metrics = [
