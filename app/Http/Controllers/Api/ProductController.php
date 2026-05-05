@@ -355,12 +355,17 @@ class ProductController extends Controller
     }
 
     /**
-     * Get product data for editing (seller only).
-     *
+     * Get product data for editing.
      */
     public function getProductForEdit($id)
     {
-        $product = Product::where('seller_id', Auth::id())->findOrFail($id);
+        $query = Product::query();
+
+        if (!Auth::user()?->hasRole('admin')) {
+            $query->where('seller_id', Auth::id());
+        }
+
+        $product = $query->findOrFail($id);
 
         $data = $product->toArray();
 
@@ -400,7 +405,7 @@ class ProductController extends Controller
     }
 
     /**
-     * Update the specified product (seller only)
+     * Update the specified product.
      */
     public function update(UpdateProductRequest $request, string $slugOrId): JsonResponse
     {
@@ -408,8 +413,9 @@ class ProductController extends Controller
             fn($q) => $q->where('slug_en', $slugOrId)->orWhere('id', $slugOrId)
         )->firstOrFail();
  
-        // Seller-only ownership check (no admin bypass on seller endpoints)
-        if ((int) $product->seller_id !== (int) $request->user()->id) {
+        if (! $request->user()?->hasRole('admin')
+            && (int) $product->seller_id !== (int) $request->user()->id
+        ) {
             return response()->json(['success' => false, 'message' => __('messages.products.unauthorized_update')], 403);
         }
  

@@ -9,14 +9,18 @@ class UpdateProductRequest extends FormRequest
 {
     public function authorize(): bool
     {
+        $user = $this->user();
         $slugOrId = $this->route('slugOrId');
         $product = Product::where('slug_en', $slugOrId)
             ->orWhere('id', $slugOrId)
             ->first();
 
-        // Seller-only: only the authenticated seller who owns the product can update.
-        return $this->user()?->hasRole('seller') === true
-            && (int) ($product?->seller_id) === (int) $this->user()->id;
+        if (!$user || !$product) {
+            return false;
+        }
+
+        return $user->hasRole('admin')
+            || ($user->hasRole('seller') && (int) $product->seller_id === (int) $user->id);
     }
 
     public function rules(): array

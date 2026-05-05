@@ -320,7 +320,7 @@ Route::group([
             });
         });
 
-        Route::prefix('seller')->middleware('role:seller')->group(function () {
+        Route::prefix('seller')->middleware('role:seller|admin')->group(function () {
 
             // Logo & Banner endpoints (outside onboarding)
             Route::post('/logo', [SellerController::class, 'updateLogo']);
