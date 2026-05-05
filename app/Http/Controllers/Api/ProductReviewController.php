@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use App\Notifications\NewProductReview;
+use App\Http\Resources\ReviewResource;
 
 class ProductReviewController extends Controller
 {
@@ -31,7 +32,7 @@ class ProductReviewController extends Controller
             }
 
             $reviews = ProductReview::where('product_id', $productId)
-                ->with('user') // Eager load user relationship
+                ->with('buyer') // Eager load buyer relationship for ReviewResource
                 ->where('status', 'approved')
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -40,7 +41,7 @@ class ProductReviewController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $reviews
+                'data' => ReviewResource::collection($reviews),
             ]);
 
         } catch (\Exception $e) {
@@ -192,7 +193,7 @@ class ProductReviewController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Review submitted successfully.',
-                'data' => $review->load('user'),
+                'data' => new ReviewResource($review->load('buyer')),
                 'product_rating' => $updatedProduct->average_rating,
                 'product_review_count' => $updatedProduct->review_count,
             ]);

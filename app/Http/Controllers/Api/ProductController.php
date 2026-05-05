@@ -695,27 +695,7 @@ class ProductController extends Controller
         ]);
     }
 
-    /**
-     * Get reviews for a product
-     */
-    public function productReviews(Product $product)
-    {
-        $reviews = $product->reviews()
-            ->where('status', 'approved')
-            ->with('buyer')
-            ->latest()
-            ->paginate(10);
 
-        return response()->json([
-            'success' => true,
-            'data' => ReviewResource::collection($reviews),
-            'meta' => [
-                'current_page' => $reviews->currentPage(),
-                'per_page' => $reviews->perPage(),
-                'total' => $reviews->total(),
-            ]
-        ]);
-    }
 
     /**
      * Get average rating for a product

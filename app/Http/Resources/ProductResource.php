@@ -113,6 +113,7 @@ class ProductResource extends JsonResource
             // ── Relations ─────────────────────────────────────────────────────
             'seller'           => $this->whenLoaded('seller', fn() => [
                 'id'             => $this->seller->id,
+                'name'           => $this->seller->name,
                 'store_name'     => $this->seller->sellerProfile?->store_name,
                 'store_slug'     => $this->seller->sellerProfile?->store_slug,
                 'logo'           => $this->seller->sellerProfile?->logo,
