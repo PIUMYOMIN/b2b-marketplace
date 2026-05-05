@@ -140,40 +140,6 @@ class DeliveryAreaController extends Controller
 
             $validated = $validator->validated();
 
-            // Merge with existing values so hierarchy validation works on partial updates
-            $validated = array_merge($deliveryArea->toArray(), $validated);
-
-            // Normalize strings
-            $validated['country'] = $this->norm($validated['country'] ?? null);
-            $validated['state'] = $this->norm($validated['state'] ?? null);
-            $validated['city'] = $this->norm($validated['city'] ?? null);
-            $validated['township'] = $this->norm($validated['township'] ?? null);
-            $validated['specific_location'] = $this->norm($validated['specific_location'] ?? null);
-            $validated['postal_code'] = $this->norm($validated['postal_code'] ?? null);
-
-            if ($errors = $this->validateHierarchy($validated)) {
-                return response()->json(['success' => false, 'errors' => $errors], 422);
-            }
-
-            // Prevent storing deeper levels for broader zone types
-            if (($validated['area_type'] ?? null) === 'state') {
-                $validated['city'] = null;
-                $validated['township'] = null;
-                $validated['specific_location'] = null;
-            } elseif (($validated['area_type'] ?? null) === 'city') {
-                $validated['township'] = null;
-                $validated['specific_location'] = null;
-            } elseif (($validated['area_type'] ?? null) === 'township') {
-                $validated['specific_location'] = null;
-            } elseif (($validated['area_type'] ?? null) === 'country') {
-                $validated['state'] = null;
-                $validated['city'] = null;
-                $validated['township'] = null;
-                $validated['specific_location'] = null;
-            }
-            $validated['seller_profile_id'] = $sellerProfile->id;
-            $validated['user_id'] = $user->id;
-
             // Normalize strings
             $validated['country'] = $this->norm($validated['country'] ?? null);
             $validated['state'] = $this->norm($validated['state'] ?? null);
@@ -187,7 +153,7 @@ class DeliveryAreaController extends Controller
                 return response()->json(['success' => false, 'errors' => $errors], 422);
             }
 
-            // Prevent storing deeper levels for broader zone types
+            // Prevent storing deeper fields than the chosen area_type allows
             if ($validated['area_type'] === 'state') {
                 $validated['city'] = null;
                 $validated['township'] = null;
@@ -203,6 +169,9 @@ class DeliveryAreaController extends Controller
                 $validated['township'] = null;
                 $validated['specific_location'] = null;
             }
+
+            $validated['seller_profile_id'] = $sellerProfile->id;
+            $validated['user_id'] = $user->id;
 
             // Check for overlapping areas
             $overlap = $this->checkOverlappingArea($sellerProfile->id, $validated);
