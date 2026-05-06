@@ -265,8 +265,45 @@ class DeliveryAreaController extends Controller
 
             $validated = $validator->validated();
 
-            // Check for overlapping areas (excluding current one)
-            $overlap = $this->checkOverlappingArea($deliveryArea->seller_profile_id, $validated, $id);
+            // Merge with the existing record so every field is available for hierarchy
+            // validation and overlap checking — even when the request only patches one field.
+            $merged = array_merge($deliveryArea->only([
+                'area_type', 'country', 'state', 'city', 'township', 'specific_location', 'postal_code',
+            ]), $validated);
+
+            // Normalize strings on the merged dataset
+            foreach (['country', 'state', 'city', 'township', 'specific_location', 'postal_code'] as $field) {
+                $merged[$field] = $this->norm($merged[$field] ?? null);
+                if (array_key_exists($field, $validated)) {
+                    $validated[$field] = $merged[$field];
+                }
+            }
+
+            // Enforce hierarchy requirements
+            if ($errors = $this->validateHierarchy($merged)) {
+                return response()->json(['success' => false, 'errors' => $errors], 422);
+            }
+
+            // Prune fields that are deeper than the chosen area_type
+            if (($merged['area_type'] ?? null) === 'state') {
+                $validated['city'] = null;
+                $validated['township'] = null;
+                $validated['specific_location'] = null;
+            } elseif (($merged['area_type'] ?? null) === 'city') {
+                $validated['township'] = null;
+                $validated['specific_location'] = null;
+            } elseif (($merged['area_type'] ?? null) === 'township') {
+                $validated['specific_location'] = null;
+            } elseif (($merged['area_type'] ?? null) === 'country') {
+                $validated['state'] = null;
+                $validated['city'] = null;
+                $validated['township'] = null;
+                $validated['specific_location'] = null;
+            }
+
+            // Check for overlapping areas using the full merged data (excluding current record)
+            $overlapData = array_merge($merged, $validated);
+            $overlap = $this->checkOverlappingArea($deliveryArea->seller_profile_id, $overlapData, $id);
             if ($overlap) {
                 return response()->json([
                     'success' => false,
@@ -276,6 +313,7 @@ class DeliveryAreaController extends Controller
 
             // Only update fillable fields (avoid accidental writes from merged array)
             $deliveryArea->update(collect($validated)->only($deliveryArea->getFillable())->toArray());
+            $deliveryArea->refresh();
 
             Log::info('Delivery area updated', [
                 'user_id' => $user->id,
@@ -289,6 +327,11 @@ class DeliveryAreaController extends Controller
                 'data' => $deliveryArea
             ]);
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery area not found',
+            ], 404);
         } catch (\Exception $e) {
             Log::error('Failed to update delivery area: ' . $e->getMessage());
             return response()->json([
@@ -327,6 +370,11 @@ class DeliveryAreaController extends Controller
                 'message' => __('messages.delivery.area_deleted')
             ]);
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Delivery area not found',
+            ], 404);
         } catch (\Exception $e) {
             Log::error('Failed to delete delivery area: ' . $e->getMessage());
             return response()->json([
@@ -465,22 +513,31 @@ class DeliveryAreaController extends Controller
                 ], 404);
             }
 
-            $request->validate([
-                'zones' => 'required|array',
-                'zones.*.area_type' => 'required|in:country,state,city,township',
-                'zones.*.country' => 'required|string|max:100',
-                'zones.*.state' => 'nullable|string|max:100',
-                'zones.*.city' => 'nullable|string|max:100',
-                'zones.*.township' => 'nullable|string|max:150',
-                'zones.*.shipping_fee' => 'required|numeric|min:0',
-                'zones.*.free_shipping_threshold' => 'nullable|numeric|min:0',
-                'zones.*.estimated_delivery_days_min' => 'nullable|integer|min:1',
-                'zones.*.estimated_delivery_days_max' => 'nullable|integer|min:1',
-                'zones.*.is_active' => 'nullable|boolean',
+            $validator = Validator::make($request->all(), [
+                'zones'                                  => 'required|array',
+                'zones.*.area_type'                      => 'required|in:country,state,city,township',
+                'zones.*.country'                        => 'required|string|max:100',
+                'zones.*.state'                          => 'nullable|string|max:100',
+                'zones.*.city'                           => 'nullable|string|max:100',
+                'zones.*.township'                       => 'nullable|string|max:150',
+                'zones.*.shipping_fee'                   => 'required|numeric|min:0',
+                'zones.*.free_shipping_threshold'        => 'nullable|numeric|min:0',
+                'zones.*.estimated_delivery_days_min'    => 'nullable|integer|min:1',
+                'zones.*.estimated_delivery_days_max'    => 'nullable|integer|min:1|gte:zones.*.estimated_delivery_days_min',
+                'zones.*.is_active'                      => 'nullable|boolean',
             ]);
 
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors'  => $validator->errors(),
+                ], 422);
+            }
+
+            $validatedData = $validator->validated();
+
             // Validate + normalize hierarchy per zone
-            foreach ((array) $request->zones as $idx => $zone) {
+            foreach ($validatedData['zones'] as $idx => $zone) {
                 $zone = is_array($zone) ? $zone : [];
                 $zone['country'] = $this->norm($zone['country'] ?? null);
                 $zone['state'] = $this->norm($zone['state'] ?? null);
@@ -497,13 +554,13 @@ class DeliveryAreaController extends Controller
                 }
             }
 
-            \DB::transaction(function () use ($request, $sellerProfile, $user) {
+            \DB::transaction(function () use ($validatedData, $sellerProfile, $user) {
                 // Delete all existing zones for this seller
                 DeliveryArea::where('seller_profile_id', $sellerProfile->id)->delete();
 
                 // Insert the new set
                 $now = now();
-                $rows = collect($request->zones)->map(function ($zone, $index) use ($sellerProfile, $user, $now) {
+                $rows = collect($validatedData['zones'])->map(function ($zone, $index) use ($sellerProfile, $user, $now) {
                     // Normalize inputs
                     $zone['country'] = $this->norm($zone['country'] ?? null);
                     $zone['state'] = $this->norm($zone['state'] ?? null);
@@ -588,7 +645,8 @@ class DeliveryAreaController extends Controller
     private function checkOverlappingArea($sellerProfileId, $newAreaData, $excludeId = null)
     {
         $query = DeliveryArea::where('seller_profile_id', $sellerProfileId)
-            ->where('country', $newAreaData['country']);
+            ->where('country', $newAreaData['country'])
+            ->where('is_active', true);
 
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
