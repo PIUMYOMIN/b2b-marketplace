@@ -139,8 +139,8 @@ Route::group([
     });
 
     //Google OAuth Routes
-    Route::get('auth/google', [AuthController::class, 'redirectToGoogle']);
-    Route::get('auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
+    Route::post('auth/{provider}',          [AuthController::class, 'handleSocialToken'])->middleware('throttle:20,1');
+    Route::post('auth/{provider}/complete', [AuthController::class, 'completeSocialRegistration'])->middleware(['auth:sanctum', 'throttle:10,1']);
 
     // --------------------
     // Authenticated Routes

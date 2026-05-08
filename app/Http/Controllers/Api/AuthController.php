@@ -17,6 +17,8 @@ use App\Notifications\NewUserRegistered;
 use Illuminate\Support\Facades\Notification;
 use Carbon\Carbon;
 use App\Rules\Recaptcha;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -366,25 +368,327 @@ class AuthController extends Controller
         ]);
     }
 
-        public function redirectToGoogle()
+    // =========================================================================
+    // Social / OAuth Authentication
+    // =========================================================================
+    // Provider-agnostic design: adding Facebook (or any future provider) only
+    // requires a new private verify*Token() method below. Routes, middleware,
+    // the registration flow, and the frontend button all stay identical.
+    //
+    // Supported providers: google | facebook (coming soon)
+    //
+    // Routes:
+    //   POST /auth/{provider}           → handleSocialToken()
+    //   POST /auth/{provider}/complete  → completeSocialRegistration()
+    // =========================================================================
+
+    /**
+     * Step 1 — Verify a social token and either log the user in
+     * or issue a short-lived "pending" token for role selection.
+     *
+     * Body: { credential: string, token_type?: "id_token"|"access_token" }
+     */
+    public function handleSocialToken(Request $request, string $provider): JsonResponse
     {
-        return Socialite::driver('google')->redirect();
-    }
-    
-    public function handleGoogleCallback()
-    {
-        $googleUser = Socialite::driver('google')->user();
-        
-        // Check if user exists or create a new one
-        $user = User::updateOrCreate([
-            'social_id' => $googleUser->id,
-        ], [
-            'name' => $googleUser->name,
-            'email' => $googleUser->email,
-            'password' => bcrypt(Str::random(16)), // Required for standard auth
+        $this->validateProvider($provider);
+
+        $request->validate([
+            'credential' => 'required|string',
+            'token_type' => 'nullable|in:id_token,access_token',
         ]);
-    
-        Auth::login($user);
-        return redirect('/dashboard');
+
+        $socialUser = $this->verifySocialToken(
+            $provider,
+            $request->credential,
+            $request->input('token_type', 'id_token')
+        );
+
+        if (!$socialUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or expired token. Please try again.',
+            ], 401);
+        }
+
+        $socialId = $socialUser['sub'] ?? $socialUser['id'] ?? null;
+        $email    = $socialUser['email']   ?? null;
+        $name     = $socialUser['name']    ?? 'User';
+        $avatar   = $socialUser['picture'] ?? $socialUser['avatar'] ?? null;
+
+        // Case 1: already linked to this social account
+        $user = User::where('social_id', $socialId)
+                    ->where('social_provider', $provider)
+                    ->first();
+
+        if ($user) {
+            return $this->issueSocialToken($user, 'authenticated');
+        }
+
+        // Case 2: email already exists — link the social account
+        if ($email) {
+            $user = User::where('email', $email)->first();
+            if ($user) {
+                $user->update([
+                    'social_id'       => $socialId,
+                    'social_provider' => $provider,
+                    'profile_photo'   => $user->profile_photo ?? $avatar,
+                ]);
+                return $this->issueSocialToken($user, 'authenticated');
+            }
+        }
+
+        // Case 3: brand-new user — create pending record, ask for role
+        $pending = User::create([
+            'name'            => $name,
+            'email'           => $email,
+            'password'        => Hash::make(Str::random(32)),
+            'social_id'       => $socialId,
+            'social_provider' => $provider,
+            'profile_photo'   => $avatar,
+            'type'            => 'pending',
+            'user_id'         => $this->nextUserId(),
+            'status'          => 'active',
+            'is_active'       => true,
+        ]);
+
+        // 15-minute scoped token — only /auth/{provider}/complete accepts it
+        $tempToken = $pending->createToken(
+            'social-pending',
+            ['social-pending'],
+            Carbon::now()->addMinutes(15)
+        )->plainTextToken;
+
+        return response()->json([
+            'success' => true,
+            'status'  => 'needs_role',
+            'data'    => [
+                'temp_token'  => $tempToken,
+                'provider'    => $provider,
+                'social_user' => [
+                    'name'   => $name,
+                    'email'  => $email,
+                    'avatar' => $avatar,
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Step 2 — Assign role and complete social registration.
+     * Requires the short-lived pending token from step 1.
+     *
+     * Body: { role: "buyer"|"seller" }
+     */
+    public function completeSocialRegistration(Request $request): JsonResponse
+    {
+        $request->validate(['role' => 'required|in:buyer,seller']);
+
+        $user = $request->user();
+
+        if ($user->type !== 'pending' || !$user->social_provider) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This endpoint is only for new social-authenticated users.',
+            ], 403);
+        }
+
+        return DB::transaction(function () use ($request, $user) {
+            $role = $request->role;
+
+            $user->update(['type' => $role, 'status' => 'active']);
+            $user->syncRoles([$role]);
+
+            if ($role === 'seller') {
+                $storeName = $user->name . "'s Store";
+                $defaultBt = BusinessType::where('slug_en', 'individual')
+                    ->where('is_active', true)
+                    ->firstOrFail();
+
+                SellerProfile::create([
+                    'user_id'             => $user->id,
+                    'store_name'          => $storeName,
+                    'store_slug'          => SellerProfile::generateStoreSlug($storeName),
+                    'store_id'            => SellerProfile::generateStoreId(),
+                    'business_type_id'    => $defaultBt->id,
+                    'business_type'       => $defaultBt->slug,
+                    'contact_email'       => $user->email,
+                    'contact_phone'       => $user->phone,
+                    'country'             => 'Myanmar',
+                    'status'              => SellerProfile::STATUS_SETUP_PENDING,
+                    'onboarding_status'   => 'pending',
+                    'current_step'        => 'store-basic',
+                    'verification_status' => 'pending',
+                ]);
+            }
+
+            // Revoke the short-lived pending token
+            $user->currentAccessToken()->delete();
+
+            // Send OTP verification email
+            if ($user->email && !$user->hasVerifiedEmail()) {
+                $user->sendEmailVerificationNotification();
+            }
+
+            // Notify admins
+            try {
+                $admins = User::where('type', 'admin')->get();
+                if ($admins->isNotEmpty()) {
+                    Notification::send($admins, new NewUserRegistered($user));
+                }
+            } catch (\Exception $e) {
+                Log::warning('Admin notification failed after social registration: ' . $e->getMessage());
+            }
+
+            $token = $user->createToken(
+                'auth_token', ['*'], Carbon::now()->addHours(2)
+            )->plainTextToken;
+
+            $user->load('roles');
+
+            return response()->json([
+                'success' => true,
+                'status'  => 'registered',
+                'data'    => [
+                    'token'                       => $token,
+                    'user'                        => $user,
+                    'requires_onboarding'         => $role === 'seller',
+                    'email_verification_required' => (bool) $user->email && !$user->hasVerifiedEmail(),
+                ],
+            ], 201);
+        });
+    }
+
+    // ── Social auth helpers ───────────────────────────────────────────────────
+
+    /** Reject unsupported providers early with a clear error. */
+    private function validateProvider(string $provider): void
+    {
+        $supported = ['google', 'facebook'];
+        if (!in_array($provider, $supported)) {
+            abort(404, "Provider [{$provider}] is not supported.");
+        }
+    }
+
+    /**
+     * Route to the correct token verifier based on provider.
+     * Adding Facebook = add verifyFacebookToken() here and below.
+     */
+    private function verifySocialToken(string $provider, string $token, string $tokenType): ?array
+    {
+        return match ($provider) {
+            'google'   => $this->verifyGoogleToken($token, $tokenType),
+            'facebook' => $this->verifyFacebookToken($token),
+            default    => null,
+        };
+    }
+
+    /**
+     * Verify a Google credential.
+     * token_type "access_token" → userinfo endpoint  (useGoogleLogin flow)
+     * token_type "id_token"     → tokeninfo endpoint (One Tap / credential flow)
+     */
+    private function verifyGoogleToken(string $token, string $tokenType = 'id_token'): ?array
+    {
+        try {
+            if ($tokenType === 'access_token') {
+                $response = Http::timeout(5)
+                    ->withToken($token)
+                    ->get('https://www.googleapis.com/oauth2/v3/userinfo');
+            } else {
+                $response = Http::timeout(5)
+                    ->get('https://oauth2.googleapis.com/tokeninfo', ['id_token' => $token]);
+
+                if ($response->successful()) {
+                    $payload  = $response->json();
+                    $clientId = config('services.google.client_id');
+                    if ($clientId && ($payload['aud'] ?? '') !== $clientId) {
+                        Log::warning('Google token audience mismatch', ['aud' => $payload['aud'] ?? null]);
+                        return null;
+                    }
+                    if (($payload['exp'] ?? 0) < time()) return null;
+                    return $payload;
+                }
+            }
+
+            return $response->successful() ? $response->json() : null;
+        } catch (\Exception $e) {
+            Log::error('Google token verification error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Verify a Facebook user access token.
+     * Uses Facebook's debug_token endpoint — fill in when Facebook login ships.
+     */
+    private function verifyFacebookToken(string $token): ?array
+    {
+        try {
+            $appId     = config('services.facebook.client_id');
+            $appSecret = config('services.facebook.client_secret');
+            $appToken  = "{$appId}|{$appSecret}";
+
+            // Validate the token
+            $debug = Http::timeout(5)->get('https://graph.facebook.com/debug_token', [
+                'input_token'  => $token,
+                'access_token' => $appToken,
+            ]);
+
+            if (!$debug->successful() || !($debug->json('data.is_valid') ?? false)) {
+                return null;
+            }
+
+            // Fetch the user's profile
+            $profile = Http::timeout(5)->get('https://graph.facebook.com/me', [
+                'access_token' => $token,
+                'fields'       => 'id,name,email,picture.type(large)',
+            ]);
+
+            if (!$profile->successful()) return null;
+
+            $data = $profile->json();
+            return [
+                'sub'     => $data['id'],
+                'name'    => $data['name']  ?? null,
+                'email'   => $data['email'] ?? null,
+                'picture' => $data['picture']['data']['url'] ?? null,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Facebook token verification error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /** Issue a full-session token and return an "authenticated" response. */
+    private function issueSocialToken(User $user, string $status): JsonResponse
+    {
+        if (!$user->is_active || $user->status !== 'active') {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.auth.invalid_credentials'),
+            ], 401);
+        }
+
+        $token = $user->createToken(
+            'auth_token', ['*'], Carbon::now()->addHours(2)
+        )->plainTextToken;
+
+        $user->load('roles');
+
+        return response()->json([
+            'success' => true,
+            'status'  => $status,
+            'data'    => [
+                'token'                       => $token,
+                'user'                        => $user,
+                'email_verification_required' => (bool) $user->email && !$user->hasVerifiedEmail(),
+            ],
+        ]);
+    }
+
+    private function nextUserId(): string
+    {
+        $last = User::withTrashed()->orderBy('id', 'desc')->first();
+        return $last ? str_pad($last->id + 1, 6, '0', STR_PAD_LEFT) : '000001';
     }
 }
