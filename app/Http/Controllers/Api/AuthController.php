@@ -439,9 +439,13 @@ class AuthController extends Controller
         }
 
         // Case 3: brand-new user — create pending record, ask for role/contact completion
+        // Keep compatibility with DBs where users.phone is still NOT NULL.
+        // We save a temporary unique placeholder and replace it in step 2.
+        $tempPhone = 'pending-social-' . $this->nextUserId() . '-' . substr((string) Str::uuid(), 0, 8);
         $pending = User::create([
             'name'            => $name,
             'email'           => $email,
+            'phone'           => $tempPhone,
             'password'        => Hash::make(Str::random(32)),
             'social_id'       => $socialId,
             'social_provider' => $provider,
