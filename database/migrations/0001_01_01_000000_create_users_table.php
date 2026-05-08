@@ -18,7 +18,7 @@ return new class extends Migration {
             $table->string('phone')->unique();
             $table->date('date_of_birth')->nullable();
             $table->string('password');
-            $table->enum('type', ['buyer', 'seller', 'admin', 'pending'])->default('buyer');
+            $table->enum('type', ['buyer', 'seller','courier', 'admin', 'pending'])->default('buyer');
             $table->text('address')->nullable();
             $table->string('city')->nullable();
             $table->string('state')->nullable();
