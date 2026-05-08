@@ -438,7 +438,7 @@ class AuthController extends Controller
             }
         }
 
-        // Case 3: brand-new user — create pending record, ask for role
+        // Case 3: brand-new user — create pending record, ask for role/contact completion
         $pending = User::create([
             'name'            => $name,
             'email'           => $email,
@@ -451,6 +451,8 @@ class AuthController extends Controller
             'status'          => 'active',
             'is_active'       => true,
         ]);
+
+        $missingFields = $this->getMissingSocialFields($pending);
 
         // 15-minute scoped token — only /auth/{provider}/complete accepts it
         $tempToken = $pending->createToken(
@@ -470,6 +472,7 @@ class AuthController extends Controller
                     'email'  => $email,
                     'avatar' => $avatar,
                 ],
+                'missing_fields' => $missingFields,
             ],
         ]);
     }
@@ -478,12 +481,10 @@ class AuthController extends Controller
      * Step 2 — Assign role and complete social registration.
      * Requires the short-lived pending token from step 1.
      *
-     * Body: { role: "buyer"|"seller" }
+     * Body: { role: "buyer"|"seller", email?: string, phone: string }
      */
     public function completeSocialRegistration(Request $request): JsonResponse
     {
-        $request->validate(['role' => 'required|in:buyer,seller']);
-
         $user = $request->user();
 
         if ($user->type !== 'pending' || !$user->social_provider) {
@@ -495,8 +496,35 @@ class AuthController extends Controller
 
         return DB::transaction(function () use ($request, $user) {
             $role = $request->role;
+            $missing = $this->getMissingSocialFields($user);
 
-            $user->update(['type' => $role, 'status' => 'active']);
+            $rules = [
+                'role'  => 'required|in:buyer,seller',
+                'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/', 'unique:users,phone,' . $user->id],
+            ];
+
+            if (in_array('email', $missing)) {
+                $rules['email'] = 'required|string|email|max:255|unique:users,email,' . $user->id;
+            } else {
+                $rules['email'] = 'nullable|string|email|max:255|unique:users,email,' . $user->id;
+            }
+
+            $validated = $request->validate($rules);
+
+            $phone = $this->normalizeMyanmarPhone($validated['phone']);
+            if (!$this->isValidMyanmarPhone($phone)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.auth.invalid_phone')
+                ], 422);
+            }
+
+            $user->update([
+                'type'   => $role,
+                'status' => 'active',
+                'email'  => $validated['email'] ?? $user->email,
+                'phone'  => $phone,
+            ]);
             $user->syncRoles([$role]);
 
             if ($role === 'seller') {
@@ -691,5 +719,19 @@ class AuthController extends Controller
     {
         $last = User::withTrashed()->orderBy('id', 'desc')->first();
         return $last ? str_pad($last->id + 1, 6, '0', STR_PAD_LEFT) : '000001';
+    }
+
+    private function getMissingSocialFields(User $user): array
+    {
+        $missing = [];
+
+        if (blank($user->email)) {
+            $missing[] = 'email';
+        }
+        if (blank($user->phone)) {
+            $missing[] = 'phone';
+        }
+
+        return $missing;
     }
 }
