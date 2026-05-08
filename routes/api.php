@@ -139,8 +139,17 @@ Route::group([
     });
 
     //Google OAuth Routes
-    Route::post('auth/{provider}',          [AuthController::class, 'handleSocialToken'])->middleware('throttle:20,1');
-    Route::post('auth/{provider}/complete', [AuthController::class, 'completeSocialRegistration'])->middleware(['auth:sanctum', 'throttle:10,1']);
+    Route::prefix('auth')->group(function () {
+        // Step 1: verify token → login OR return temp token for role selection
+        Route::post('/{provider}', [AuthController::class, 'handleSocialToken'])
+            ->whereIn('provider', ['google', 'facebook']);
+
+        // Step 2: complete registration (choose buyer/seller) using temp token abilities
+        Route::post('/{provider}/complete', [AuthController::class, 'completeSocialRegistration'])
+            ->whereIn('provider', ['google', 'facebook'])
+            ->middleware(['auth:sanctum', 'abilities:social-pending']);
+    });
+    //Facebook OAuth Routes
 
     // --------------------
     // Authenticated Routes

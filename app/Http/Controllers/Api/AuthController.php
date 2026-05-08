@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Auth\Events\Registered;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use App\Models\SellerProfile;
 use App\Models\BusinessType;
 use Illuminate\Validation\Rules;
