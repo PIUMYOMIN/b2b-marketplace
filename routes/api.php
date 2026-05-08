@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\SellerExportController;
 use App\Http\Controllers\Api\ProductOptionController;
 use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\PaymentSettingController;
+use Laravel\Socialite\Facades\Socialite;
 
 
 /*
@@ -136,6 +137,10 @@ Route::group([
         Route::get('/products/{product}', [ProductReviewController::class, 'productReviews']);
         Route::get('/sellers/{slug}', [SellerReviewController::class, 'sellerReviews']);
     });
+
+    //Google OAuth Routes
+    Route::get('auth/google', [AuthController::class, 'redirectToGoogle']);
+    Route::get('auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
     // --------------------
     // Authenticated Routes

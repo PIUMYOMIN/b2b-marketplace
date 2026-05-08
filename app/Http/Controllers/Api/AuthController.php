@@ -365,4 +365,26 @@ class AuthController extends Controller
             'data' => $types
         ]);
     }
+
+        public function redirectToGoogle()
+    {
+        return Socialite::driver('google')->redirect();
+    }
+    
+    public function handleGoogleCallback()
+    {
+        $googleUser = Socialite::driver('google')->user();
+        
+        // Check if user exists or create a new one
+        $user = User::updateOrCreate([
+            'social_id' => $googleUser->id,
+        ], [
+            'name' => $googleUser->name,
+            'email' => $googleUser->email,
+            'password' => bcrypt(Str::random(16)), // Required for standard auth
+        ]);
+    
+        Auth::login($user);
+        return redirect('/dashboard');
+    }
 }

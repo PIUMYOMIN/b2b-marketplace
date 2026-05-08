@@ -40,14 +40,15 @@
     36 => 'Laravel\\Pail\\PailServiceProvider',
     37 => 'Laravel\\Sail\\SailServiceProvider',
     38 => 'Laravel\\Sanctum\\SanctumServiceProvider',
-    39 => 'Laravel\\Tinker\\TinkerServiceProvider',
-    40 => 'Carbon\\Laravel\\ServiceProvider',
-    41 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    42 => 'Spatie\\Permission\\PermissionServiceProvider',
-    43 => 'Tymon\\JWTAuth\\Providers\\LaravelServiceProvider',
-    44 => 'App\\Providers\\AppServiceProvider',
-    45 => 'App\\Providers\\AuthServiceProvider',
-    46 => 'App\\Providers\\RouteServiceProvider',
+    39 => 'Laravel\\Socialite\\SocialiteServiceProvider',
+    40 => 'Laravel\\Tinker\\TinkerServiceProvider',
+    41 => 'Carbon\\Laravel\\ServiceProvider',
+    42 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    43 => 'Spatie\\Permission\\PermissionServiceProvider',
+    44 => 'Tymon\\JWTAuth\\Providers\\LaravelServiceProvider',
+    45 => 'App\\Providers\\AppServiceProvider',
+    46 => 'App\\Providers\\AuthServiceProvider',
+    47 => 'App\\Providers\\RouteServiceProvider',
   ),
   'eager' => 
   array (
@@ -238,6 +239,7 @@
     'Illuminate\\Contracts\\Validation\\UncompromisedVerifier' => 'Illuminate\\Validation\\ValidationServiceProvider',
     'Laravel\\Sail\\Console\\InstallCommand' => 'Laravel\\Sail\\SailServiceProvider',
     'Laravel\\Sail\\Console\\PublishCommand' => 'Laravel\\Sail\\SailServiceProvider',
+    'Laravel\\Socialite\\Contracts\\Factory' => 'Laravel\\Socialite\\SocialiteServiceProvider',
     'command.tinker' => 'Laravel\\Tinker\\TinkerServiceProvider',
   ),
   'when' => 
@@ -282,6 +284,9 @@
     array (
     ),
     'Laravel\\Sail\\SailServiceProvider' => 
+    array (
+    ),
+    'Laravel\\Socialite\\SocialiteServiceProvider' => 
     array (
     ),
     'Laravel\\Tinker\\TinkerServiceProvider' => 
