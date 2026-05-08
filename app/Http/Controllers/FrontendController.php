@@ -21,13 +21,15 @@ class FrontendController extends Controller
 
     protected function resolveMetadata(string $path): array
     {
+        $frontendUrl = rtrim(config('app.frontend_url', config('app.url')), '/');
+
         // Default metadata
         $metadata = [
             'lang' => app()->getLocale(),
             'pageTitle' => 'Pyonea Marketplace',
             'pageDescription' => 'Myanmar B2B Marketplace',
             'pageKeywords' => '',
-            'pageUrl' => url($path),
+            'pageUrl' => $frontendUrl . ($path === '/' ? '' : $path),
             'pageImage' => asset('og-image.jpg'),
             'pageType' => 'website',
             'canonicalPath' => $path,
@@ -53,7 +55,7 @@ class FrontendController extends Controller
             $slug = $matches[1];
             $product = Product::where('slug_en', $slug)
                 ->orWhere('slug_mm', $slug)
-                ->with(['seller', 'images', 'reviews.user'])
+                ->with(['seller', 'reviews.user'])
                 ->first();
 
             if ($product) {
@@ -67,9 +69,7 @@ class FrontendController extends Controller
                     $img = $images[0];
                     $rawPath = is_array($img) ? ($img['url'] ?? $img['path'] ?? null) : $img;
                     if ($rawPath) {
-                        $firstImage = str_starts_with($rawPath, 'http')
-                            ? $rawPath
-                            : rtrim(env('APP_URL', 'https://api.pyonea.com'), '/') . '/storage/' . ltrim(str_replace('public/', '', $rawPath), '/');
+                        $firstImage = $this->resolveImageUrl($rawPath);
                     }
                 }
 
@@ -124,6 +124,15 @@ class FrontendController extends Controller
         return $metadata;
     }
 
+    protected function resolveImageUrl(string $rawPath): string
+    {
+        if (str_starts_with($rawPath, 'http')) {
+            return $rawPath;
+        }
+
+        return rtrim(config('app.url', 'https://api.pyonea.com'), '/') . '/storage/' . ltrim(str_replace('public/', '', $rawPath), '/');
+    }
+
     protected function formatProductForJsonLd($product): array
     {
         // images is stored as a JSON array — may be array of strings or array of objects
@@ -131,9 +140,7 @@ class FrontendController extends Controller
         $imageUrls = collect($images)->map(function ($img) {
             $rawPath = is_array($img) ? ($img['url'] ?? $img['path'] ?? null) : $img;
             if (!$rawPath) return null;
-            return str_starts_with($rawPath, 'http')
-                ? $rawPath
-                : rtrim(env('APP_URL', 'https://api.pyonea.com'), '/') . '/storage/' . ltrim(str_replace('public/', '', $rawPath), '/');
+            return $this->resolveImageUrl($rawPath);
         })->filter()->values()->toArray();
 
         return [
