@@ -546,6 +546,10 @@ class AuthController extends Controller
                     'business_type'       => $defaultBt->slug,
                     'contact_email'       => $user->email,
                     'contact_phone'       => $user->phone,
+                    // address/city/state are collected in onboarding step 3; leave null for now
+                    'address'             => null,
+                    'city'                => null,
+                    'state'               => null,
                     'country'             => 'Myanmar',
                     'status'              => SellerProfile::STATUS_SETUP_PENDING,
                     'onboarding_status'   => 'pending',
