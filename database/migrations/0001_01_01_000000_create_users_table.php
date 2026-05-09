@@ -15,7 +15,7 @@ return new class extends Migration {
             $table->unsignedBigInteger('referred_by')->nullable();
             $table->foreign('referred_by')->references('id')->on('users')->onDelete('set null');
             $table->string('email')->unique()->nullable();
-            $table->string('phone')->unique();
+            $table->string('phone')->unique()->nullable();
             $table->date('date_of_birth')->nullable();
             $table->string('password');
             $table->enum('type', ['buyer', 'seller','courier', 'admin', 'pending'])->default('buyer');
