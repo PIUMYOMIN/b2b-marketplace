@@ -44,9 +44,9 @@ return new class extends Migration {
             $table->string('social_youtube')->nullable();
 
             // Address
-            $table->string('address');
-            $table->string('city');
-            $table->string('state');
+            $table->string('address')->nullable();
+            $table->string('city')->nullable();
+            $table->string('state')->nullable();
             $table->string('country');
             $table->string('postal_code')->nullable();
             $table->string('location')->nullable();
