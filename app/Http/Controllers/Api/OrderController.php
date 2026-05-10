@@ -315,7 +315,7 @@ class OrderController extends Controller
             ->first();
         $estimatedShipping = $matchedZone ? $matchedZone->getShippingFeeForOrder($subtotal) : 5000;
 
-        $total = $subtotal + $estimatedShipping + ($subtotal * 0.05); // shipping + 5% tax
+        $total = $subtotal + $estimatedShipping + ($subtotal * 0.00); // shipping + 5% tax
         $formattedTotal = number_format($total, 0) . ' MMK';
 
         // Generate a 6-digit OTP
