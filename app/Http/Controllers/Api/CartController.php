@@ -127,10 +127,12 @@ class CartController extends Controller
                         'category'             => $categoryName,
                         'stock'                => $stock,          // null = unlimited
                         'min_order'            => $moq,
+                        'quantity_step'        => $productGone ? 1 : ($variant?->effectiveStep() ?? $product->effectiveStep()),
                         'selected_options'     => $item->selected_options,
                         'is_available'         => $isAvailable,
                         'is_quantity_valid'    => $isAvailable
-                            && ($stock === null || $item->quantity <= $stock),
+                            && ($stock === null || $item->quantity <= $stock)
+                            && $item->isQuantityValid(),
                         'subtotal'             => $subtotal,
                         'seller_id'            => $product?->seller?->sellerProfile?->user_id,
                         'seller_name'          => $product?->seller?->sellerProfile?->store_name,
@@ -240,6 +242,19 @@ class CartController extends Controller
                 ], 400);
             }
 
+            // Step validation — quantity must follow: moq, moq+step, moq+2*step, …
+            $effectiveStep = $variant ? $variant->effectiveStep() : $product->effectiveStep();
+            if ($effectiveStep > 1) {
+                $remainder = fmod($request->quantity - $effectiveMoq, $effectiveStep);
+                if (abs($remainder) > 0.0001) {
+                    $nextValid = $effectiveMoq + (ceil(($request->quantity - $effectiveMoq) / $effectiveStep) * $effectiveStep);
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Quantity must be in steps of {$effectiveStep}. Next valid quantity: {$nextValid}.",
+                    ], 422);
+                }
+            }
+
             $cartPrice = $variant ? (float) $variant->price : (float) $product->price;
             $unitLabel  = $variant ? $variant->effectiveUnit() : $product->effectiveUnit();
 
@@ -329,7 +344,7 @@ class CartController extends Controller
             }
 
             $request->validate([
-                'quantity' => 'required|integer|min:1'
+                'quantity' => 'required|numeric|min:0.001'
             ]);
 
             $product = $cartItem->product;
@@ -369,6 +384,19 @@ class CartController extends Controller
                     'success' => false,
                     'message' => 'Minimum order quantity is ' . $effectiveMoq
                 ], 400);
+            }
+
+            // Step validation
+            $effectiveStep = $variant ? $variant->effectiveStep() : $product->effectiveStep();
+            if ($effectiveStep > 1) {
+                $remainder = fmod($request->quantity - $effectiveMoq, $effectiveStep);
+                if (abs($remainder) > 0.0001) {
+                    $nextValid = $effectiveMoq + (ceil(($request->quantity - $effectiveMoq) / $effectiveStep) * $effectiveStep);
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Quantity must be in steps of {$effectiveStep}. Next valid quantity: {$nextValid}.",
+                    ], 422);
+                }
             }
 
             $livePrice = $variant ? (float) $variant->price : (float) $product->price;

@@ -57,6 +57,36 @@ class Cart extends Model
     }
 
     /**
+     * The effective quantity step for this cart item.
+     * e.g. 5 means the buyer must order in multiples of 5 above the MOQ.
+     */
+    public function effectiveStep(): int
+    {
+        return $this->variant?->effectiveStep() ?? $this->product?->effectiveStep() ?? 1;
+    }
+
+    /**
+     * Whether the current quantity satisfies both MOQ and step rules.
+     */
+    public function isQuantityValid(): bool
+    {
+        $moq  = $this->effectiveMoq();
+        $step = $this->effectiveStep();
+        $qty  = (float) $this->quantity;
+
+        if ($qty < $moq) {
+            return false;
+        }
+
+        if ($step > 1) {
+            $remainder = fmod($qty - $moq, $step);
+            return abs($remainder) < 0.0001;
+        }
+
+        return true;
+    }
+
+    /**
      * Subtotal for this cart item.
      */
     public function subtotal(): float

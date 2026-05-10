@@ -6,6 +6,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 use App\Http\Resources\ReviewResource;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Full product detail resource — used on the product detail page.
@@ -13,6 +14,28 @@ use App\Http\Resources\ReviewResource;
  */
 class ProductResource extends JsonResource
 {
+    /**
+     * Normalise an images array so every URL is absolute.
+     * ProductListResource does the same for its primary-image helper.
+     * Keeping this in ProductResource avoids raw relative paths reaching
+     * the frontend on the detail page.
+     */
+    private function normalizeImages(): array
+    {
+        $images = $this->images ?? [];
+        if (is_string($images)) {
+            try { $images = json_decode($images, true) ?? []; } catch (\Throwable) { $images = []; }
+        }
+
+        return array_map(function ($img) {
+            $url = $img['url'] ?? $img['path'] ?? '';
+            if ($url && !str_starts_with($url, 'http')) {
+                $url = Storage::disk('public')->url(ltrim($url, '/'));
+            }
+            return array_merge($img, ['url' => $url]);
+        }, $images);
+    }
+
     public function toArray($request): array
     {
         return [
@@ -55,11 +78,30 @@ class ProductResource extends JsonResource
             'effective_discount_pct'   => $this->getEffectiveDiscountPercentage(), // % for badge
 
             // ── B2B ───────────────────────────────────────────────────────────
-            'moq'              => $this->moq,
-            'quantity_unit'    => $this->quantity_unit,
-            'min_order_unit'   => $this->min_order_unit,
-            'lead_time'        => $this->lead_time,
+            'moq'               => $this->moq,
+            'quantity_step'     => $this->quantity_step ?? 1,
+            'quantity_unit'     => $this->quantity_unit,
+            'min_order_unit'    => $this->min_order_unit,
+            'lead_time'         => $this->lead_time,
             'packaging_details' => $this->packaging_details,
+
+            // Wholesale pricing tiers — sorted ascending by min_qty.
+            // Frontend uses this to render the tiered pricing table on ProductDetail.
+            // Empty array = no wholesale tiers (retail-only product).
+            'wholesale_tiers'   => $this->whenLoaded(
+                'wholesaleTiers',
+                fn() => $this->wholesaleTiers
+                    ->where('is_active', true)
+                    ->sortBy('min_qty')
+                    ->values()
+                    ->map(fn($t) => [
+                        'min_qty'        => $t->min_qty,
+                        'price_per_unit' => (float) $t->price_per_unit,
+                        'discount_pct'   => (float) $t->discount_pct,
+                        'label'          => $t->label,
+                    ]),
+                []  // default: empty array when not loaded (lightweight list views)
+            ),
 
             // ── Stock ─────────────────────────────────────────────────────────
             'in_stock'         => $this->isInStock(),

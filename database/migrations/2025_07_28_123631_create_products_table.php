@@ -120,6 +120,9 @@ return new class extends Migration {
             // ---------------------------------------------------------------
             $table->string('quantity_unit')->default('piece');
             $table->integer('moq')->default(1);
+            $table->unsignedSmallInteger('quantity_step')
+                ->default(1)
+                ->comment('Buyers must order in multiples of this. 1 = no restriction.');
             $table->string('min_order_unit')->default('piece');
             $table->string('lead_time')->nullable();
             $table->text('packaging_details')->nullable();

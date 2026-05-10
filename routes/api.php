@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\RfqController;
 use App\Http\Controllers\Api\SellerExportController;
 use App\Http\Controllers\Api\ProductOptionController;
 use App\Http\Controllers\Api\ProductVariantController;
+use App\Http\Controllers\Api\WholesaleTierController;
 use App\Http\Controllers\Api\PaymentSettingController;
 use Laravel\Socialite\Facades\Socialite;
 
@@ -427,6 +428,15 @@ Route::group([
                 Route::put('/{product}/variants/{variant}', [ProductVariantController::class, 'update']);   // Edit price/qty/sku/moq
                 Route::delete('/{product}/variants/{variant}', [ProductVariantController::class, 'destroy']); // Soft-delete a variant
                 Route::patch('/{product}/variants/{variant}/toggle', [ProductVariantController::class, 'toggle']);  // Toggle is_active
+
+                // ── Wholesale Tiers ────────────────────────────────────────────────────
+                // POST  /sync  must be registered BEFORE /{tier} to avoid Laravel
+                // treating "sync" as a tier ID on the destroy route.
+                Route::get('/{product}/wholesale-tiers',            [WholesaleTierController::class, 'index']);
+                Route::post('/{product}/wholesale-tiers/sync',      [WholesaleTierController::class, 'sync']);
+                Route::post('/{product}/wholesale-tiers',           [WholesaleTierController::class, 'store']);
+                Route::put('/{product}/wholesale-tiers/{tier}',     [WholesaleTierController::class, 'update']);
+                Route::delete('/{product}/wholesale-tiers/{tier}',  [WholesaleTierController::class, 'destroy']);
 
                 // Image Management
                 Route::post('/upload-image', [ProductController::class, 'uploadImage']);

@@ -64,6 +64,7 @@ class Product extends Model
         'hs_code',
         'quantity_unit',
         'moq',
+        'quantity_step',
         'min_order_unit',
         'lead_time',
         'packaging_details',
@@ -96,6 +97,8 @@ class Product extends Model
         'discount_end'        => 'date',
         'listed_at'           => 'datetime',
         'approved_at'         => 'datetime',
+        'moq'                 => 'integer',
+        'quantity_step'       => 'integer',
     ];
 
     // -------------------------------------------------------------------------
@@ -193,6 +196,82 @@ class Product extends Model
     public function effectiveUnit(): string
     {
         return $this->quantity_unit ?? 'piece';
+    }
+
+    /**
+     * The effective quantity step for this product.
+     * Defaults to 1 (no step restriction) when not set.
+     */
+    public function effectiveMoq(): int
+    {
+        return $this->moq ?? 1;
+    }
+
+    /**
+     * The effective quantity step.
+     * e.g. step=5 means buyers must order 5, 10, 15, 20 …
+     */
+    public function effectiveStep(): int
+    {
+        return $this->quantity_step ?? 1;
+    }
+
+    /**
+     * Validate that a given quantity satisfies MOQ and step rules.
+     * Returns null on pass, or an error message string on failure.
+     */
+    public function validateMoqStep(int|float $quantity): ?string
+    {
+        $moq  = $this->effectiveMoq();
+        $step = $this->effectiveStep();
+        $unit = $this->effectiveUnit();
+
+        if ($quantity < $moq) {
+            return "Minimum order quantity for \"{$this->name_en}\" is {$moq} {$unit}(s).";
+        }
+
+        if ($step > 1) {
+            $remainder = fmod($quantity - $moq, $step);
+            if (abs($remainder) > 0.0001) {
+                $nextValid = $moq + (ceil(($quantity - $moq) / $step) * $step);
+                return "Quantity for \"{$this->name_en}\" must be in steps of {$step}. "
+                    . "Next valid quantity: {$nextValid}.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Wholesale pricing tiers for this product (not scoped to a variant).
+     */
+    public function wholesaleTiers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductWholesaleTier::class)
+            ->whereNull('variant_id');
+    }
+
+    /**
+     * Resolve the best per-unit price for a given quantity, applying
+     * wholesale tiers when the quantity meets a threshold.
+     *
+     * @param  float $quantity
+     * @return array{price: float, tier: ProductWholesaleTier|null}
+     */
+    public function resolveWholesalePrice(float $quantity): array
+    {
+        $basePrice = (float) $this->price;
+        $tiers     = $this->wholesaleTiers()->where('is_active', true)->orderBy('min_qty')->get();
+
+        if ($tiers->isEmpty()) {
+            return ['price' => $basePrice, 'tier' => null];
+        }
+
+        $matched = $tiers->sortByDesc('min_qty')->first(fn($t) => $quantity >= $t->min_qty);
+
+        return $matched
+            ? ['price' => (float) $matched->price_per_unit, 'tier' => $matched]
+            : ['price' => $basePrice, 'tier' => null];
     }
 
     // -------------------------------------------------------------------------

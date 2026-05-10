@@ -71,6 +71,10 @@ return new class extends Migration {
             $table->integer('moq')->nullable()
                 ->comment('Variant-level MOQ override. Falls back to products.moq when null.');
 
+            $table->unsignedSmallInteger('quantity_step')
+                ->nullable()
+                ->comment('Variant-level step override. Falls back to products.quantity_step when null.');
+
             // ---------------------------------------------------------------
             // VARIANT IMAGE
             // When set, shown when the buyer selects this variant

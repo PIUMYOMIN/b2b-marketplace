@@ -226,6 +226,9 @@ class ProductController extends Controller
                 'category',
                 'options.values',
                 'activeVariants.optionValues.option',
+                // Wholesale tiers — product-level (variant_id IS NULL) and active only.
+                // Returned via ProductResource::wholesale_tiers using whenLoaded().
+                'wholesaleTiers' => fn($q) => $q->where('is_active', true)->orderBy('min_qty'),
                 // Include approved reviews for product detail UI
                 'reviews' => fn ($q) => $q->where('status', 'approved')
                     ->with('buyer')

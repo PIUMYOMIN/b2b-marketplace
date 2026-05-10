@@ -283,8 +283,17 @@ class OrderController extends Controller
                 if (!$variant || ($product->product_type === 'physical' && $variant->quantity < $item['quantity'])) {
                     return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name_en}\"."], 422);
                 }
+                // MOQ + step validation (variant-level)
+                if ($error = $variant->validateMoqStep($item['quantity'])) {
+                    return response()->json(['success' => false, 'message' => $error], 422);
+                }
             } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
                 return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name_en}\"."], 422);
+            } else {
+                // MOQ + step validation (product-level, no variant)
+                if ($error = $product->validateMoqStep($item['quantity'])) {
+                    return response()->json(['success' => false, 'message' => $error], 422);
+                }
             }
         }
 
@@ -521,15 +530,34 @@ class OrderController extends Controller
                     if ($product->product_type === 'physical' && $variant->quantity < $item['quantity']) {
                         throw new \Exception("Insufficient stock for: " . $product->name_en);
                     }
+                    // MOQ + step validation (variant-level)
+                    if ($error = $variant->validateMoqStep($item['quantity'])) {
+                        throw new \Exception($error);
+                    }
                 } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
                     throw new \Exception("Insufficient stock for: " . $product->name_en);
+                } else {
+                    // MOQ + step validation (product-level, no variant)
+                    if ($error = $product->validateMoqStep($item['quantity'])) {
+                        throw new \Exception($error);
+                    }
                 }
 
-                // Use the discounted price when an active sale applies (no variant discount — product-level only)
+                // Resolve effective price: wholesale tier > sale price > base price.
+                // Wholesale tiers only apply to non-sale products to avoid stacking.
                 $baseItemPrice = $variant ? (float) $variant->price : (float) $product->price;
-                $itemPrice = (!$variant && $product->isCurrentlyOnSale())
-                    ? (float) $product->discount_price
-                    : $baseItemPrice;
+                $isOnSale      = !$variant && $product->isCurrentlyOnSale();
+
+                if ($isOnSale) {
+                    // Active sale — honour discount, skip wholesale tiers.
+                    $itemPrice = (float) $product->discount_price;
+                } else {
+                    // Check wholesale tiers for volume discount.
+                    $resolved  = $variant
+                        ? $variant->resolveWholesalePrice((float) $item['quantity'])
+                        : $product->resolveWholesalePrice((float) $item['quantity']);
+                    $itemPrice = $resolved['price'];
+                }
                 $sellerId = $product->seller_id;
                 $itemTotal = $itemPrice * $item['quantity'];
                 $subtotal += $itemTotal;

@@ -19,18 +19,20 @@ class ProductVariant extends Model
         'quantity',
         'quantity_unit',
         'moq',
+        'quantity_step',
         'image',
         'position',
         'is_active',
     ];
 
     protected $casts = [
-        'product_id' => 'integer',
-        'price'     => 'decimal:2',
-        'quantity'  => 'decimal:3',
-        'moq'       => 'integer',
-        'position'  => 'integer',
-        'is_active' => 'boolean',
+        'product_id'    => 'integer',
+        'price'         => 'decimal:2',
+        'quantity'      => 'decimal:3',
+        'moq'           => 'integer',
+        'quantity_step' => 'integer',
+        'position'      => 'integer',
+        'is_active'     => 'boolean',
     ];
 
     // -------------------------------------------------------------------------
@@ -72,6 +74,83 @@ class ProductVariant extends Model
     public function effectiveMoq(): int
     {
         return $this->moq ?? $this->product->moq ?? 1;
+    }
+
+    /**
+     * Effective quantity step: variant.quantity_step → product.quantity_step → 1.
+     */
+    public function effectiveStep(): int
+    {
+        return $this->quantity_step ?? $this->product->quantity_step ?? 1;
+    }
+
+    /**
+     * Validate that a given quantity satisfies MOQ and step rules for this variant.
+     * Returns null on pass, or an error message string on failure.
+     */
+    public function validateMoqStep(int|float $quantity): ?string
+    {
+        $moq   = $this->effectiveMoq();
+        $step  = $this->effectiveStep();
+        $unit  = $this->effectiveUnit();
+        $label = $this->product->name_en ?? 'this product';
+
+        if ($quantity < $moq) {
+            return "Minimum order quantity for \"{$label}\" is {$moq} {$unit}(s).";
+        }
+
+        if ($step > 1) {
+            $remainder = fmod($quantity - $moq, $step);
+            if (abs($remainder) > 0.0001) {
+                $nextValid = $moq + (ceil(($quantity - $moq) / $step) * $step);
+                return "Quantity for \"{$label}\" must be in steps of {$step}. "
+                    . "Next valid quantity: {$nextValid}.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Wholesale tiers for this specific variant.
+     * Note: resolveWholesalePrice() queries across both variant-scoped and
+     * product-level tiers. This relationship is variant-scoped only.
+     */
+    public function wholesaleTiers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ProductWholesaleTier::class, 'variant_id');
+    }
+
+    /**
+     * Resolve the best per-unit price for a given quantity.
+     * Variant-scoped tiers take precedence over product-level tiers.
+     *
+     * @param  float $quantity
+     * @return array{price: float, tier: ProductWholesaleTier|null}
+     */
+    public function resolveWholesalePrice(float $quantity): array
+    {
+        $basePrice = (float) $this->price;
+
+        // 1. Variant-scoped tiers
+        $tiers = ProductWholesaleTier::where('product_id', $this->product_id)
+            ->where(function ($q) {
+                $q->where('variant_id', $this->id)->orWhereNull('variant_id');
+            })
+            ->where('is_active', true)
+            ->orderBy('min_qty')
+            ->get();
+
+        if ($tiers->isEmpty()) {
+            return ['price' => $basePrice, 'tier' => null];
+        }
+
+        $matched = $tiers->sortByDesc('min_qty')->first(fn($t) => $quantity >= $t->min_qty);
+
+        return $matched
+            ? ['price' => (float) $matched->price_per_unit, 'tier' => $matched]
+            : ['price' => $basePrice, 'tier' => null];
+
     }
 
     /**
