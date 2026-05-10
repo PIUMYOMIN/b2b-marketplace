@@ -154,10 +154,10 @@ class CartController extends Controller
                     'total_items' => $totalItems,
                     'summary' => [
                         'subtotal'     => $subtotal,
-                        'shipping_fee' => 5000,       // estimated; finalised at checkout by delivery zone
-                        'tax_rate'     => 0.05,
-                        'tax'          => round($subtotal * 0.05, 2),
-                        'total'        => round($subtotal + 5000 + ($subtotal * 0.05), 2),
+                        'shipping_fee' => 8000,       // estimated; finalised at checkout by delivery zone
+                        'tax_rate'     => 0.00,     // tax is currently 0% --- IGNORE --- set to 5% in OrderController when enabled
+                        'tax'          => round($subtotal * 0.00, 2),
+                        'total'        => round($subtotal + 8000 + ($subtotal * 0.00), 2),
                     ]
                 ]
             ]);
