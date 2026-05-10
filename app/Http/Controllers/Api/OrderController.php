@@ -600,7 +600,7 @@ class OrderController extends Controller
                 $sellerShippingFee = $matchedZone
                     ? $matchedZone->getShippingFeeForOrder($sellerSubtotal)
                     : 5000;
-                $sellerTax = $sellerSubtotal * 0.05;
+                $sellerTax = $sellerSubtotal * 0.00;
 
                 // Distribute coupon discount proportionally across seller orders.
                 // e.g. if this seller's products are 60% of the cart, they absorb 60% of the discount.
@@ -617,7 +617,7 @@ class OrderController extends Controller
                 // account_level (tier) → business_type → category → default (5%)
                 $resolved = app(CommissionRateResolver::class)->resolveForSeller($sellerId, $sellerItems);
                 $commissionRate = $resolved['rate'];
-                $taxRate = 0.05;
+                $taxRate = 0.00;
                 $commissionAmount = round($sellerSubtotal * $commissionRate, 2);
                 $platformRevenue = $commissionAmount + $sellerTax;
                 $sellerPayout = $sellerSubtotal - $commissionAmount;
@@ -1250,8 +1250,8 @@ class OrderController extends Controller
                 ->with('product:id,seller_id,category_id,price')
                 ->get();
 
-            $DEFAULT_SHIPPING = 5000;
-            $TAX_RATE         = 0.05;
+            $DEFAULT_SHIPPING = 8000;
+            $TAX_RATE         = 0.00;
 
             $sellerBreakdown = [];
             $totalShipping   = 0;
@@ -1318,16 +1318,16 @@ class OrderController extends Controller
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'shipping_fee'      => 5000,
+                    'shipping_fee'      => 8000,
                     'seller_shipping'   => [],
-                    'default_shipping'  => 5000,
+                    'default_shipping'  => 8000,
                     'platform_fee_rate' => 0.05,
                     'platform_fee_pct'  => 5.0,
-                    'tax_rate'          => 0.05,
-                    'tax_pct'           => 5.0,
-                    'shipping_fee'     => 5000,
+                    'tax_rate'          => 0.00,
+                    'tax_pct'           => 0.0,
+                    'shipping_fee'     => 8000,
                     'seller_shipping'  => [],
-                    'default_shipping' => 5000,
+                    'default_shipping' => 8000,
                 ],
             ]);
         }
