@@ -127,7 +127,6 @@ class CartController extends Controller
                         'category'             => $categoryName,
                         'stock'                => $stock,          // null = unlimited
                         'min_order'            => $moq,
-                        'quantity_step'        => $productGone ? 1 : ($variant?->effectiveStep() ?? $product->effectiveStep()),
                         'selected_options'     => $item->selected_options,
                         'is_available'         => $isAvailable,
                         'is_quantity_valid'    => $isAvailable

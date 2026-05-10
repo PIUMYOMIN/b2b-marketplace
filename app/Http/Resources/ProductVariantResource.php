@@ -15,6 +15,7 @@ class ProductVariantResource extends JsonResource
             'quantity'      => $this->quantity,
             'quantity_unit' => $this->effectiveUnit(),
             'moq'           => $this->effectiveMoq(),
+            'quantity_step' => $this->effectiveMoq(),   // step always equals MOQ
             'image'         => $this->image,
             'label'         => $this->label(),   // e.g. "Red / M"
             'position'      => $this->position,

@@ -57,12 +57,11 @@ class Cart extends Model
     }
 
     /**
-     * The effective quantity step for this cart item.
-     * e.g. 5 means the buyer must order in multiples of 5 above the MOQ.
+     * The effective quantity step for this cart item — always equals the MOQ.
      */
     public function effectiveStep(): int
     {
-        return $this->variant?->effectiveStep() ?? $this->product?->effectiveStep() ?? 1;
+        return $this->effectiveMoq();
     }
 
     /**
