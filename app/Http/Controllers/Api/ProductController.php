@@ -130,7 +130,7 @@ class ProductController extends Controller
             });
         }
 
-        $products = $query->latest()->paginate($perPage);
+        $products = $query->latest()->get()->paginate($perPage);
 
         $formatted = $products->getCollection()->map(fn ($product) => $this->formatAdminProduct($product));
 
