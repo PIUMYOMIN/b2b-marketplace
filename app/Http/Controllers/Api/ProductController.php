@@ -113,7 +113,8 @@ class ProductController extends Controller
         $perPage = $request->input('per_page', 15);
         $query = Product::with(['category', 'seller'])
                         ->withSum('activeVariants', 'quantity')
-                        ->latest();
+                        ->latest()
+                        ->get();
 
         // Apply filters
         if ($request->has('status')) {
