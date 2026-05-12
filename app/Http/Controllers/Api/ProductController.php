@@ -112,9 +112,7 @@ class ProductController extends Controller
 
         $perPage = $request->input('per_page', 15);
         $query = Product::with(['category', 'seller'])
-                        ->withSum('activeVariants', 'quantity')
-                        ->latest()
-                        ->get();
+                        ->withSum('activeVariants', 'quantity');
 
         // Apply filters
         if ($request->has('status')) {
@@ -130,7 +128,7 @@ class ProductController extends Controller
             });
         }
 
-        $products = $query->latest()->get()->paginate($perPage);
+        $products = $query->latest()->paginate($perPage);
 
         $formatted = $products->getCollection()->map(fn ($product) => $this->formatAdminProduct($product));
 
