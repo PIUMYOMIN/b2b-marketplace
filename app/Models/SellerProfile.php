@@ -84,6 +84,7 @@ class SellerProfile extends Model
         'social_youtube',
         'address',
         'city',
+        'township',
         'state',
         'country',
         'postal_code',

@@ -1548,6 +1548,7 @@ class SellerController extends Controller
             if (
                 !empty($sellerProfile->address) &&
                 !empty($sellerProfile->city) &&
+                !empty($sellerProfile->township) &&
                 !empty($sellerProfile->state) &&
                 !empty($sellerProfile->country)
             ) {
@@ -1615,7 +1616,7 @@ class SellerController extends Controller
             return 'business-details';
         }
 
-        if (empty($sellerProfile->address) || empty($sellerProfile->city)) {
+        if (empty($sellerProfile->address) || empty($sellerProfile->city) || empty($sellerProfile->township)) {
             return 'address';
         }
 
@@ -2058,6 +2059,7 @@ class SellerController extends Controller
             $validator = Validator::make($request->all(), [
                 'address' => 'required|string|max:500',
                 'city' => 'required|string|max:100',
+                'township' => 'required|string|max:150',
                 'state' => 'required|string|max:100',
                 'country' => 'required|string|max:100|in:' . implode(',', $countries),
                 'postal_code' => 'nullable|string|max:20',
@@ -2086,6 +2088,7 @@ class SellerController extends Controller
             $updateData = [
                 'address' => $validated['address'],
                 'city' => $validated['city'],
+                'township' => $validated['township'] ?? null,
                 'state' => $validated['state'],
                 'country' => $validated['country'],
                 'postal_code' => $validated['postal_code'] ?? null,
@@ -3156,6 +3159,7 @@ class SellerController extends Controller
                 'address' => [
                     'address' => $sellerProfile->address,
                     'city' => $sellerProfile->city,
+                    'township' => $sellerProfile->township,
                     'state' => $sellerProfile->state,
                     'country' => $sellerProfile->country,
                     'postal_code' => $sellerProfile->postal_code,
@@ -3226,7 +3230,7 @@ class SellerController extends Controller
                 }
             ],
             'address' => [
-                'fields' => ['address', 'city', 'state', 'country'],
+                'fields' => ['address', 'city', 'township', 'state', 'country'],
                 'weight' => 20
             ],
             'documents' => [
@@ -3343,6 +3347,7 @@ class SellerController extends Controller
             $hasAllDocuments &&
             !empty($sellerProfile->address) &&
             !empty($sellerProfile->city) &&
+            !empty($sellerProfile->township) &&
             !empty($sellerProfile->state) &&
             !empty($sellerProfile->country)
         ) {
@@ -3353,6 +3358,7 @@ class SellerController extends Controller
         if (
             !empty($sellerProfile->address) &&
             !empty($sellerProfile->city) &&
+            !empty($sellerProfile->township) &&
             !empty($sellerProfile->state) &&
             !empty($sellerProfile->country)
         ) {
@@ -3427,6 +3433,7 @@ class SellerController extends Controller
             // 3. Address validation
             if (
                 empty($sellerProfile->address) || empty($sellerProfile->city) ||
+                empty($sellerProfile->township) ||
                 empty($sellerProfile->state) || empty($sellerProfile->country)
             ) {
                 $errors[] = 'Address information incomplete';

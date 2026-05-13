@@ -46,6 +46,7 @@ return new class extends Migration {
             // Address
             $table->string('address')->nullable();
             $table->string('city')->nullable();
+            $table->string('township',150)->nullable();
             $table->string('state')->nullable();
             $table->string('country');
             $table->string('postal_code')->nullable();

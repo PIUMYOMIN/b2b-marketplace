@@ -1242,9 +1242,10 @@ class OrderController extends Controller
     {
         try {
             $user    = $request->user();
-            $country = $request->input('country', 'Myanmar');
-            $state   = $request->input('state');
-            $city    = $request->input('city');
+            $country   = $request->input('country', 'Myanmar');
+            $state     = $request->input('state');
+            $city      = $request->input('city');
+            $township  = $request->input('township');
 
             $cartItems = Cart::where('user_id', $user->id)
                 ->with('product:id,seller_id,category_id,price')
@@ -1265,7 +1266,7 @@ class OrderController extends Controller
 
                     $profile     = SellerProfile::where('user_id', $sellerId)->first();
                     $matchedZone = $profile?->activeDeliveryAreas()
-                        ->byLocation($country, $state, $city)
+                        ->byLocation($country, $state, $city, $township)
                         ->orderByDesc('sort_order')
                         ->first();
 

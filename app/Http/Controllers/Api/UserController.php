@@ -257,6 +257,7 @@ class UserController extends Controller
             'phone' => 'sometimes|string|unique:users,phone,' . $user->id,
             'address' => 'nullable|string',
             'city' => 'nullable|string',
+            'township' => 'nullable|string|max:120',
             'state' => 'nullable|string',
             'country' => 'nullable|string|max:100',
             'postal_code' => 'nullable|string|max:20',

@@ -21,6 +21,7 @@ return new class extends Migration {
             $table->enum('type', ['buyer', 'seller','courier', 'admin', 'pending'])->default('buyer');
             $table->text('address')->nullable();
             $table->string('city')->nullable();
+            $table->string('township',150)->nullable();
             $table->string('state')->nullable();
             $table->string('country')->nullable();
             $table->string('postal_code')->nullable();

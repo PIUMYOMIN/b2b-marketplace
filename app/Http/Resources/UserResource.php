@@ -20,6 +20,7 @@ class UserResource extends JsonResource
             // Profile fields — all exist in the users table
             'address' => $this->address,
             'city' => $this->city,
+            'township' => $this->township,
             'state' => $this->state,
             'country' => $this->country,
             'postal_code' => $this->postal_code,
