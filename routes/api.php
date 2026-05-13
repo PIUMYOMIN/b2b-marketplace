@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
+use App\Http\Controllers\Api\LocalDealController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\ReferralController;
 use App\Http\Controllers\Api\ReportController;
@@ -94,6 +95,9 @@ Route::group([
 
     // Announcements (public — visible to all visitors)
     Route::get('/announcements', [AnnouncementController::class, 'index']);
+
+    // Active seller coupons for the storefront Local Deals page (public)
+    Route::get('/local-deals', [LocalDealController::class, 'index']);
 
     // Checkout locations — aggregated states/cities from seller delivery zones (unauthenticated)
     Route::get('/checkout-locations', [DeliveryAreaController::class, 'getCheckoutLocations']);
