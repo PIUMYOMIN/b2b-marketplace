@@ -537,6 +537,7 @@ class ProductController extends Controller
                 ->with(['category', 'seller.sellerProfile'])
                 ->withCount(['reviews as reviews_count'])
                 ->withAvg(['reviews as average_rating'], 'rating')
+                ->withSum('activeVariants', 'quantity')
                 ->latest()
                 ->paginate($perPage);
 
@@ -564,6 +565,10 @@ class ProductController extends Controller
                     'discount_start'       => $product->discount_start,
                     'discount_end'         => $product->discount_end,
                     'compare_at_price'     => $product->compare_at_price ? (float) $product->compare_at_price : null,
+                    // Stock — sum of all active variant quantities (null for non-physical)
+                    'total_stock'      => $product->product_type === 'physical'
+                        ? (int) ($product->active_variants_sum_quantity ?? 0)
+                        : null,
                     // Timestamps
                     'created_at'       => $product->created_at?->toISOString(),
                     'updated_at'       => $product->updated_at?->toISOString(),
@@ -849,8 +854,6 @@ class ProductController extends Controller
             'id' => $product->id,
             'name_en' => $product->name_en,
             'name_mm' => $product->name_mm,
-            'description_en' => $product->description_en,
-            'description_mm' => $product->description_mm,
             'sku' => $product->sku,
             'moq' => $product->moq,
             'min_order' => $product->moq,
@@ -878,6 +881,8 @@ class ProductController extends Controller
                 'id' => $product->seller->id,
                 'name' => $product->seller->name,
             ] : null,
+            'description_en' => $product->description_en,
+            'description_mm' => $product->description_mm,
             'images'     => $this->formatImages($product->images),
             'created_at' => $product->created_at?->toISOString(),
             'updated_at' => $product->updated_at?->toISOString(),
