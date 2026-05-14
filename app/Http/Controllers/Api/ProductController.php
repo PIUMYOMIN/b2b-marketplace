@@ -876,8 +876,30 @@ class ProductController extends Controller
                 'id' => $product->seller->id,
                 'name' => $product->seller->name,
             ] : null,
-            'images' => $this->formatImages($product->images),
+            'images'     => $this->formatImages($product->images),
+            'created_at' => $product->created_at?->toISOString(),
+            'updated_at' => $product->updated_at?->toISOString(),
         ];
+    }
+
+    /**
+     * Show a single product for admin review/preview (bypasses approved() scope)
+     */
+    public function adminShow(int $id): JsonResponse
+    {
+        if (!Auth::user()?->hasRole('admin')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $product = Product::withoutGlobalScopes()
+            ->with(['category', 'seller', 'options.values', 'activeVariants.optionValues.option'])
+            ->withSum('activeVariants', 'quantity')
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $this->formatAdminProduct($product),
+        ]);
     }
 
     protected function formatImages($images)
