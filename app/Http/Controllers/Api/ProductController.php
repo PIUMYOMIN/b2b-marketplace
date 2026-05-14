@@ -849,6 +849,8 @@ class ProductController extends Controller
             'id' => $product->id,
             'name_en' => $product->name_en,
             'name_mm' => $product->name_mm,
+            'description_en' => $product->description_en,
+            'description_mm' => $product->description_mm,
             'sku' => $product->sku,
             'moq' => $product->moq,
             'min_order' => $product->moq,
