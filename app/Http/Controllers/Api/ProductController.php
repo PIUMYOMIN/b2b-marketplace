@@ -49,10 +49,6 @@ class ProductController extends Controller
         }
  
         if ($request->boolean('in_stock')) {
-            // A product is "in stock" when either:
-            //   (a) it has at least one active variant with quantity > 0, OR
-            //   (b) it has no variants at all (simple / digital / service products
-            //       are always available — stock is not tracked at the product level).
             $query->where(function ($q) {
                 $q->whereHas('activeVariants', fn($vq) => $vq->where('quantity', '>', 0))
                   ->orWhereDoesntHave('variants');
