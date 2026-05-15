@@ -208,12 +208,13 @@ class Product extends Model
     }
 
     /**
-     * The effective quantity step is always equal to the MOQ.
-     * e.g. MOQ=5 → valid quantities: 5, 10, 15, 20 …
+     * The effective quantity step for this product.
+     * Defaults to 1 (no step restriction) when not set.
+     * e.g. MOQ=50, step=10 → valid quantities: 50, 60, 70 …
      */
     public function effectiveStep(): int
     {
-        return $this->effectiveMoq();
+        return $this->quantity_step ?? 1;
     }
 
     /**

@@ -78,12 +78,13 @@ class ProductVariant extends Model
 
     /**
     /**
-     * The effective quantity step is always equal to the effective MOQ.
-     * e.g. variant MOQ=10 → valid quantities: 10, 20, 30 …
+     * The effective quantity step for this variant.
+     * Falls back to the parent product's step, then to 1.
+     * e.g. variant step=5, MOQ=10 → valid quantities: 10, 15, 20 …
      */
     public function effectiveStep(): int
     {
-        return $this->effectiveMoq();
+        return $this->quantity_step ?? $this->product?->quantity_step ?? 1;
     }
 
     /**

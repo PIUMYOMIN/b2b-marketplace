@@ -57,11 +57,15 @@ class Cart extends Model
     }
 
     /**
-     * The effective quantity step for this cart item — always equals the MOQ.
+     * The effective quantity step for this cart item.
+     * Reads from the associated variant or product's quantity_step field.
      */
     public function effectiveStep(): int
     {
-        return $this->effectiveMoq();
+        if ($this->variant_id && $this->variant) {
+            return $this->variant->effectiveStep();
+        }
+        return $this->product?->effectiveStep() ?? 1;
     }
 
     /**

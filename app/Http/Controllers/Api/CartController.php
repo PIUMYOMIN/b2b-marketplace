@@ -33,6 +33,9 @@ class CartController extends Controller
                 },
                 'product.category',
                 'product.seller.sellerProfile',
+                'product.wholesaleTiers' => function ($query) {
+                    $query->where('is_active', true)->orderBy('min_qty');
+                },
                 'variant',
             ])
                 ->where('user_id', $user->id)
@@ -83,20 +86,68 @@ class CartController extends Controller
                         ? ($cachedData['image'] ?? null)
                         : $this->getProductImageUrl($product);
 
-                    // ── MOQ / unit ────────────────────────────────────────────
+                    // ── MOQ / step / unit ─────────────────────────────────────
                     $moq  = $item->effectiveMoq();
+                    $step = $item->effectiveStep();
                     $unit = $productGone
                         ? ($cachedData['unit'] ?? 'piece')
                         : ($variant ? $variant->effectiveUnit() : $product->effectiveUnit());
 
+                    // ── Wholesale tier pricing ────────────────────────────────
+                    // Tiers apply only to simple (non-variant) products.
+                    // If a tier matches the current quantity, it overrides the
+                    // base price and any active sale price.
+                    $tiers        = [];
+                    $appliedTier  = null;
+                    $tierPrice    = null;
+
+                    if (!$productGone && !$variant && $product->relationLoaded('wholesaleTiers')) {
+                        $activeTiers = $product->wholesaleTiers
+                            ->sortByDesc('min_qty')
+                            ->values();
+
+                        // Build tier list for frontend display
+                        $tiers = $product->wholesaleTiers
+                            ->sortBy('min_qty')
+                            ->values()
+                            ->map(fn($t) => [
+                                'min_qty'        => $t->min_qty,
+                                'price_per_unit' => (float) $t->price_per_unit,
+                                'discount_pct'   => (float) $t->discount_pct,
+                                'label'          => $t->label,
+                            ])
+                            ->all();
+
+                        // Find the highest tier the current quantity qualifies for
+                        $matchedTier = $activeTiers->first(fn($t) => $item->quantity >= $t->min_qty);
+                        if ($matchedTier) {
+                            $appliedTier = [
+                                'min_qty'        => $matchedTier->min_qty,
+                                'price_per_unit' => (float) $matchedTier->price_per_unit,
+                                'discount_pct'   => (float) $matchedTier->discount_pct,
+                                'label'          => $matchedTier->label,
+                            ];
+                            $tierPrice = (float) $matchedTier->price_per_unit;
+                        }
+                    }
+
                     // ── Discount / selling price ──────────────────────────────
-                    // Selling price = discounted price when an active sale applies.
-                    // We do NOT discount per-variant prices — discount is a product-level concept.
+                    // Wholesale tier price takes precedence over sale price.
+                    // If no tier applies, fall back to active sale discount.
                     $sellingPrice = $livePrice;
                     $isOnSale     = false;
                     $discountPct  = 0.0;
                     $discountSaved = 0.0;
-                    if (!$productGone && $product->is_on_sale) {
+
+                    if ($tierPrice !== null) {
+                        // Tier pricing active — show tier discount relative to base price
+                        $sellingPrice  = $tierPrice;
+                        $isOnSale      = true;
+                        $discountPct   = $livePrice > 0
+                            ? round((1 - $tierPrice / $livePrice) * 100, 2)
+                            : 0.0;
+                        $discountSaved = round($livePrice - $tierPrice, 2);
+                    } elseif (!$productGone && $product->is_on_sale) {
                         $today = now()->toDateString();
                         $inWindow = (!$product->discount_start || $product->discount_start <= $today)
                                  && (!$product->discount_end   || $product->discount_end   >= $today);
@@ -127,6 +178,9 @@ class CartController extends Controller
                         'category'             => $categoryName,
                         'stock'                => $stock,          // null = unlimited
                         'min_order'            => $moq,
+                        'quantity_step'        => $step,
+                        'wholesale_tiers'      => $tiers,
+                        'applied_tier'         => $appliedTier,
                         'selected_options'     => $item->selected_options,
                         'is_available'         => $isAvailable,
                         'is_quantity_valid'    => $isAvailable

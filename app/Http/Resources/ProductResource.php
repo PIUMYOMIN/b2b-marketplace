@@ -79,7 +79,7 @@ class ProductResource extends JsonResource
 
             // ── B2B ───────────────────────────────────────────────────────────
             'moq'               => $this->moq,
-            'quantity_step'     => $this->moq ?? 1,   // step always equals MOQ
+            'quantity_step'     => $this->quantity_step ?? 1,
             'quantity_unit'     => $this->quantity_unit,
             'min_order_unit'    => $this->min_order_unit,
             'lead_time'         => $this->lead_time,
