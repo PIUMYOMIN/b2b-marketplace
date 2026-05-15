@@ -28,7 +28,11 @@ class ProductController extends Controller
     public function indexPublic(Request $request): JsonResponse
     {
         $query = Product::approved()
-            ->with(['seller.sellerProfile', 'category'])
+            ->with([
+                'seller.sellerProfile',
+                'category',
+                'wholesaleTiers' => fn($q) => $q->where('is_active', true)->orderBy('min_qty'),
+            ])
             ->withCount('reviews');
  
         // ── Filters ──────────────────────────────────────────────────────────

@@ -38,6 +38,7 @@ class ProductListResource extends JsonResource
             'price'          => $this->price,          // base / "From" price
             'quantity_unit'  => $this->quantity_unit,
             'moq'            => $this->moq,
+            'quantity_step'  => $this->quantity_step ?? 1,
             'is_on_sale'     => $this->is_on_sale,
             'discount_price' => $this->discount_price,
             'sale_badge'     => $this->sale_badge,
@@ -56,6 +57,14 @@ class ProductListResource extends JsonResource
             'is_new'         => $this->is_new,
             'in_stock'       => $this->isInStock(),
             'has_variants'   => $this->hasVariants(),
+            'wholesale_tiers' => $this->whenLoaded('wholesaleTiers', fn() =>
+                $this->wholesaleTiers->map(fn($t) => [
+                    'min_qty'        => $t->min_qty,
+                    'price_per_unit' => (float) $t->price_per_unit,
+                    'discount_pct'   => (float) $t->discount_pct,
+                    'label'          => $t->label,
+                ])->values()
+            ),
             // Primary image only — with full storage URL
             'image'          => $this->formatPrimaryImage(),
             'seller'         => $this->whenLoaded('seller', fn() => [
