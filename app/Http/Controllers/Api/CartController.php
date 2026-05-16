@@ -142,11 +142,15 @@ class CartController extends Controller
 
                         // If a variant is set and no product-level tier matched,
                         // check for variant-scoped tiers as a fallback.
+                        // NOTE: $product->wholesaleTiers is already scoped to
+                        // whereNull('variant_id') by the model relationship, so we
+                        // cannot reuse that collection here — we must query directly.
                         if ($tierPrice === null && $variant) {
-                            $variantTiers = $product->wholesaleTiers
+                            $variantTiers = \App\Models\ProductWholesaleTier::where('product_id', $product->id)
                                 ->where('variant_id', $variant->id)
-                                ->sortByDesc('min_qty')
-                                ->values();
+                                ->where('is_active', true)
+                                ->orderByDesc('min_qty')
+                                ->get();
 
                             $matchedVariantTier = $variantTiers->first(fn($t) => $item->quantity >= $t->min_qty);
                             if ($matchedVariantTier) {

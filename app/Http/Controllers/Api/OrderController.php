@@ -544,19 +544,26 @@ class OrderController extends Controller
                 }
 
                 // Resolve effective price: wholesale tier > sale price > base price.
-                // Wholesale tiers only apply to non-sale products to avoid stacking.
+                // Tier pricing takes precedence — consistent with CartController and
+                // ProductDetail.jsx display logic so the buyer is never charged more
+                // than what they saw in the cart.
                 $baseItemPrice = $variant ? (float) $variant->price : (float) $product->price;
                 $isOnSale      = !$variant && $product->isCurrentlyOnSale();
 
-                if ($isOnSale) {
-                    // Active sale — honour discount, skip wholesale tiers.
+                // Always check wholesale tiers first.
+                $resolved  = $variant
+                    ? $variant->resolveWholesalePrice((float) $item['quantity'])
+                    : $product->resolveWholesalePrice((float) $item['quantity']);
+                $tierPrice = $resolved['price'] !== $baseItemPrice ? $resolved['price'] : null;
+
+                if ($tierPrice !== null) {
+                    // Volume tier matched — use tier price (overrides sale price).
+                    $itemPrice = $tierPrice;
+                } elseif ($isOnSale) {
+                    // No tier matched; apply active sale discount.
                     $itemPrice = (float) $product->discount_price;
                 } else {
-                    // Check wholesale tiers for volume discount.
-                    $resolved  = $variant
-                        ? $variant->resolveWholesalePrice((float) $item['quantity'])
-                        : $product->resolveWholesalePrice((float) $item['quantity']);
-                    $itemPrice = $resolved['price'];
+                    $itemPrice = $baseItemPrice;
                 }
                 $sellerId = $product->seller_id;
                 $itemTotal = $itemPrice * $item['quantity'];
