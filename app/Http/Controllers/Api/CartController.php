@@ -94,20 +94,30 @@ class CartController extends Controller
                         : ($variant ? $variant->effectiveUnit() : $product->effectiveUnit());
 
                     // ── Wholesale tier pricing ────────────────────────────────
-                    // Tiers apply only to simple (non-variant) products.
+                    // Product-level tiers (variant_id IS NULL) apply universally —
+                    // both for simple products and for products with variants.
+                    // Variant-scoped tiers (variant_id IS NOT NULL) are resolved
+                    // separately below when $variant is set.
                     // If a tier matches the current quantity, it overrides the
                     // base price and any active sale price.
                     $tiers        = [];
                     $appliedTier  = null;
                     $tierPrice    = null;
 
-                    if (!$productGone && !$variant && $product->relationLoaded('wholesaleTiers')) {
-                        $activeTiers = $product->wholesaleTiers
+                    if (!$productGone && $product->relationLoaded('wholesaleTiers')) {
+                        // For variant products we only consider product-level tiers
+                        // (variant_id IS NULL) here. Variant-scoped tiers require
+                        // the specific variant context and are handled separately.
+                        $relevantTiers = $variant
+                            ? $product->wholesaleTiers->whereNull('variant_id')
+                            : $product->wholesaleTiers;
+
+                        $activeTiers = $relevantTiers
                             ->sortByDesc('min_qty')
                             ->values();
 
                         // Build tier list for frontend display
-                        $tiers = $product->wholesaleTiers
+                        $tiers = $relevantTiers
                             ->sortBy('min_qty')
                             ->values()
                             ->map(fn($t) => [
@@ -128,6 +138,26 @@ class CartController extends Controller
                                 'label'          => $matchedTier->label,
                             ];
                             $tierPrice = (float) $matchedTier->price_per_unit;
+                        }
+
+                        // If a variant is set and no product-level tier matched,
+                        // check for variant-scoped tiers as a fallback.
+                        if ($tierPrice === null && $variant) {
+                            $variantTiers = $product->wholesaleTiers
+                                ->where('variant_id', $variant->id)
+                                ->sortByDesc('min_qty')
+                                ->values();
+
+                            $matchedVariantTier = $variantTiers->first(fn($t) => $item->quantity >= $t->min_qty);
+                            if ($matchedVariantTier) {
+                                $appliedTier = [
+                                    'min_qty'        => $matchedVariantTier->min_qty,
+                                    'price_per_unit' => (float) $matchedVariantTier->price_per_unit,
+                                    'discount_pct'   => (float) $matchedVariantTier->discount_pct,
+                                    'label'          => $matchedVariantTier->label,
+                                ];
+                                $tierPrice = (float) $matchedVariantTier->price_per_unit;
+                            }
                         }
                     }
 
