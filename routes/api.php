@@ -131,7 +131,7 @@ Route::group([
     // Categories
     Route::prefix('categories')->group(function () {
         Route::get('/', [CategoryController::class, 'index']);
-        Route::get('/all', [CategoryController::class, 'all']); // All active — no product-count filter
+        Route::get('/all', [CategoryController::class, 'all']);
         Route::get('/for-filter', [CategoryController::class, 'forFilter']);
         Route::get('/{category}/descendants', [CategoryController::class, 'descendants']);
         Route::get('/{category}', [CategoryController::class, 'show']);
@@ -339,6 +339,13 @@ Route::group([
                 Route::patch('/{method}', [PaymentSettingController::class, 'adminToggle']);
                 Route::put('/', [PaymentSettingController::class, 'adminBulkUpdate']);
             });
+
+            Route::prefix('subscriptions')->group(function () {
+                Route::get('/', [SubscriptionController::class, 'adminIndex']);
+                Route::put('/{userId}', [SubscriptionController::class, 'adminAssign']);
+                Route::get('/plans', [SubscriptionController::class, 'adminPlans']);
+                Route::put('/plans/{id}', [SubscriptionController::class, 'adminUpdatePlan']);
+            });
         });
 
         Route::prefix('seller')->middleware('role:seller|admin')->group(function () {
@@ -415,23 +422,23 @@ Route::group([
             Route::prefix('products')->group(function () {
 
                 // Seller Product Management
-                Route::post('/', [ProductController::class, 'store']);
+                Route::post('/', [ProductController::class, 'store'])->middleware('plan.product_limit'); 
                 Route::get('/', [ProductController::class, 'myProducts']);
                 Route::get('/{id}/edit', [ProductController::class, 'getProductForEdit']);
                 Route::put('/{slugOrId}', [ProductController::class, 'update']);
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
                 Route::get('/search', [ProductController::class, 'search']);
 
-                Route::get('/{product}/options', [ProductOptionController::class, 'index']);     // List all options + values
-                Route::post('/{product}/options', [ProductOptionController::class, 'store']);     // Replace all options + values
-                Route::delete('/{product}/options', [ProductOptionController::class, 'destroyAll']); // Remove all options + variants
+                Route::get('/{product}/options', [ProductOptionController::class, 'index']);
+                Route::post('/{product}/options', [ProductOptionController::class, 'store']);
+                Route::delete('/{product}/options', [ProductOptionController::class, 'destroyAll']);
                 
-                Route::get('/{product}/variants', [ProductVariantController::class, 'index']);    // List all variants
-                Route::post('/{product}/variants/generate', [ProductVariantController::class, 'generate']); // Auto-generate all combinations
-                Route::post('/{product}/variants',[ProductVariantController::class, 'store']);    // Manually add one variant
-                Route::put('/{product}/variants/{variant}', [ProductVariantController::class, 'update']);   // Edit price/qty/sku/moq
-                Route::delete('/{product}/variants/{variant}', [ProductVariantController::class, 'destroy']); // Soft-delete a variant
-                Route::patch('/{product}/variants/{variant}/toggle', [ProductVariantController::class, 'toggle']);  // Toggle is_active
+                Route::get('/{product}/variants', [ProductVariantController::class, 'index']);
+                Route::post('/{product}/variants/generate', [ProductVariantController::class, 'generate']);
+                Route::post('/{product}/variants',[ProductVariantController::class, 'store']);
+                Route::put('/{product}/variants/{variant}', [ProductVariantController::class, 'update']);
+                Route::delete('/{product}/variants/{variant}', [ProductVariantController::class, 'destroy']);
+                Route::patch('/{product}/variants/{variant}/toggle', [ProductVariantController::class, 'toggle']);
 
                 // ── Wholesale Tiers ────────────────────────────────────────────────────
                 // POST  /sync  must be registered BEFORE /{tier} to avoid Laravel
@@ -583,6 +590,12 @@ Route::group([
             Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
             Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
             Route::patch('/{id}/submit-fee', [DashboardController::class, 'sellerSubmitDeliveryFee']);
+        });
+
+        Route::prefix('subscription')->group(function () {
+            Route::get('/plans',   [SubscriptionController::class, 'plans']);   // browse all plans
+            Route::get('/',        [SubscriptionController::class, 'current']); // my current plan
+            Route::post('/upgrade',[SubscriptionController::class, 'upgrade']); // upgrade / downgrade
         });
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)

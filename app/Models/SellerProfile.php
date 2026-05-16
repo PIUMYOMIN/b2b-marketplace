@@ -934,4 +934,32 @@ class SellerProfile extends Model
         };
     }
 
+    /**
+     * The seller's active subscription (through the owner user).
+     * Usage:  $sellerProfile->subscription  → SellerSubscription|null
+     */
+    public function subscription()
+    {
+        return $this->hasOneThrough(
+            \App\Models\SellerSubscription::class,
+            \App\Models\User::class,
+            'id',        // users.id
+            'user_id',   // seller_subscriptions.user_id
+            'user_id',   // seller_profiles.user_id
+            'id'         // users.id
+        )->active();
+    }
+ 
+    /**
+     * Convenience: return the active SubscriptionPlan, falling back to Basic.
+     */
+    public function getActivePlanAttribute(): \App\Models\SubscriptionPlan
+    {
+        $plan = $this->subscription?->plan;
+ 
+        return $plan
+            ?? \App\Models\SubscriptionPlan::where('slug', 'basic')->first()
+            ?? new \App\Models\SubscriptionPlan(['name' => 'Basic', 'product_limit' => 20, 'commission_rate' => 0.05]);
+    }
+
 }

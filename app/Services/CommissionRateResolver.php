@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\CommissionRule;
 use App\Models\Order;
+use App\Models\SellerSubscription;
+use App\Models\SubscriptionPlan;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 
@@ -12,10 +14,11 @@ use Illuminate\Support\Facades\Log;
  * in priority order. The first matching rule wins.
  *
  * Priority (highest → lowest):
- *   1. Account level   — seller's tier (gold/silver/bronze)
- *   2. Business type   — seller's registered business type
- *   3. Category        — primary category of the order's first item
- *   4. Default         — platform-wide fallback (currently 5%)
+ *   0. Subscription plan  — seller's active pricing plan (new)
+ *   1. Account level      — seller's tier (gold/silver/bronze)
+ *   2. Business type      — seller's registered business type
+ *   3. Category           — primary category of the order's first item
+ *   4. Default            — platform-wide fallback (currently 5%)
  */
 class CommissionRateResolver
 {
@@ -30,7 +33,13 @@ class CommissionRateResolver
         try {
             $seller = User::with('sellerProfile')->find($order->seller_id);
 
-            // ── 1. Account-level (seller tier) ──────────────────────────
+            // ── 0. Subscription plan ─────────────────────────────────────
+            $planRate = $this->resolvePlanRate($order->seller_id);
+            if ($planRate !== null) {
+                return $this->result($planRate, 'subscription_plan', null);
+            }
+
+            // ── 1. Account-level (seller tier) ───────────────────────────
             $tierKey = $seller?->sellerProfile?->seller_tier;
             if ($tierKey) {
                 $rule = CommissionRule::active()
@@ -42,7 +51,7 @@ class CommissionRateResolver
                 }
             }
 
-            // ── 2. Business type ────────────────────────────────────────
+            // ── 2. Business type ──────────────────────────────────────────
             $businessTypeId = $seller?->sellerProfile?->business_type_id;
             if ($businessTypeId) {
                 $rule = CommissionRule::active()
@@ -54,8 +63,7 @@ class CommissionRateResolver
                 }
             }
 
-            // ── 3. Category ─────────────────────────────────────────────
-            // Load items if not already eager-loaded
+            // ── 3. Category ───────────────────────────────────────────────
             $items      = $order->relationLoaded('items') ? $order->items : $order->items()->with('product:id,category_id')->get();
             $categoryId = $items->first()?->product?->category_id;
             if ($categoryId) {
@@ -68,15 +76,12 @@ class CommissionRateResolver
                 }
             }
 
-            // ── 4. Platform default ─────────────────────────────────────
-            $rule = CommissionRule::active()
-                ->where('type', 'default')
-                ->first();
+            // ── 4. Platform default ───────────────────────────────────────
+            $rule = CommissionRule::active()->where('type', 'default')->first();
             if ($rule) {
                 return $this->result((float) $rule->rate, 'default', $rule->id);
             }
 
-            // Hard fallback — should never reach here if seeder ran
             Log::warning('CommissionRateResolver: no rule found, falling back to 0.05', [
                 'order_id'  => $order->id,
                 'seller_id' => $order->seller_id,
@@ -91,10 +96,8 @@ class CommissionRateResolver
         }
     }
 
-
     /**
-     * Resolve using raw sellerId + item array — call this BEFORE the Order is saved
-     * so we don't need to load relationships from a persisted Order.
+     * Resolve using raw sellerId + item array — call this BEFORE the Order is saved.
      *
      * @param int   $sellerId
      * @param array $sellerItems  [['product' => Product, ...], ...]
@@ -102,15 +105,23 @@ class CommissionRateResolver
     public function resolveForSeller(int $sellerId, array $sellerItems): array
     {
         try {
+            // 0. Subscription plan
+            $planRate = $this->resolvePlanRate($sellerId);
+            if ($planRate !== null) {
+                return $this->result($planRate, 'subscription_plan', null);
+            }
+
             $seller = User::with('sellerProfile')->find($sellerId);
 
             // 1. Account-level (tier)
             $tierKey = $seller?->sellerProfile?->seller_tier ?? 'bronze';
-            $rule = CommissionRule::active()
+            $rule    = CommissionRule::active()
                 ->where('type', 'account_level')
                 ->where('reference_id', $this->tierToId($tierKey))
                 ->first();
-            if ($rule) return $this->result((float) $rule->rate, 'account_level', $rule->id);
+            if ($rule) {
+                return $this->result((float) $rule->rate, 'account_level', $rule->id);
+            }
 
             // 2. Business type
             $businessTypeId = $seller?->sellerProfile?->business_type_id;
@@ -119,7 +130,9 @@ class CommissionRateResolver
                     ->where('type', 'business_type')
                     ->where('reference_id', $businessTypeId)
                     ->first();
-                if ($rule) return $this->result((float) $rule->rate, 'business_type', $rule->id);
+                if ($rule) {
+                    return $this->result((float) $rule->rate, 'business_type', $rule->id);
+                }
             }
 
             // 3. Category (first item's category)
@@ -129,12 +142,16 @@ class CommissionRateResolver
                     ->where('type', 'category')
                     ->where('reference_id', $categoryId)
                     ->first();
-                if ($rule) return $this->result((float) $rule->rate, 'category', $rule->id);
+                if ($rule) {
+                    return $this->result((float) $rule->rate, 'category', $rule->id);
+                }
             }
 
             // 4. Default
             $rule = CommissionRule::active()->where('type', 'default')->first();
-            if ($rule) return $this->result((float) $rule->rate, 'default', $rule->id);
+            if ($rule) {
+                return $this->result((float) $rule->rate, 'default', $rule->id);
+            }
 
             Log::warning('CommissionRateResolver: no rule found', ['seller_id' => $sellerId]);
             return $this->result(0.05, 'fallback', null);
@@ -145,7 +162,31 @@ class CommissionRateResolver
         }
     }
 
-    // ── Private helpers ────────────────────────────────────────────────────
+    // ── Private helpers ───────────────────────────────────────────────────
+
+    /**
+     * Return the commission rate from the seller's active subscription plan,
+     * or null if they have no active subscription (so the next rule takes over).
+     */
+    private function resolvePlanRate(int $sellerId): ?float
+    {
+        $subscription = SellerSubscription::with('plan')
+            ->where('user_id', $sellerId)
+            ->active()
+            ->first();
+
+        if ($subscription && $subscription->plan) {
+            return (float) $subscription->plan->commission_rate;
+        }
+
+        // No active subscription → check the Basic plan as the implicit default
+        $basic = SubscriptionPlan::where('slug', 'basic')->first();
+        if ($basic) {
+            return (float) $basic->commission_rate;
+        }
+
+        return null;
+    }
 
     private function result(float $rate, string $type, ?int $ruleId): array
     {
@@ -154,8 +195,6 @@ class CommissionRateResolver
 
     /**
      * Map tier name to a stable integer used as reference_id in commission_rules.
-     * Using fixed IDs (not DB IDs) so the seeder is predictable.
-     *
      * bronze = 1, silver = 2, gold = 3
      */
     private function tierToId(string $tier): int
@@ -163,7 +202,7 @@ class CommissionRateResolver
         return match ($tier) {
             'gold'   => 3,
             'silver' => 2,
-            default  => 1, // bronze
+            default  => 1,
         };
     }
 }
