@@ -16,6 +16,7 @@
         "laravel/socialite": "^5.27",
         "laravel/tinker": "^2.10.1",
         "myanmyanpay/mmpay-php-sdk": "^1.0",
+        "phpoffice/phpspreadsheet": "*",
         "spatie/laravel-permission": "^6.21",
         "tymon/jwt-auth": "^2.2"
     },

@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AnnouncementController;
+use App\Http\Controllers\Api\BulkImportController;
 use App\Http\Controllers\Api\LocalDealController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\ReferralController;
@@ -408,18 +409,17 @@ Route::group([
             // Seller Dashboard
             Route::get('/my-store', [SellerController::class, 'myStore']);
             Route::get('/dashboard', [SellerController::class, 'dashboard']);
+            Route::get('/sales-summary', [SellerController::class, 'salesSummary']);
+            Route::get('/top-products', [SellerController::class, 'topProducts']);
             Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
+            Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
+            Route::get('/delivery-stats', [SellerController::class, 'deliveryStats']);
 
-            // Analytics — Pro & Enterprise only
-            Route::middleware('plan.feature:analytics_enabled')->group(function () {
-                Route::get('/sales-summary',       [SellerController::class, 'salesSummary']);
-                Route::get('/top-products',        [SellerController::class, 'topProducts']);
-                Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
-                Route::get('/delivery-stats',      [SellerController::class, 'deliveryStats']);
-                Route::get('/customers',           [SellerController::class, 'customers']);
-                Route::get('/revenue/seller-export', [RevenueExportController::class, 'sellerExport']);
-                Route::get('/financial-report',      [RevenueExportController::class, 'sellerExport']);
-            });
+            Route::get('/customers', [SellerController::class, 'customers']);
+
+            // Revenue export + financial report
+            Route::get('/revenue/seller-export', [RevenueExportController::class, 'sellerExport']);
+            Route::get('/financial-report',       [RevenueExportController::class, 'sellerExport']);
 
             Route::put('/my-store/update', [SellerController::class, 'updateMyStore']);
 
@@ -427,8 +427,15 @@ Route::group([
             Route::prefix('products')->group(function () {
 
                 // Seller Product Management
-                Route::post('/', [ProductController::class, 'store'])->middleware('plan.product_limit'); 
+                Route::post('/', [ProductController::class, 'store'])->middleware('plan.product_limit');
                 Route::get('/', [ProductController::class, 'myProducts']);
+
+                // Bulk Import — Enterprise & Pro only
+                Route::middleware('plan.feature:bulk_import_enabled')->group(function () {
+                    Route::post('/bulk-import', [BulkImportController::class, 'store']);
+                    Route::get('/bulk-import/template', [BulkImportController::class, 'template']);
+                });
+
                 Route::get('/{id}/edit', [ProductController::class, 'getProductForEdit']);
                 Route::put('/{slugOrId}', [ProductController::class, 'update']);
                 Route::delete('/{product}', [ProductController::class, 'destroy']);
