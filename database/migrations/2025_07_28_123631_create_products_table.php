@@ -112,12 +112,6 @@ return new class extends Migration {
             $table->string('hs_code')->nullable();
 
             // ---------------------------------------------------------------
-            // B2B SPECIFICS
-            // `moq` here is the product-level fallback minimum order quantity.
-            // Individual variants can override with their own moq (nullable).
-            // `quantity_unit` is the base unit for this product — consistent
-            // with rfqs.unit (e.g. "piece", "kg", "meter", "liter", "roll").
-            // ---------------------------------------------------------------
             $table->string('quantity_unit')->default('piece');
             $table->integer('moq')->default(1);
             $table->unsignedSmallInteger('quantity_step')
