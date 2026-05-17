@@ -37,7 +37,7 @@ class BulkImportController extends Controller
         'origin'        => 'nullable|string|max:100',
         'moq'           => 'nullable|integer|min:1',
         'min_order_unit'=> 'nullable|string|max:50',
-        'condition'     => 'nullable|in:new,used_like_new,used_good,used_fair,refurbished',
+        'condition'     => 'nullable|in:new,used_like_new,used_good,used_fair',
         'weight_kg'     => 'nullable|numeric|min:0',
     ];
 

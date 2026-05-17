@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use App\Models\ProductReview;
+use App\Observers\ProductReviewObserver;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -39,8 +41,10 @@ class AppServiceProvider extends ServiceProvider
     {
         Schema::defaultStringLength(191);
         Carbon::setLocale(config('app.locale'));
-        // Route model binding (moved from CustomRouteProvider)
         Route::model('role', \Spatie\Permission\Models\Role::class);
+
+        // Keep product rating stats in sync whenever a review changes.
+        ProductReview::observe(ProductReviewObserver::class);
 
         $this->configureRateLimiters();
     }
