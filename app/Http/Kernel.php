@@ -25,7 +25,7 @@ class Kernel extends HttpKernel
         'can' => \Illuminate\Auth\Middleware\Authorize::class,
         'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
         'plan.product_limit' => \App\Http\Middleware\CheckPlanProductLimit::class,
-        
+        'plan.feature'       => \App\Http\Middleware\CheckPlanFeature::class,
     ];
 
     /**
