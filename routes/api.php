@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\ProductOptionController;
 use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\WholesaleTierController;
 use App\Http\Controllers\Api\PaymentSettingController;
+use App\Http\Controllers\Api\SubscriptionController;
 use Laravel\Socialite\Facades\Socialite;
 
 
