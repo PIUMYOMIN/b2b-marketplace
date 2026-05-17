@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('user_id')
-                ->unique()                          // one active subscription per seller
+                ->unique()
                 ->constrained()
                 ->onDelete('cascade');
 
