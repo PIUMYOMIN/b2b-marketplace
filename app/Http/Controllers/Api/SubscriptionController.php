@@ -167,6 +167,40 @@ class SubscriptionController extends Controller
         }
     }
 
+    /**
+     * GET /public/subscription-plans
+     *
+     * Returns all active plans without any seller-specific context
+     * (no is_current flag, no products_used count).
+     * Accessible by guests, buyers, and anyone visiting the Pricing page.
+     */
+    public function publicPlans(): JsonResponse
+    {
+        $plans = SubscriptionPlan::active()->get()->map(function (SubscriptionPlan $plan) {
+            return [
+                'id'                  => $plan->id,
+                'slug'                => $plan->slug,
+                'name'                => $plan->name,
+                'description'         => $plan->description,
+                'price_mmk'           => $plan->price_mmk,
+                'billing_cycle'       => $plan->billing_cycle,
+                'product_limit'       => $plan->product_limit,
+                'product_limit_label' => $plan->product_limit_label,
+                'commission_rate'     => $plan->commission_rate,
+                'commission_percent'  => $plan->commission_percent,
+                'analytics_enabled'   => $plan->analytics_enabled,
+                'bulk_import_enabled' => $plan->bulk_import_enabled,
+                'priority_support'    => $plan->priority_support,
+                'custom_storefront'   => $plan->custom_storefront,
+            ];
+        });
+ 
+        return response()->json([
+            'success' => true,
+            'data'    => $plans,
+        ]);
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     //  ADMIN ROUTES
     // ══════════════════════════════════════════════════════════════════════

@@ -97,10 +97,13 @@ Route::group([
     // Announcements (public — visible to all visitors)
     Route::get('/announcements', [AnnouncementController::class, 'index']);
 
-    // Active seller coupons for the storefront Local Deals page (public)
+    // Active seller coupons for the storefront Local Deals page
     Route::get('/local-deals', [LocalDealController::class, 'index']);
 
-    // Checkout locations — aggregated states/cities from seller delivery zones (unauthenticated)
+    // Subscription plans — public listing for the Pricing page
+    Route::get('/subscription-plans', [SubscriptionController::class, 'publicPlans']);
+
+    // Checkout locations — aggregated states/cities from seller delivery zones
     Route::get('/checkout-locations', [DeliveryAreaController::class, 'getCheckoutLocations']);
 
     //Order Tracking
