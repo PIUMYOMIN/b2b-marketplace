@@ -257,14 +257,55 @@ class ProductController extends Controller
         ]);
     }
 
-    /**
-     * Store a newly created product (seller only)
+     /**
+     * Store a newly created product (seller only).
+     *
+     * Enforces the product-count limit defined by the seller's active
+     * subscription plan before persisting the new record.
      */
-     public function store(StoreProductRequest $request): JsonResponse
+    public function store(StoreProductRequest $request): JsonResponse
     {
+        $seller   = $request->user();
+        $sellerId = $seller->id;
+ 
+        // ── 1. Resolve the seller's active plan ───────────────────────────
+        $subscription = SellerSubscription::with('plan')
+            ->where('user_id', $sellerId)
+            ->active()
+            ->first();
+ 
+        // Fall back to the Basic plan limits when no subscription record exists.
+        $plan = $subscription?->plan
+            ?? SubscriptionPlan::where('slug', 'basic')->first()
+            ?? new SubscriptionPlan(['product_limit' => 20, 'name' => 'Basic']);
+ 
+        // ── 2. Enforce the product limit (-1 = unlimited) ─────────────────
+        if ($plan->product_limit !== -1) {
+            $activeCount = Product::where('seller_id', $sellerId)
+                ->whereNull('deleted_at')
+                ->count();
+ 
+            if ($activeCount >= $plan->product_limit) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "You have reached the product limit ({$plan->product_limit}) "
+                        . "for your {$plan->name} plan. "
+                        . 'Please upgrade your subscription to add more products.',
+                    'error'   => 'product_limit_reached',
+                    'data'    => [
+                        'current_count' => $activeCount,
+                        'plan_limit'    => $plan->product_limit,
+                        'plan_name'     => $plan->name,
+                        'plan_slug'     => $plan->slug ?? 'basic',
+                    ],
+                ], 422);
+            }
+        }
+ 
+        // ── 3. Create the product ─────────────────────────────────────────
         $data = $request->validated();
  
-        $data['seller_id'] = $request->user()->id;
+        $data['seller_id'] = $sellerId;
         $data['slug_en']   = $this->generateSlug($data['name_en']);
         $data['slug_mm']   = isset($data['name_mm'])
             ? $this->generateSlug($data['name_mm'], 'products', 'slug_mm')
