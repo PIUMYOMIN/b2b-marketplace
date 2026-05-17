@@ -61,7 +61,7 @@ class ContactController extends Controller
             'phone' => 'nullable|string|max:20',
             'subject' => 'required|string|max:255',
             'message' => 'required|string',
-            'g-recaptcha-response' => ['required', new Recaptcha],
+            'recaptcha_token'      => ['required', new Recaptcha],
         ]);
 
         if ($validator->fails()) {
