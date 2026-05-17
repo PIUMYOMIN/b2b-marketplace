@@ -514,6 +514,12 @@ Route::group([
                 Route::get('/store-stats', [SellerController::class, 'getStoreStats']);
             });
 
+            Route::prefix('subscription')->group(function () {
+                Route::get('/plans', [SubscriptionController::class, 'plans']);
+                Route::get('/', [SubscriptionController::class, 'current']);
+                Route::post('/upgrade',[SubscriptionController::class, 'upgrade']);
+            });
+
             // Business hours
             Route::put('/business-hours', [SellerController::class, 'updateBusinessHours']);
 
@@ -591,12 +597,6 @@ Route::group([
             Route::post('/{delivery}/proof', [DeliveryController::class, 'uploadDeliveryProof']);
             Route::post('/{delivery}/assign-courier', [DeliveryController::class, 'assignCourier']);
             Route::patch('/{id}/submit-fee', [DashboardController::class, 'sellerSubmitDeliveryFee']);
-        });
-
-        Route::prefix('subscription')->group(function () {
-            Route::get('/plans',   [SubscriptionController::class, 'plans']);   // browse all plans
-            Route::get('/',        [SubscriptionController::class, 'current']); // my current plan
-            Route::post('/upgrade',[SubscriptionController::class, 'upgrade']); // upgrade / downgrade
         });
 
         // ✅ SELLER MANAGEMENT ROUTES (Admin + Seller)
