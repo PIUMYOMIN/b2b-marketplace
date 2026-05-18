@@ -5,10 +5,10 @@ namespace App\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Intervention\Image\Laravel\Facades\Image;
 
 /**
  * Handles image resizing, WebP conversion, and storage.
+ * Falls back to plain storage if intervention/image is not installed.
  *
  * Usage:
  *   $result = app(ImageOptimizationService::class)->store($file, 'products/temp/5');
@@ -16,7 +16,6 @@ use Intervention\Image\Laravel\Facades\Image;
  */
 class ImageOptimizationService
 {
-    // Max dimensions per context (width × height). Images larger than these are scaled down.
     private const PRESETS = [
         'product'       => ['width' => 800,  'height' => 800],
         'product_thumb' => ['width' => 300,  'height' => 300],
@@ -25,31 +24,39 @@ class ImageOptimizationService
         'default'       => ['width' => 1024, 'height' => 1024],
     ];
 
-    // WebP quality (0–100). 82 gives ~70% size reduction vs JPEG at same visual quality.
     private const WEBP_QUALITY = 82;
 
-    /**
-     * Resize, convert to WebP, and store the image.
-     *
-     * @param  UploadedFile  $file      The incoming uploaded file.
-     * @param  string        $directory Storage directory (relative to 'public' disk).
-     * @param  string        $preset    Key from PRESETS ('product', 'logo', 'banner', …).
-     * @return array{path: string, width: int, height: int, size_bytes: int}
-     */
     public function store(UploadedFile $file, string $directory, string $preset = 'default'): array
     {
-        $dimensions = self::PRESETS[$preset] ?? self::PRESETS['default'];
-        $filename   = Str::uuid() . '.webp';
+        // Use Intervention Image if available, otherwise fall back to plain storage.
+        if (class_exists(\Intervention\Image\Laravel\Facades\Image::class)) {
+            return $this->storeOptimized($file, $directory, $preset);
+        }
+
+        return $this->storePlain($file, $directory);
+    }
+
+    public function delete(string $path): void
+    {
+        if ($path && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    // ─── Optimized path (intervention/image installed) ───────────────────────
+
+    private function storeOptimized(UploadedFile $file, string $directory, string $preset): array
+    {
+        $dimensions  = self::PRESETS[$preset] ?? self::PRESETS['default'];
+        $filename    = Str::uuid() . '.webp';
         $storagePath = $directory . '/' . $filename;
 
-        // Build image, resize (cover = crop to fill, contain = fit within).
-        $image = Image::read($file)
+        $image = \Intervention\Image\Laravel\Facades\Image::read($file)
             ->scaleDown(
                 width:  $dimensions['width'],
                 height: $dimensions['height'],
             );
 
-        // Encode to WebP and save to the 'public' disk.
         $encoded = $image->toWebp(self::WEBP_QUALITY);
         Storage::disk('public')->put($storagePath, $encoded);
 
@@ -61,13 +68,17 @@ class ImageOptimizationService
         ];
     }
 
-    /**
-     * Delete a previously stored image.
-     */
-    public function delete(string $path): void
+    // ─── Fallback path (plain storage, no optimization) ──────────────────────
+
+    private function storePlain(UploadedFile $file, string $directory): array
     {
-        if ($path && Storage::disk('public')->exists($path)) {
-            Storage::disk('public')->delete($path);
-        }
+        $storagePath = $file->store($directory, 'public');
+
+        return [
+            'path'       => $storagePath,
+            'width'      => 0,
+            'height'     => 0,
+            'size_bytes' => $file->getSize(),
+        ];
     }
 }
