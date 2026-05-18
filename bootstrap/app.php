@@ -53,6 +53,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            // Subscription plan limits
+            'plan.product_limit' => \App\Http\Middleware\CheckPlanProductLimit::class,
+            'plan.feature' => \App\Http\Middleware\CheckPlanFeature::class,
         ]);
     })
     ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
