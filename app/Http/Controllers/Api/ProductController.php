@@ -12,6 +12,7 @@ use App\Http\Resources\ReviewResource;
 use App\Http\Requests\Product\StoreProductRequest;
 use App\Http\Requests\Product\UpdateProductRequest;
 use App\Http\Resources\ProductListResource;
+use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -360,25 +361,25 @@ class ProductController extends Controller
         }
 
         try {
-            $user = Auth::user();
+            $user  = Auth::user();
             $angle = $request->angle ?? 'default';
 
-            $path = $request->file('image')->store(
+            $result = app(ImageOptimizationService::class)->store(
+                $request->file('image'),
                 'products/temp/' . $user->id,
-                'public'
+                'product'
             );
-
-            // Return the relative path (no full URL) — frontend uses getImageUrl() for display
-            $imageData = [
-                'url' => $path,
-                'angle' => $angle,
-                'is_primary' => false,
-                'uploaded_at' => now()->toISOString()
-            ];
 
             return response()->json([
                 'success' => true,
-                'data' => $imageData,
+                'data'    => [
+                    'url'         => $result['path'],
+                    'angle'       => $angle,
+                    'is_primary'  => false,
+                    'width'       => $result['width'],
+                    'height'      => $result['height'],
+                    'uploaded_at' => now()->toISOString(),
+                ],
                 'message' => 'Image uploaded successfully'
             ]);
         } catch (\Exception $e) {

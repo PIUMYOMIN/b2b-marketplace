@@ -18,6 +18,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use App\Services\ImageOptimizationService;
 use Illuminate\Support\Str;
 
 class SellerController extends Controller
@@ -488,18 +489,12 @@ class SellerController extends Controller
     private function saveStoreLogo($file, $sellerProfileId)
     {
         try {
-            $sellerProfile = SellerProfile::find($sellerProfileId);
-            $basePath = "sellers/{$sellerProfile->id}/logo";
-            Storage::disk('public')->makeDirectory($basePath);
-
-            $timestamp = time();
-            $random = Str::random(8);
-            $extension = $file->getClientOriginalExtension();
-            $filename = "logo_{$timestamp}_{$random}.{$extension}";
-
-            $storedPath = $file->storeAs($basePath, $filename, 'public');
-            \Log::info('Logo saved', ['path' => $storedPath]);
-            return $storedPath; // returns string like "sellers/11/logo/logo_xxx.jpg"
+            $result = app(ImageOptimizationService::class)->store(
+                $file,
+                "sellers/{$sellerProfileId}/logo",
+                'logo'
+            );
+            return $result['path'];
         } catch (\Exception $e) {
             \Log::error('Failed to save logo: ' . $e->getMessage());
             return null;
@@ -567,31 +562,17 @@ class SellerController extends Controller
      */
     private function saveStoreBanner($file, $storeId)
     {
-        $sellerProfile = SellerProfile::find($storeId);
         try {
-            // Create organized path structure
-            // $basePath = "stores/{$storeId}/logo";
-            $basePath = "sellers/{$sellerProfile->id}/banner"; // Change variable name
-
-            // Ensure directory exists
-            Storage::disk('public')->makeDirectory($basePath);
-
-            // Generate unique filename
-            $timestamp = time();
-            $random = Str::random(8);
-            $extension = $file->getClientOriginalExtension();
-            $filename = "banner_{$timestamp}_{$random}.{$extension}";
-
-            // Store the file - use $basePath, not $path
-            $filePath = $file->storeAs($basePath, $filename, 'public'); // Change to $filePath
-
+            $result = app(ImageOptimizationService::class)->store(
+                $file,
+                "sellers/{$storeId}/banner",
+                'banner'
+            );
             Log::info('Store banner uploaded successfully', [
                 'store_id' => $storeId,
-                'path' => $filePath, // Use $filePath
-                'filename' => $filename
+                'path'     => $result['path'],
             ]);
-
-            return $filePath; // Return $filePath
+            return $result['path'];
         } catch (\Exception $e) {
             Log::error('Failed to upload store banner: ' . $e->getMessage());
             return null;
