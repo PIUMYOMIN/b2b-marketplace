@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -102,6 +103,16 @@ class SubscriptionController extends Controller
             ->firstOrFail();
 
         $seller = $request->user();
+
+        // Prevent re-subscribing to the same active plan (would reset billing cycle for free)
+        $current = $this->activeSubscription($seller->id);
+        if ($current && $current->plan_id === $plan->id) {
+            return response()->json([
+                'success' => false,
+                'message' => "You are already on the {$plan->name} plan.",
+                'error'   => 'already_on_plan',
+            ], 422);
+        }
 
         // Paid plan but no payment reference supplied
         if ($plan->price_mmk > 0 && empty($request->payment_reference)) {
@@ -246,6 +257,27 @@ class SubscriptionController extends Controller
             'notes'     => 'nullable|string|max:500',
         ]);
 
+        // Verify the target user exists and is a seller
+        $targetUser = User::find($userId);
+        if (! $targetUser) {
+            return response()->json([
+                'success' => false,
+                'message' => "User #{$userId} not found.",
+            ], 404);
+        }
+
+        $isSeller = $targetUser->roles()->where('name', 'seller')->exists()
+            || $targetUser->role === 'seller'
+            || $targetUser->type === 'seller';
+
+        if (! $isSeller) {
+            return response()->json([
+                'success' => false,
+                'message' => "User #{$userId} is not a seller account. Subscriptions can only be assigned to sellers.",
+                'error'   => 'user_not_seller',
+            ], 422);
+        }
+
         $plan = SubscriptionPlan::where('slug', $request->plan_slug)->firstOrFail();
 
         DB::beginTransaction();
@@ -339,19 +371,29 @@ class SubscriptionController extends Controller
     {
         $basic = SubscriptionPlan::where('slug', 'basic')->firstOrFail();
 
-        // Cancel anything leftover first
-        SellerSubscription::where('user_id', $userId)
-            ->where('status', 'active')
-            ->update(['status' => 'cancelled']);
+        // Wrap in a transaction with a row-level lock to prevent duplicate
+        // Basic plan rows when concurrent requests hit current() simultaneously.
+        return DB::transaction(function () use ($userId, $basic) {
+            // Re-check inside the transaction — another request may have
+            // already created the Basic plan between the outer check and now.
+            $existing = SellerSubscription::where('user_id', $userId)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->first();
 
-        return SellerSubscription::create([
-            'user_id'    => $userId,
-            'plan_id'    => $basic->id,
-            'status'     => 'active',
-            'starts_at'  => Carbon::today(),
-            'ends_at'    => null,          // Basic plan never expires
-            'amount_paid_mmk' => 0,
-        ])->load('plan');
+            if ($existing) {
+                return $existing->load('plan');
+            }
+
+            return SellerSubscription::create([
+                'user_id'         => $userId,
+                'plan_id'         => $basic->id,
+                'status'          => 'active',
+                'starts_at'       => Carbon::today(),
+                'ends_at'         => null,
+                'amount_paid_mmk' => 0,
+            ])->load('plan');
+        });
     }
 
     private function formatSubscription(SellerSubscription $s): array
