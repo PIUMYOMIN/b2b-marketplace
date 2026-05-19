@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * php artisan subscriptions:expire
@@ -110,8 +111,48 @@ class ExpireSubscriptions extends Command
 
         if (! $dryRun) {
             $this->info("Expired: {$expired} | Failed: {$failed}");
+
+            // Alert admin when any subscription failed to expire.
+            if ($failed > 0 && config('subscription.expiry.alert_on_failure', true)) {
+                $this->notifyAdmin($failed, $expired);
+            }
         }
 
         return $failed > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Send a plain-text alert email to the admin report address.
+     */
+    private function notifyAdmin(int $failed, int $expired): void
+    {
+        $adminEmail = config('mail.admin_report_email');
+        if (! $adminEmail) return;
+
+        try {
+            Mail::raw(
+                "⚠️ subscriptions:expire command completed with {$failed} failure(s).\n\n" .
+                "Successfully expired: {$expired}\n" .
+                "Failed: {$failed}\n\n" .
+                "Please check the Laravel logs for details:\n" .
+                "  storage/logs/laravel.log\n\n" .
+                "Run manually to retry:\n" .
+                "  php artisan subscriptions:expire",
+                function ($message) use ($adminEmail, $failed) {
+                    $message->to($adminEmail)
+                        ->subject("[Pyonea] ⚠️ {$failed} subscription expiry failure(s) — " . now()->toDateString());
+                }
+            );
+
+            Log::info('ExpireSubscriptions: admin failure alert sent.', [
+                'to'     => $adminEmail,
+                'failed' => $failed,
+            ]);
+        } catch (\Exception $e) {
+            // Never let the alert crash the command itself.
+            Log::error('ExpireSubscriptions: could not send admin alert.', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -56,5 +56,15 @@ Artisan::command('inspire', function () {
         ->withoutOverlapping()
         ->runInBackground()
         ->onFailure(function () {
-            \Illuminate\Support\Facades\Log::error('subscriptions:expire scheduled job  failed.');
+            $msg = 'subscriptions:expire scheduled job failed at ' . now()->toDateTimeString();
+            \Illuminate\Support\Facades\Log::error($msg);
+
+            // Email admin — uses the same address as other system alerts
+            $adminEmail = config('mail.admin_report_email');
+            if ($adminEmail) {
+                \Illuminate\Support\Facades\Mail::raw(
+                    "⚠️ {$msg}\n\nPlease check storage/logs/laravel.log and re-run:\n  php artisan subscriptions:expire",
+                    fn($m) => $m->to($adminEmail)->subject('[Pyonea] ⚠️ subscriptions:expire job failed')
+                );
+            }
         });

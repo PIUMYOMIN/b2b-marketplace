@@ -15,8 +15,11 @@ use Illuminate\Support\Str;
 
 class BulkImportController extends Controller
 {
-    // Maximum rows allowed per upload (safety cap regardless of plan).
-    private const MAX_ROWS = 500;
+    // Maximum rows allowed per upload — configurable via config/subscription.php
+    private function maxRows(): int
+    {
+        return (int) config('subscription.bulk_import.max_rows', 500);
+    }
 
     // Required CSV column headers (case-insensitive).
     private const REQUIRED_HEADERS = ['name_en', 'price', 'category_id'];
@@ -77,10 +80,10 @@ class BulkImportController extends Controller
             ], 422);
         }
 
-        if (count($rows) > self::MAX_ROWS) {
+        if (count($rows) > $this->maxRows()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Maximum ' . self::MAX_ROWS . ' rows per upload. Your file has ' . count($rows) . ' rows.',
+                'message' => 'Maximum ' . $this->maxRows() . ' rows per upload. Your file has ' . count($rows) . ' rows.',
             ], 422);
         }
 
