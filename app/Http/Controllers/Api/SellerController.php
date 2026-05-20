@@ -163,7 +163,7 @@ class SellerController extends Controller
 
         $sellers = $query->paginate($perPage);
 
-// Helper: sanitise a string value to valid UTF-8 before json_encode.
+        // Helper: sanitise a string value to valid UTF-8 before json_encode.
         // Malformed Myanmar Unicode characters cause "Malformed UTF-8" errors.
         $utf8 = fn($v) => $v !== null
             ? mb_convert_encoding((string) $v, 'UTF-8', 'UTF-8')
@@ -593,9 +593,6 @@ class SellerController extends Controller
             ], 404);
         }
 
-        // Helper: sanitise a string value to valid UTF-8 before it enters json_encode.
-        // Malformed bytes (e.g. Myanmar text stored under a latin1 connection) cause
-        // json_encode to throw "Malformed UTF-8 characters" and return a 500.
         $utf8 = fn($v) => $v !== null
             ? mb_convert_encoding((string) $v, 'UTF-8', 'UTF-8')
             : null;
@@ -612,10 +609,6 @@ class SellerController extends Controller
             }
         };
 
-        // Build a curated response — never call toArray() / fresh() directly because
-        // that triggers $appends accessors (nrc_full_mm uses Myanmar Unicode) and
-        // serialises json-cast columns (additional_documents, business_hours) which
-        // may contain malformed bytes stored under a non-utf8mb4 DB connection.
         $data = [
             // Identity
             'id'                          => $s->id,
@@ -796,9 +789,6 @@ class SellerController extends Controller
         }
 
         // ── Follow status & count ────────────────────────────────────────────
-        // Resolved once here and reused for both is_following and is_own_store.
-        // Auth::guard('sanctum') explicitly parses the Bearer token — needed because
-        // this route has no auth middleware (it is public).
         $authUser = Auth::guard('sanctum')->user();
 
         // Direct DB count — avoids relationship chain exceptions entirely.
