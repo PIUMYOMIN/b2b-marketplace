@@ -391,6 +391,8 @@ Route::group([
 
                 // Final submission endpoint
                 Route::post('/submit', [SellerController::class, 'submitOnboarding']);
+                // 3-step flow: quick-complete after store-basic (no address/docs required)
+                Route::post('/quick-complete', [SellerController::class, 'quickCompleteOnboarding']);
                 Route::post('/upload-document', [SellerController::class, 'uploadDocument']);
             });
 

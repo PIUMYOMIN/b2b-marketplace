@@ -1469,6 +1469,57 @@ class SellerController extends Controller
     }
 
     /**
+     * Quick-complete onboarding (3-step flow: only store-basic required).
+     * Marks the seller as onboarded immediately after Business Setup — no
+     * address, documents, or review step needed.
+     */
+    public function quickCompleteOnboarding(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $sellerProfile = SellerProfile::where('user_id', $user->id)->first();
+
+            if (!$sellerProfile) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.seller.profile_not_found'),
+                ], 404);
+            }
+
+            if (empty($sellerProfile->store_name) || empty($sellerProfile->business_type_id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please complete your store name and business type first.',
+                ], 422);
+            }
+
+            $sellerProfile->update([
+                'onboarding_completed_at' => now(),
+                'status'              => SellerProfile::STATUS_PENDING,
+                'verification_status' => 'pending',
+                'current_step'        => 'complete',
+            ]);
+
+            Log::info('Seller quick-complete onboarding (3-step flow)', [
+                'user_id'           => $user->id,
+                'seller_profile_id' => $sellerProfile->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Onboarding complete! Welcome to your seller dashboard.',
+                'data'    => ['redirect' => '/seller/dashboard'],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Quick-complete onboarding failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to complete onboarding: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Get seller onboarding status
      */
     public function getOnboardingStatus(Request $request)
@@ -1549,7 +1600,7 @@ class SellerController extends Controller
             // Trust the current_step column — it is set to 'store-basic' at
             // registration and advanced explicitly by saveStep(). Do NOT compute
             // it from field values; auto-filled defaults would push past store-basic.
-            $stepOrder = ['store-basic', 'business-details', 'address', 'delivery-zones', 'documents', 'review-submit'];
+            $stepOrder = ['store-basic']; // 3-step flow
             $currentStep = $sellerProfile->current_step ?: 'store-basic';
 
             // Clamp: if DB has a step not in the known order, fall back
@@ -1895,7 +1946,7 @@ class SellerController extends Controller
                 'message' => __('messages.store.basic_updated'),
                 'data' => [
                     'seller_profile' => $sellerProfile,
-                    'next_step' => 'business-details',   // FIX: was missing — frontend hardcoded it
+                    'next_step' => 'complete', // 3-step flow: go straight to dashboard
                     'business_type' => [
                         'id' => $businessType->id,
                         'slug_en' => $businessType->slug_en,
@@ -3392,45 +3443,12 @@ class SellerController extends Controller
                 ], 404);
             }
 
-            // Validate all steps are complete
-            $errors = [];
-
-            // 1. Store basic validation
+            // 3-step flow: only store_name + business_type_id are required
             if (empty($sellerProfile->store_name) || empty($sellerProfile->business_type_id)) {
-                $errors[] = 'Store basic information incomplete';
-            }
-
-            // 2. Business details validation
-            $businessType = $sellerProfile->businessType;
-            if ($businessType && !$businessType->isIndividualType()) {
-                if ($businessType->requires_registration && empty($sellerProfile->business_registration_number)) {
-                    $errors[] = 'Business registration number required';
-                }
-                if ($businessType->requires_tax_document && empty($sellerProfile->tax_id)) {
-                    $errors[] = 'Tax ID required';
-                }
-            }
-
-            // 3. Address validation
-            if (
-                empty($sellerProfile->address) || empty($sellerProfile->city) ||
-                empty($sellerProfile->township) ||
-                empty($sellerProfile->state) || empty($sellerProfile->country)
-            ) {
-                $errors[] = 'Address information incomplete';
-            }
-
-            // 4. Documents validation
-            if (!$sellerProfile->documents_submitted) {
-                $errors[] = 'Documents not submitted';
-            }
-
-            if (!empty($errors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Onboarding incomplete',
-                    'errors' => $errors,
-                    'missing_fields' => $errors
+                    'message' => 'Store basic information incomplete',
+                    'errors'  => ['store_basic' => 'Please complete your store name and business type first.'],
                 ], 422);
             }
 
@@ -3534,13 +3552,9 @@ class SellerController extends Controller
      */
     private function onboardingStepSequence(): array
     {
+        // 3-step flow: Register → Business Setup (store-basic) → Dashboard
         return [
             'store-basic',
-            'business-details',
-            'address',
-            'delivery-zones',
-            'documents',
-            'review-submit',
         ];
     }
 
