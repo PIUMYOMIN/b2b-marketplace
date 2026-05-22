@@ -131,8 +131,15 @@ class FrontendController extends Controller
                 $firstImage = null;
                 $images = is_array($product->images) ? $product->images : [];
                 if (!empty($images)) {
-                    $img     = $images[0];
-                    $rawPath = is_array($img) ? ($img['url'] ?? $img['path'] ?? null) : $img;
+                    // Prefer the image explicitly marked as primary; fall back to index 0.
+                    $primaryImg = collect($images)->first(
+                        fn($img) => is_array($img) && !empty($img['is_primary'])
+                    ) ?? $images[0];
+
+                    $rawPath = is_array($primaryImg)
+                        ? ($primaryImg['url'] ?? $primaryImg['path'] ?? null)
+                        : $primaryImg;
+
                     if ($rawPath) {
                         $firstImage = $this->resolveImageUrl($rawPath);
                     }
@@ -163,12 +170,15 @@ class FrontendController extends Controller
 
             if ($seller) {
                 $storeName = $seller->store_name;
-                $storeDesc = Str::limit($seller->description ?? '', 150);
+                $storeDesc = Str::limit($seller->store_description ?? '', 150);
 
                 $metadata['pageTitle']       = $storeName . ' | Pyonea';
                 $metadata['pageDescription'] = sprintf($m['seller_desc'], $storeName)
                     . ($storeDesc ? ' ' . $storeDesc : '');
-                $metadata['pageImage']  = $seller->logo ?? $metadata['pageImage'];
+                $sellerLogo = $seller->store_logo
+                    ? $this->resolveImageUrl($seller->store_logo)
+                    : null;
+                $metadata['pageImage']  = $sellerLogo ?? $metadata['pageImage'];
                 $metadata['pageType']   = 'profile';
                 $metadata['seller']     = $this->formatSellerForJsonLd($seller);
                 $metadata['breadcrumbs'] = [
@@ -287,8 +297,8 @@ class FrontendController extends Controller
         return [
             'store_name'        => $seller->store_name,
             'slug'              => $seller->store_slug,
-            'store_description' => $seller->description,
-            'store_logo'        => $seller->logo,
+            'store_description' => $seller->store_description,
+            'store_logo'        => $seller->store_logo ? $this->resolveImageUrl($seller->store_logo) : null,
             'hasStorefront'     => $seller->has_physical_store,
             'address'           => $seller->address ? [
                 'city'  => $seller->city,
