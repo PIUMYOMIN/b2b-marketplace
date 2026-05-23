@@ -192,19 +192,42 @@ class UserController extends Controller
 
     /**
      * Remove the specified user.
+     *
+     * Soft-deletes the user.  The User::booted() deleting listener
+     * automatically cascades the soft-delete to the seller_profile and its
+     * products, because the DB-level onDelete('cascade') only fires on hard
+     * deletes — not on soft deletes — so we handle it at the application level.
      */
     public function destroy(User $user)
     {
         $this->authorize('delete', $user);
 
+        // Prevent wiping out the very last admin account.
+        if ($user->hasRole('admin')) {
+            $adminCount = User::role('admin')->count();
+            if ($adminCount <= 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot delete the last administrator account.',
+                ], 422);
+            }
+        }
+
         DB::transaction(function () use ($user) {
+            // Revoke all Sanctum tokens so the session is invalidated immediately.
+            $user->tokens()->delete();
+
+            // Detach Spatie roles (pivot table — no soft-delete on this table).
             $user->roles()->detach();
+
+            // $user->delete() triggers the User::booted() deleting listener which
+            // cascades the soft-delete to seller_profile → products.
             $user->delete();
         });
 
         return response()->json([
             'success' => true,
-            'message' => __('messages.users.deleted')
+            'message' => __('messages.users.deleted'),
         ]);
     }
 

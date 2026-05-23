@@ -81,6 +81,33 @@ class User extends Authenticatable implements MustVerifyEmail
     //     'preferences' => '{}'
     // ];
 
+    /**
+     * Cascade soft-deletes to owned records.
+     *
+     * The DB-level onDelete('cascade') on seller_profiles.user_id only fires
+     * on a hard (physical) DELETE.  Because this model uses SoftDeletes,
+     * calling $user->delete() only sets deleted_at — the DB cascade never
+     * fires, leaving the seller_profile (and its products) as orphaned rows
+     * still visible in admin panels and on public store URLs.
+     *
+     * We fix this here once so every code path — UserController, console
+     * commands, tests — gets the cascade for free.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user) {
+            // Cascade soft-delete to the seller profile and its products.
+            if ($sellerProfile = $user->sellerProfile) {
+                // Soft-delete every product listed under this store so they
+                // disappear from the marketplace immediately.
+                $sellerProfile->products()->each(fn ($product) => $product->delete());
+
+                // Soft-delete the profile itself.
+                $sellerProfile->delete();
+            }
+        });
+    }
+
     public function sendEmailVerificationNotification()
     {
         $this->notify(new \App\Notifications\VerifyEmailApi());
