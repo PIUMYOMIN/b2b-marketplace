@@ -4394,19 +4394,6 @@ class SellerController extends Controller
                 'admin_notes' => $validated['reason'] ?? null,
             ]);
 
-            // Log the status change
-            if ($validated['reason']) {
-                DB::table('seller_status_logs')->insert([
-                    'seller_profile_id' => $sellerProfile->id,
-                    'admin_id' => $admin->id,
-                    'old_status' => $oldStatus,
-                    'new_status' => $validated['status'],
-                    'reason' => $validated['reason'],
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-            }
-
             Log::info('Seller status updated', [
                 'seller_id' => $id,
                 'admin_id' => $admin->id,
