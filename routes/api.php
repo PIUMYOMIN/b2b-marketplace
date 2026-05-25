@@ -305,6 +305,8 @@ Route::group([
                     ->whereNumber('id');
                 Route::patch('/{id}/toggle-status', [ProductController::class, 'toggleStatus'])
                     ->whereNumber('id');
+                Route::delete('/{product}', [ProductController::class, 'destroy'])
+                    ->whereNumber('product');
             });
 
             Route::prefix('contact-messages')->group(function () {

@@ -510,8 +510,11 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        // Seller-only ownership check (no admin bypass on seller endpoints)
-        if ((int) Auth::id() !== (int) $product->seller_id) {
+        // Allow admins to delete any product; sellers can only delete their own
+        if (
+            ! Auth::user()?->hasRole('admin') &&
+            (int) Auth::id() !== (int) $product->seller_id
+        ) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_delete')
