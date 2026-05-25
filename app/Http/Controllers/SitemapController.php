@@ -28,6 +28,8 @@ class SitemapController extends Controller
             ['path' => '/products',       'priority' => '0.9',  'changefreq' => 'daily'],
             ['path' => '/sellers',        'priority' => '0.8',  'changefreq' => 'daily'],
             ['path' => '/categories',     'priority' => '0.8',  'changefreq' => 'weekly'],
+            ['path' => '/local-deals',    'priority' => '0.7',  'changefreq' => 'daily'],
+            ['path' => '/compare',        'priority' => '0.5',  'changefreq' => 'weekly'],
             ['path' => '/about',          'priority' => '0.5',  'changefreq' => 'monthly'],
             ['path' => '/contact',        'priority' => '0.5',  'changefreq' => 'monthly'],
             ['path' => '/pricing',        'priority' => '0.6',  'changefreq' => 'monthly'],

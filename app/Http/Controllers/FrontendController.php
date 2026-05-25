@@ -45,11 +45,51 @@ class FrontendController extends Controller
                 'category_desc'    => 'Browse %s products from Myanmar suppliers. Wholesale prices, bulk orders, and verified sellers.',
                 'default_title'    => 'Pyonea Marketplace | Buy & Sell Products in Myanmar',
                 'default_desc'     => "Myanmar's trusted B2B marketplace for wholesale trade.",
+                // Email verification
+                'email_verify_title' => 'Verify Your Email | Pyonea',
+                'email_verify_desc'  => 'Please verify your email address to activate your Pyonea account and start trading.',
+                // Local deals
+                'local_deals_title' => 'Local Deals | Pyonea',
+                'local_deals_desc'  => 'Discover exclusive local deals and special offers from verified sellers near you on Pyonea.',
+                // Product compare
+                'compare_title'     => 'Compare Products | Pyonea',
+                'compare_desc'      => 'Compare wholesale products side by side on Pyonea. Evaluate prices, specifications, and sellers to make the best buying decision.',
+                // About
+                'about_title'       => 'About Us | Pyonea',
+                'about_desc'        => 'Learn about Pyonea — Myanmar\'s trusted B2B marketplace connecting businesses with verified wholesale suppliers.',
+                // Contact
+                'contact_title'     => 'Contact Us | Pyonea',
+                'contact_desc'      => 'Get in touch with the Pyonea team. We\'re here to help with any questions about buying, selling, or your account.',
+                // Pricing
+                'pricing_title'     => 'Pricing & Plans | Pyonea',
+                'pricing_desc'      => 'Explore Pyonea\'s seller subscription plans. Find the right plan to grow your wholesale business in Myanmar.',
+                // Help
+                'help_title'        => 'Help Center | Pyonea',
+                'help_desc'         => 'Find answers to common questions about orders, payments, shipping, and selling on Pyonea.',
+                // Privacy policy
+                'privacy_title'     => 'Privacy Policy | Pyonea',
+                'privacy_desc'      => 'Read Pyonea\'s privacy policy to understand how we collect, use, and protect your personal information.',
+                // Return policy
+                'return_policy_title' => 'Return Policy | Pyonea',
+                'return_policy_desc'  => 'Understand Pyonea\'s return and refund policy for wholesale orders placed on the platform.',
+                // Legal
+                'legal_title'       => 'Legal | Pyonea',
+                'legal_desc'        => 'Read the terms of service and legal agreements governing use of the Pyonea marketplace.',
                 // Breadcrumb labels
-                'home_label'       => 'Home',
-                'products_label'   => 'Products',
-                'sellers_label'    => 'Sellers',
-                'categories_label' => 'Categories',
+                'home_label'          => 'Home',
+                'products_label'      => 'Products',
+                'sellers_label'       => 'Sellers',
+                'categories_label'    => 'Categories',
+                'email_verify_label'  => 'Verify Email',
+                'local_deals_label'   => 'Local Deals',
+                'compare_label'       => 'Compare Products',
+                'about_label'         => 'About Us',
+                'contact_label'       => 'Contact',
+                'pricing_label'       => 'Pricing',
+                'help_label'          => 'Help',
+                'privacy_label'       => 'Privacy Policy',
+                'return_policy_label' => 'Return Policy',
+                'legal_label'         => 'Legal',
             ],
             'my' => [
                 'home_title'       => 'Pyonea | မြန်မာ့ B2B ဈေးကွက်',
@@ -65,11 +105,51 @@ class FrontendController extends Controller
                 'category_desc'    => 'မြန်မာ့ရောင်းချသူများထံမှ %s ကုန်ပစ္စည်းများကို ကြည့်ရှုပါ။ လက်ကားစျေးနှုန်းများ၊ အစုလိုက်မှာယူမှုများနှင့် အတည်ပြုထားသော ရောင်းချသူများ။',
                 'default_title'    => 'Pyonea | မြန်မာ့ B2B ဈေးကွက်',
                 'default_desc'     => 'လက်ကားကုန်သွယ်မှုအတွက် မြန်မာနိုင်ငံ၏ ယုံကြည်ရသော B2B ဈေးကွက်။',
+                // Email verification
+                'email_verify_title' => 'အီးမေးလ် အတည်ပြုခြင်း | Pyonea',
+                'email_verify_desc'  => 'သင့် Pyonea အကောင့်ကို အသက်သွင်းရန် သင့်အီးမေးလ်လိပ်စာကို အတည်ပြုပါ။',
+                // Local deals
+                'local_deals_title' => 'ဒေသဆိုင်ရာ ကမ်းလှမ်းချက်များ | Pyonea',
+                'local_deals_desc'  => 'Pyonea တွင် သင့်အနီးရှိ အတည်ပြုထားသော ရောင်းချသူများထံမှ သီးသန့် ဒေသဆိုင်ရာ ကမ်းလှမ်းချက်များနှင့် အထူးလျှော့စျေးများကို ရှာဖွေပါ။',
+                // Product compare
+                'compare_title'     => 'ကုန်ပစ္စည်းများ နှိုင်းယှဉ်ခြင်း | Pyonea',
+                'compare_desc'      => 'Pyonea တွင် လက်ကားကုန်ပစ္စည်းများကို တန်းစီနှိုင်းယှဉ်ပါ။ အကောင်းဆုံး ဝယ်ယူမှုဆုံးဖြတ်ချက်ချရန် စျေးနှုန်းများ၊ သတ်မှတ်ချက်များနှင့် ရောင်းချသူများကို စစ်ဆေးပါ။',
+                // About
+                'about_title'       => 'ကျွန်ုပ်တို့အကြောင်း | Pyonea',
+                'about_desc'        => 'Pyonea အကြောင်း လေ့လာပါ — မြန်မာနိုင်ငံ၏ ယုံကြည်ရသော B2B ဈေးကွက်သည် စီးပွားရေးလုပ်ငန်းများကို အတည်ပြုထားသော လက်ကားရောင်းချသူများနှင့် ချိတ်ဆက်ပေးသည်။',
+                // Contact
+                'contact_title'     => 'ဆက်သွယ်ရန် | Pyonea',
+                'contact_desc'      => 'Pyonea အဖွဲ့နှင့် ဆက်သွယ်ပါ။ ဝယ်ယူခြင်း၊ ရောင်းချခြင်း သို့မဟုတ် သင့်အကောင့်နှင့် ပတ်သက်သော မေးခွန်းများအတွက် ကျွန်ုပ်တို့ ကူညီပါမည်။',
+                // Pricing
+                'pricing_title'     => 'အစီအစဉ်နှင့် စျေးနှုန်း | Pyonea',
+                'pricing_desc'      => 'Pyonea ၏ ရောင်းချသူ အသင်းဝင်မှု အစီအစဉ်များကို ကြည့်ရှုပါ။ မြန်မာနိုင်ငံတွင် သင့်လက်ကားစီးပွားရေးကို ကြီးထွားစေရန် သင့်လျော်သော အစီအစဉ်ကို ရွေးချယ်ပါ။',
+                // Help
+                'help_title'        => 'အကူအညီဗဟိုဌာန | Pyonea',
+                'help_desc'         => 'Pyonea တွင် မှာယူခြင်း၊ ငွေပေးချေမှု၊ ပို့ဆောင်ရေးနှင့် ရောင်းချခြင်းတို့နှင့် ပတ်သက်သော မေးလေ့ရှိသောမေးခွန်းများ၏ အဖြေများကို ရှာဖွေပါ။',
+                // Privacy policy
+                'privacy_title'     => 'လျှို့ဝှက်ချက်မူဝါဒ | Pyonea',
+                'privacy_desc'      => 'Pyonea ၏ လျှို့ဝှက်ချက်မူဝါဒကို ဖတ်ရှုပြီး သင်၏ ကိုယ်ရေးကိုယ်တာ အချက်အလက်များကို မည်သို့ စုဆောင်း၊ အသုံးပြု၍ ကာကွယ်ကြောင်း နားလည်ပါ။',
+                // Return policy
+                'return_policy_title' => 'ပြန်အမ်းမူဝါဒ | Pyonea',
+                'return_policy_desc'  => 'Pyonea ပလက်ဖောင်းတွင် တင်ထားသော လက်ကားမှာယူမှုများအတွက် ပြန်အမ်းနှင့် ငွေပြန်အမ်းမူဝါဒကို နားလည်ပါ။',
+                // Legal
+                'legal_title'       => 'ဥပဒေဆိုင်ရာ | Pyonea',
+                'legal_desc'        => 'Pyonea ဈေးကွက် အသုံးပြုမှုကို အုပ်ချုပ်သော ဝန်ဆောင်မှုစည်းမျဉ်းများနှင့် ဥပဒေသဘောတူညီချက်များကို ဖတ်ရှုပါ။',
                 // Breadcrumb labels
-                'home_label'       => 'ပင်မစာမျက်နှာ',
-                'products_label'   => 'ကုန်ပစ္စည်းများ',
-                'sellers_label'    => 'ရောင်းချသူများ',
-                'categories_label' => 'အမျိုးအစားများ',
+                'home_label'          => 'ပင်မစာမျက်နှာ',
+                'products_label'      => 'ကုန်ပစ္စည်းများ',
+                'sellers_label'       => 'ရောင်းချသူများ',
+                'categories_label'    => 'အမျိုးအစားများ',
+                'email_verify_label'  => 'အီးမေးလ် အတည်ပြုခြင်း',
+                'local_deals_label'   => 'ဒေသဆိုင်ရာ ကမ်းလှမ်းချက်များ',
+                'compare_label'       => 'ကုန်ပစ္စည်း နှိုင်းယှဉ်ခြင်း',
+                'about_label'         => 'ကျွန်ုပ်တို့အကြောင်း',
+                'contact_label'       => 'ဆက်သွယ်ရန်',
+                'pricing_label'       => 'အစီအစဉ်နှင့် စျေးနှုန်း',
+                'help_label'          => 'အကူအညီ',
+                'privacy_label'       => 'လျှို့ဝှက်ချက်မူဝါဒ',
+                'return_policy_label' => 'ပြန်အမ်းမူဝါဒ',
+                'legal_label'         => 'ဥပဒေဆိုင်ရာ',
             ],
         ];
 
@@ -239,6 +319,108 @@ class FrontendController extends Controller
                     ['name' => $catName,               'url' => $path],
                 ];
             }
+        }
+
+        // ── Email verification: /email-verify ──────────────────────────────
+        elseif ($trimmed === 'email-verify') {
+            $metadata['pageTitle']       = $m['email_verify_title'];
+            $metadata['pageDescription'] = $m['email_verify_desc'];
+            $metadata['noindex']         = true; // transactional page — no SEO value
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],         'url' => '/'],
+                ['name' => $m['email_verify_label'], 'url' => '/email-verify'],
+            ];
+        }
+
+        // ── Local deals: /local-deals ───────────────────────────────────────
+        elseif ($trimmed === 'local-deals') {
+            $metadata['pageTitle']       = $m['local_deals_title'];
+            $metadata['pageDescription'] = $m['local_deals_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],        'url' => '/'],
+                ['name' => $m['local_deals_label'], 'url' => '/local-deals'],
+            ];
+        }
+
+        // ── Product compare: /compare ───────────────────────────────────────
+        elseif ($trimmed === 'compare') {
+            $metadata['pageTitle']       = $m['compare_title'];
+            $metadata['pageDescription'] = $m['compare_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],     'url' => '/'],
+                ['name' => $m['products_label'], 'url' => '/products'],
+                ['name' => $m['compare_label'],  'url' => '/compare'],
+            ];
+        }
+
+        // ── About: /about ───────────────────────────────────────────────────
+        elseif ($trimmed === 'about') {
+            $metadata['pageTitle']       = $m['about_title'];
+            $metadata['pageDescription'] = $m['about_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],  'url' => '/'],
+                ['name' => $m['about_label'], 'url' => '/about'],
+            ];
+        }
+
+        // ── Contact: /contact ───────────────────────────────────────────────
+        elseif ($trimmed === 'contact') {
+            $metadata['pageTitle']       = $m['contact_title'];
+            $metadata['pageDescription'] = $m['contact_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],    'url' => '/'],
+                ['name' => $m['contact_label'], 'url' => '/contact'],
+            ];
+        }
+
+        // ── Pricing: /pricing ───────────────────────────────────────────────
+        elseif ($trimmed === 'pricing') {
+            $metadata['pageTitle']       = $m['pricing_title'];
+            $metadata['pageDescription'] = $m['pricing_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],    'url' => '/'],
+                ['name' => $m['pricing_label'], 'url' => '/pricing'],
+            ];
+        }
+
+        // ── Help: /help ─────────────────────────────────────────────────────
+        elseif ($trimmed === 'help') {
+            $metadata['pageTitle']       = $m['help_title'];
+            $metadata['pageDescription'] = $m['help_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'], 'url' => '/'],
+                ['name' => $m['help_label'], 'url' => '/help'],
+            ];
+        }
+
+        // ── Privacy policy: /privacy-policy ────────────────────────────────
+        elseif ($trimmed === 'privacy-policy') {
+            $metadata['pageTitle']       = $m['privacy_title'];
+            $metadata['pageDescription'] = $m['privacy_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],    'url' => '/'],
+                ['name' => $m['privacy_label'], 'url' => '/privacy-policy'],
+            ];
+        }
+
+        // ── Return policy: /return-policy ──────────────────────────────────
+        elseif ($trimmed === 'return-policy') {
+            $metadata['pageTitle']       = $m['return_policy_title'];
+            $metadata['pageDescription'] = $m['return_policy_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],          'url' => '/'],
+                ['name' => $m['return_policy_label'], 'url' => '/return-policy'],
+            ];
+        }
+
+        // ── Legal: /legal ───────────────────────────────────────────────────
+        elseif ($trimmed === 'legal') {
+            $metadata['pageTitle']       = $m['legal_title'];
+            $metadata['pageDescription'] = $m['legal_desc'];
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],  'url' => '/'],
+                ['name' => $m['legal_label'], 'url' => '/legal'],
+            ];
         }
 
         return $metadata;
