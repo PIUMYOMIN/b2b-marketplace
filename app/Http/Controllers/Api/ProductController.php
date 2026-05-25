@@ -39,8 +39,10 @@ class ProductController extends Controller
             ->withCount('reviews');
  
         // ── Filters ──────────────────────────────────────────────────────────
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
+        // Accept both 'category_id' (legacy) and 'category' (frontend param)
+        $categoryId = $request->filled('category_id') ? $request->category_id : $request->category;
+        if ($categoryId) {
+            $query->where('category_id', $categoryId);
         }
  
         if ($request->filled('product_type')) {
@@ -71,8 +73,10 @@ class ProductController extends Controller
         }
  
         // ── Search ───────────────────────────────────────────────────────────
-        if ($request->filled('q')) {
-            $q = $request->q;
+        // Accept both 'search' (frontend param) and 'q' (legacy param)
+        $searchTerm = $request->filled('search') ? $request->search : $request->q;
+        if ($searchTerm) {
+            $q = $searchTerm;
             $query->where(function ($query) use ($q) {
                 $query->where('name_en', 'like', "%{$q}%")
                       ->orWhere('name_mm', 'like', "%{$q}%")
@@ -80,15 +84,38 @@ class ProductController extends Controller
                       ->orWhere('brand', 'like', "%{$q}%");
             });
         }
- 
+
         // ── Sorting ───────────────────────────────────────────────────────────
-        match ($request->get('sort', 'newest')) {
-            'price_asc'   => $query->orderBy('price', 'asc'),
-            'price_desc'  => $query->orderBy('price', 'desc'),
-            'popular'     => $query->orderByDesc('sales'),
-            'rating'      => $query->orderByDesc('average_rating'),
-            default       => $query->orderByDesc('listed_at'),
-        };
+        // Accept sort_by/sort_order (frontend) or legacy 'sort' param
+        $sortKey = 'newest';
+        if ($request->filled('sort_by')) {
+            $sortBy    = $request->sort_by;
+            $sortOrder = $request->get('sort_order', 'desc');
+            // Map frontend sort_by/sort_order to internal sort key
+            if ($sortBy === 'price') {
+                $sortKey = $sortOrder === 'asc' ? 'price_asc' : 'price_desc';
+            } elseif ($sortBy === 'average_rating') {
+                $sortKey = 'rating';
+            } elseif ($sortBy === 'sales') {
+                $sortKey = 'popular';
+            } else {
+                // created_at or any other column — honour the sort_order
+                $query->orderBy($sortBy, $sortOrder);
+                $sortKey = null; // handled above
+            }
+        } else {
+            $sortKey = $request->get('sort', 'newest');
+        }
+
+        if ($sortKey !== null) {
+            match ($sortKey) {
+                'price_asc'  => $query->orderBy('price', 'asc'),
+                'price_desc' => $query->orderBy('price', 'desc'),
+                'popular'    => $query->orderByDesc('sales'),
+                'rating'     => $query->orderByDesc('average_rating'),
+                default      => $query->orderByDesc('listed_at'),
+            };
+        }
  
         $products = $query->paginate($request->get('per_page', 24));
  
