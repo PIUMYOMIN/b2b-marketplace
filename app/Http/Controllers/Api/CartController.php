@@ -321,7 +321,7 @@ class CartController extends Controller
                 }
             }
 
-            $effectiveMoq = $variant ? $variant->effectiveMoq() : ($product->moq ?? 1);
+            $effectiveMoq = $variant ? $variant->effectiveMoq() : $product->effectiveMoq();
             if ($request->quantity < $effectiveMoq) {
                 return response()->json([
                     'success' => false,
@@ -465,7 +465,7 @@ class CartController extends Controller
                 return response()->json(['success' => false, 'message' => 'This product is out of stock'], 400);
             }
 
-            $effectiveMoq = $variant ? $variant->effectiveMoq() : ($product->moq ?? 1);
+            $effectiveMoq = $variant ? $variant->effectiveMoq() : $product->effectiveMoq();
             if ($request->quantity < $effectiveMoq) {
                 return response()->json([
                     'success' => false,

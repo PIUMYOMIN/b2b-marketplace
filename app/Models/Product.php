@@ -204,17 +204,19 @@ class Product extends Model
      */
     public function effectiveMoq(): int
     {
-        return $this->moq ?? 1;
+        return max(1, (int) ($this->moq ?? 1));
     }
 
     /**
      * The effective quantity step for this product.
-     * Defaults to 1 (no step restriction) when not set.
-     * e.g. MOQ=50, step=10 → valid quantities: 50, 60, 70 …
+     * Falls back to MOQ so valid quantities are MOQ, 2x MOQ, 3x MOQ...
      */
     public function effectiveStep(): int
     {
-        return $this->quantity_step ?? 1;
+        $moq = $this->effectiveMoq();
+        $step = (int) ($this->quantity_step ?? $moq);
+
+        return $step > 1 ? $step : $moq;
     }
 
     /**

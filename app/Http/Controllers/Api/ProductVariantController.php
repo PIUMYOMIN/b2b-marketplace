@@ -55,7 +55,8 @@ class ProductVariantController extends Controller
             ], 422);
         }
 
-        $created = $this->variantService->generateCombinations($product, $request->validated());
+        $data = $this->normaliseVariantStep($request->validated());
+        $created = $this->variantService->generateCombinations($product, $data);
 
         return response()->json([
             'success' => true,
@@ -73,6 +74,7 @@ class ProductVariantController extends Controller
         $this->authorizeProduct($product);
 
         $data = $request->validated();
+        $data = $this->normaliseVariantStep($data);
         $optionValueIds = $data['option_value_ids'];
         unset($data['option_value_ids']);
 
@@ -111,7 +113,7 @@ class ProductVariantController extends Controller
         $this->authorizeProduct($product);
         $this->ensureVariantBelongsToProduct($variant, $product);
 
-        $variant->update($request->validated());
+        $variant->update($this->normaliseVariantStep($request->validated()));
 
         return response()->json([
             'success' => true,
@@ -173,5 +175,16 @@ class ProductVariantController extends Controller
         if ((int) $variant->product_id !== (int) $product->id) {
             abort(404, __('messages.products.variant_not_found'));
         }
+    }
+
+    private function normaliseVariantStep(array $data): array
+    {
+        if (array_key_exists('moq', $data)) {
+            $data['quantity_step'] = $data['moq'] !== null
+                ? max(1, (int) $data['moq'])
+                : null;
+        }
+
+        return $data;
     }
 }

@@ -51,6 +51,7 @@ class ProductVariantService
                     'quantity'      => $defaults['quantity'] ?? 0,
                     'quantity_unit' => $defaults['quantity_unit'] ?? null,
                     'moq'           => $defaults['moq'] ?? null,
+                    'quantity_step' => $defaults['quantity_step'] ?? $defaults['moq'] ?? null,
                     'is_active'     => true,
                     'position'      => ++$position,
                 ]);

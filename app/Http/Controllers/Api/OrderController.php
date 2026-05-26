@@ -264,6 +264,7 @@ class OrderController extends Controller
         $request->validate([
             'items'                        => 'required|array|min:1',
             'items.*.product_id'           => 'required|exists:products,id',
+            'items.*.variant_id'           => 'nullable|exists:product_variants,id',
             'items.*.quantity'             => 'required|integer|min:1',
             'shipping_address'             => 'required|array',
             'shipping_address.full_name'   => 'required|string',

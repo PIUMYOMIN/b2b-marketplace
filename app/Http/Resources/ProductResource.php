@@ -78,8 +78,8 @@ class ProductResource extends JsonResource
             'effective_discount_pct'   => $this->getEffectiveDiscountPercentage(), // % for badge
 
             // ── B2B ───────────────────────────────────────────────────────────
-            'moq'               => $this->moq,
-            'quantity_step'     => $this->quantity_step ?? 1,
+            'moq'               => $this->effectiveMoq(),
+            'quantity_step'     => $this->effectiveStep(),
             'quantity_unit'     => $this->quantity_unit,
             'min_order_unit'    => $this->min_order_unit,
             'lead_time'         => $this->lead_time,

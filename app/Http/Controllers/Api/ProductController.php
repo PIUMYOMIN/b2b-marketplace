@@ -334,6 +334,8 @@ class ProductController extends Controller
  
         // ── 3. Create the product ─────────────────────────────────────────
         $data = $request->validated();
+        $data['moq'] = max(1, (int) ($data['moq'] ?? 1));
+        $data['quantity_step'] = $data['moq'];
  
         $data['seller_id'] = $sellerId;
         $data['slug_en']   = $this->generateSlug($data['name_en']);
@@ -509,6 +511,10 @@ class ProductController extends Controller
         }
  
         $data = $request->validated();
+        if (array_key_exists('moq', $data)) {
+            $data['moq'] = max(1, (int) ($data['moq'] ?? 1));
+            $data['quantity_step'] = $data['moq'];
+        }
  
         if (isset($data['name_en']) && $data['name_en'] !== $product->name_en) {
             $data['slug_en'] = $this->generateSlug($data['name_en'], 'products', 'slug_en', $product->id);

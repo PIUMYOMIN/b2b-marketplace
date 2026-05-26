@@ -25,6 +25,7 @@ class GenerateVariantsRequest extends FormRequest
             'quantity'      => ['nullable', 'numeric', 'min:0'],
             'quantity_unit' => ['nullable', 'string', 'max:50'],
             'moq'           => ['nullable', 'integer', 'min:1'],
+            'quantity_step' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

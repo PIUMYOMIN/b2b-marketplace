@@ -44,6 +44,7 @@ class UpdateProductVariantRequest extends FormRequest
             'quantity'      => ['sometimes', 'numeric', 'min:0'],
             'quantity_unit' => ['nullable', 'string', 'max:50'],
             'moq'           => ['nullable', 'integer', 'min:1'],
+            'quantity_step' => ['nullable', 'integer', 'min:1'],
             'image'         => ['nullable', 'string', 'max:2048'],
             'position'      => ['nullable', 'integer', 'min:1'],
             'is_active'     => ['nullable', 'boolean'],

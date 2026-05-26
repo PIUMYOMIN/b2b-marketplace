@@ -37,8 +37,8 @@ class ProductListResource extends JsonResource
             'product_type'   => $this->product_type,
             'price'          => $this->price,          // base / "From" price
             'quantity_unit'  => $this->quantity_unit,
-            'moq'            => $this->moq,
-            'quantity_step'  => $this->quantity_step ?? 1,
+            'moq'            => $this->effectiveMoq(),
+            'quantity_step'  => $this->effectiveStep(),
             'is_on_sale'     => $this->is_on_sale,
             'discount_price' => $this->discount_price,
             'sale_badge'     => $this->sale_badge,

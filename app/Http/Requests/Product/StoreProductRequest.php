@@ -38,6 +38,7 @@ class StoreProductRequest extends FormRequest
             // ── B2B ───────────────────────────────────────────────────────────
             'quantity_unit'    => ['nullable', 'string', 'max:50'],
             'moq'              => ['nullable', 'integer', 'min:1'],
+            'quantity_step'    => ['nullable', 'integer', 'min:1'],
             'min_order_unit'   => ['nullable', 'string', 'max:50'],
             'lead_time'        => ['nullable', 'string', 'max:100'],
             'packaging_details' => ['nullable', 'string'],
