@@ -1,8 +1,9 @@
 {{-- resources/views/emails/new-order-seller.blade.php --}}
 @extends('emails.layout')
 @section('content')
-<p class="greeting">🛒 New Order Received!</p>
+<p class="greeting">New Order Received</p>
 <p class="text">Hi {{ $notifiable->name ?? 'Seller' }}, you have a new order in your store. Please process it promptly.</p>
+<p class="text" style="font-size:14px; color:#6b7280;">သင့်ဆိုင်တွင် အော်ဒါအသစ် ရရှိထားပါသည်။ အော်ဒါကို အချိန်မီ အတည်ပြုပြီး ဆောင်ရွက်ပေးပါ။</p>
 
 <div class="info-box">
   <p><strong>Order #{{ $order->order_number }}</strong></p>

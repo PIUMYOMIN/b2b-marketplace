@@ -19,7 +19,7 @@
             <polyline points="20 6 9 17 4 12"/>
         </svg>
     </div>
-    <p class="greeting" style="margin-bottom:4px;">Delivered! Thank you 🙏</p>
+    <p class="greeting" style="margin-bottom:4px;">Delivered. Thank you</p>
     <p style="font-size:14px; color:#6b7280; margin:0;">
         We're so glad your order arrived safely.
     </p>
@@ -32,6 +32,9 @@
 <p class="text">
     Your order has been successfully delivered and marked as complete.
     We truly appreciate your trust in Pyonea and hope you are completely happy with your purchase.
+</p>
+<p class="text" style="font-size:14px; color:#6b7280;">
+    သင့်အော်ဒါကို အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ။ Pyonea ကို ယုံကြည်စွာ အသုံးပြုသည့်အတွက် ကျေးဇူးတင်ပါသည်။
 </p>
 
 {{-- ── Order summary box ── --}}
@@ -105,7 +108,7 @@
 {{-- ── Shop again CTA ── --}}
 <div style="text-align:center; margin: 24px 0 8px;">
     <a href="{{ config('app.frontend_url') }}/products" class="btn-outline">
-        🛍 Shop Again at Pyonea
+        Shop Again at Pyonea
     </a>
 </div>
 

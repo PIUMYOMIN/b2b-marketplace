@@ -8,12 +8,12 @@ use App\Models\Commission;
 use App\Models\Delivery;
 use App\Models\Order;
 use App\Models\SellerWallet;
+use App\Notifications\DeliveryStatusUpdated;
 use App\Notifications\OrderDeliveredThankYou;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class DeliveryController extends Controller
 {
@@ -56,6 +56,14 @@ class DeliveryController extends Controller
             // ── List mode ──────────────────────────────────────────────────
             $query = Delivery::with(['order', 'supplier', 'platformCourier', 'deliveryUpdates'])
                 ->orderBy('created_at', 'desc');
+
+            if ($request->filled('order_id')) {
+                $query->where('order_id', $request->integer('order_id'));
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->status);
+            }
 
             if ($isSeller) {
                 $query->where('supplier_id', $user->id);
@@ -111,13 +119,17 @@ class DeliveryController extends Controller
             $addr = $order->shipping_address;
             $delivery->delivery_address = is_array($addr)
                 ? implode(', ', array_filter([
+                    $addr['full_name'] ?? '',
+                    $addr['phone'] ?? '',
                     $addr['address'] ?? '',
+                    $addr['township'] ?? '',
                     $addr['city']    ?? '',
                     $addr['state']   ?? '',
+                    $addr['country'] ?? '',
                   ]))
                 : ($addr ?? '');
             $delivery->status               = 'awaiting_pickup';
-            $delivery->tracking_number      = $delivery->tracking_number ?? strtoupper(Str::random(12));
+            $delivery->tracking_number      = $delivery->tracking_number ?? $delivery->generateTrackingNumber();
 
             // Set delivery fee status based on method:
             // 'platform' → fee will be collected from seller → mark outstanding
@@ -127,6 +139,14 @@ class DeliveryController extends Controller
                 : 'not_applicable';
 
             $delivery->save();
+
+            $delivery->deliveryUpdates()->create([
+                'user_id' => $user->id,
+                'status' => 'awaiting_pickup',
+                'notes' => $validated['delivery_method'] === 'platform'
+                    ? 'Platform logistics selected. Awaiting courier pickup.'
+                    : 'Self delivery selected. Awaiting dispatch by seller.',
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -170,7 +190,21 @@ class DeliveryController extends Controller
 
             DB::beginTransaction();
 
-            $delivery->update(['status' => $validated['status']]);
+            $timestampFields = [
+                'picked_up' => 'picked_up_at',
+                'in_transit' => 'in_transit_at',
+                'out_for_delivery' => 'out_for_delivery_at',
+                'delivered' => 'delivered_at',
+                'failed' => 'failed_at',
+            ];
+
+            $previousStatus = $delivery->status;
+            $deliveryUpdates = ['status' => $validated['status']];
+            if (isset($timestampFields[$validated['status']])) {
+                $deliveryUpdates[$timestampFields[$validated['status']]] = now();
+            }
+
+            $delivery->update($deliveryUpdates);
 
             $delivery->deliveryUpdates()->create([
                 'user_id'  => $user->id,
@@ -203,15 +237,17 @@ class DeliveryController extends Controller
 
                     if ($order->payment_method !== 'cash_on_delivery') {
                         // Digital payment — release escrow, deduct commission, credit payout
-                        $wallet = SellerWallet::lockForSeller($order->seller_id);
-                        $wallet->releaseEscrow(
-                            escrowAmount:     (float) $order->total_amount,
-                            sellerPayout:     (float) ($commission?->seller_payout
-                                                ?? ($order->subtotal_amount - $order->commission_amount)),
-                            commissionAmount: (float) $order->commission_amount,
-                            orderId:          $order->id,
-                            actorId:          $user->id
-                        );
+                        if ($order->escrow_status === 'held') {
+                            $wallet = SellerWallet::lockForSeller($order->seller_id);
+                            $wallet->releaseEscrow(
+                                escrowAmount:     (float) $order->total_amount,
+                                sellerPayout:     (float) ($commission?->seller_payout
+                                                    ?? ($order->subtotal_amount - $order->commission_amount)),
+                                commissionAmount: (float) $order->commission_amount,
+                                orderId:          $order->id,
+                                actorId:          $user->id
+                            );
+                        }
                         $order->update(['escrow_status' => 'released']);
                     } else {
                         // COD — seller (or platform on behalf) collected cash.
@@ -253,6 +289,9 @@ class DeliveryController extends Controller
             }
 
             DB::commit();
+
+            $delivery->refresh();
+            $this->notifyDeliveryStatusChanged($delivery, $previousStatus, (int) $user->id, $validated['status'] !== 'delivered');
 
             // Send buyer thank-you email outside the transaction
             if ($order) {
@@ -310,6 +349,7 @@ class DeliveryController extends Controller
             ]);
 
             DB::beginTransaction();
+            $previousStatus = $delivery->status;
 
             // ── 1. Store the proof image ────────────────────────────────────
             $path = $request->file('delivery_proof')
@@ -351,20 +391,24 @@ class DeliveryController extends Controller
                 // ── 2b. Escrow (digital) or COD invoice ─────────────────────
                 if ($order->payment_method !== 'cash_on_delivery') {
                     // Release escrow — deduct commission, credit seller payout
-                    $wallet = SellerWallet::lockForSeller($order->seller_id);
-                    $wallet->releaseEscrow(
-                        escrowAmount:     (float) $order->total_amount,
-                        sellerPayout:     (float) ($commission?->seller_payout
-                                            ?? ($order->subtotal_amount - $order->commission_amount)),
-                        commissionAmount: (float) $order->commission_amount,
-                        orderId:          $order->id,
-                        actorId:          $user->id
-                    );
+                    if ($order->escrow_status === 'held') {
+                        $wallet = SellerWallet::lockForSeller($order->seller_id);
+                        $wallet->releaseEscrow(
+                            escrowAmount:     (float) $order->total_amount,
+                            sellerPayout:     (float) ($commission?->seller_payout
+                                                ?? ($order->subtotal_amount - $order->commission_amount)),
+                            commissionAmount: (float) $order->commission_amount,
+                            orderId:          $order->id,
+                            actorId:          $user->id
+                        );
+                    }
                     $order->update(['escrow_status' => 'released']);
                 } else {
                     // COD — seller collected cash from buyer; they now owe
                     // the platform the commission. Raise an invoice.
-                    CodCommissionInvoice::create([
+                    $existingInvoice = CodCommissionInvoice::where('order_id', $order->id)->first();
+                    if (!$existingInvoice) {
+                        CodCommissionInvoice::create([
                         'invoice_number'    => 'COD-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999),
                         'order_id'          => $order->id,
                         'seller_id'         => $order->seller_id,
@@ -375,11 +419,11 @@ class DeliveryController extends Controller
                         'due_date'          => now()->addDays(7)->toDateString(),
                         'seller_notes'      => "Commission owed for COD order #{$order->order_number}. "
                                             . "Please settle within 7 days via bank transfer.",
-                    ]);
+                        ]);
 
-                    $wallet = SellerWallet::forSeller($order->seller_id);
-                    $wallet->increment('cod_commission_outstanding', $order->commission_amount);
-                    $wallet->transactions()->create([
+                        $wallet = SellerWallet::forSeller($order->seller_id);
+                        $wallet->increment('cod_commission_outstanding', $order->commission_amount);
+                        $wallet->transactions()->create([
                         'order_id'               => $order->id,
                         'type'                   => 'cod_invoice',
                         'amount'                 => -(float) $order->commission_amount,
@@ -390,11 +434,15 @@ class DeliveryController extends Controller
                                                   . "Amount: {$order->commission_amount} MMK. "
                                                   . "Due: " . now()->addDays(7)->toDateString(),
                         'created_by'             => $user->id,
-                    ]);
+                        ]);
+                    }
                 }
             }
 
             DB::commit();
+
+            $delivery->refresh();
+            $this->notifyDeliveryStatusChanged($delivery, $previousStatus, (int) $user->id, false);
 
             // ── 3. Thank-you email — outside the transaction so a mail failure
             //       never rolls back the financial records ───────────────────
@@ -486,6 +534,34 @@ class DeliveryController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to get tracking updates: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to fetch tracking'], 500);
+        }
+    }
+
+    private function notifyDeliveryStatusChanged(
+        Delivery $delivery,
+        ?string $previousStatus,
+        ?int $actorId = null,
+        bool $sendBuyerMail = true
+    ): void {
+        if ($previousStatus !== null && $previousStatus === $delivery->status) {
+            return;
+        }
+
+        try {
+            $delivery->loadMissing('order.buyer', 'order.seller');
+            $order = $delivery->order;
+
+            if ($order?->buyer) {
+                $order->buyer->notify(new DeliveryStatusUpdated($delivery, $previousStatus, $sendBuyerMail));
+            }
+
+            if ($order?->seller && (int) $order->seller->id !== (int) $actorId) {
+                $order->seller->notify(new DeliveryStatusUpdated($delivery, $previousStatus, false));
+            }
+        } catch (\Exception $notifEx) {
+            Log::warning('DeliveryStatusUpdated notification failed: ' . $notifEx->getMessage(), [
+                'delivery_id' => $delivery->id,
+            ]);
         }
     }
 }

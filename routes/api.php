@@ -350,6 +350,8 @@ Route::group([
             Route::prefix('subscriptions')->group(function () {
                 Route::get('/', [SubscriptionController::class, 'adminIndex']);
                 Route::put('/{userId}', [SubscriptionController::class, 'adminAssign']);
+                Route::post('/requests/{subscriptionId}/approve', [SubscriptionController::class, 'adminApproveRequest']);
+                Route::post('/requests/{subscriptionId}/reject', [SubscriptionController::class, 'adminRejectRequest']);
                 Route::get('/plans', [SubscriptionController::class, 'adminPlans']);
                 Route::put('/plans/{id}', [SubscriptionController::class, 'adminUpdatePlan']);
             });

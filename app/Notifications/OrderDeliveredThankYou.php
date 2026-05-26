@@ -26,7 +26,7 @@ class OrderDeliveredThankYou extends Notification
     public function toMail($notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject("Thank you for your order — #{$this->order->order_number} 🙏")
+            ->subject("Thank you for your order - #{$this->order->order_number}")
             ->view('emails.order-delivered-thank-you', [
                 'order' => $this->order->load('items', 'buyer', 'seller.sellerProfile'),
             ]);

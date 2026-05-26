@@ -549,6 +549,7 @@ class SellerProfile extends Model
             'verification_notes' => $notes,
             'document_status' => self::DOCUMENT_APPROVED,
             'status' => self::STATUS_APPROVED,
+            'is_active' => true,
         ]);
     }
 
@@ -562,6 +563,8 @@ class SellerProfile extends Model
             'document_status' => self::DOCUMENT_REJECTED,
             'document_rejection_reason' => $reason,
             'verification_notes' => $reason,
+            'status' => self::STATUS_REJECTED,
+            'is_active' => false,
         ]);
     }
 

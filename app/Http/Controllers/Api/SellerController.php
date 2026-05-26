@@ -707,9 +707,122 @@ class SellerController extends Controller
 
             'created_at'                  => $s->created_at,
             'updated_at'                  => $s->updated_at,
+
+            // Setup progress shown in the seller dashboard.
+            'setup_progress'              => $this->buildStoreSetupProgress($s),
         ];
 
         return response()->json(['success' => true, 'data' => $data]);
+    }
+
+    /**
+     * Build the post-onboarding store setup checklist used by the seller dashboard.
+     */
+    private function buildStoreSetupProgress(SellerProfile $sellerProfile): array
+    {
+        $sellerProfile->loadMissing('businessType');
+
+        $businessType = $sellerProfile->businessType;
+        $requiresRegistration = (bool) ($businessType?->requires_registration ?? false);
+        $requiresTaxDocument = (bool) ($businessType?->requires_tax_document ?? false);
+
+        $storeBasicComplete = !empty($sellerProfile->store_name)
+            && !empty($sellerProfile->business_type_id)
+            && !empty($sellerProfile->contact_email)
+            && !empty($sellerProfile->contact_phone);
+
+        $businessDetailsComplete = true;
+        if ($requiresRegistration) {
+            $businessDetailsComplete = $businessDetailsComplete && !empty($sellerProfile->business_registration_number);
+        }
+        if ($requiresTaxDocument) {
+            $businessDetailsComplete = $businessDetailsComplete && !empty($sellerProfile->tax_id);
+        }
+
+        $addressComplete = !empty($sellerProfile->address)
+            && !empty($sellerProfile->city)
+            && !empty($sellerProfile->state)
+            && !empty($sellerProfile->country);
+
+        $brandingComplete = !empty($sellerProfile->store_logo)
+            && !empty($sellerProfile->store_description);
+
+        $deliveryComplete = $sellerProfile->deliveryAreas()->exists();
+        $policiesComplete = !empty($sellerProfile->return_policy)
+            && !empty($sellerProfile->shipping_policy);
+        $documentsComplete = $sellerProfile->hasRequiredDocuments();
+
+        $items = [
+            [
+                'key' => 'store_basic',
+                'label' => 'Store basic information',
+                'complete' => $storeBasicComplete,
+                'required' => true,
+                'action_step' => 'my-store',
+                'action_label' => 'Update store profile',
+            ],
+            [
+                'key' => 'branding',
+                'label' => 'Store logo and description',
+                'complete' => $brandingComplete,
+                'required' => true,
+                'action_step' => 'my-store',
+                'action_label' => 'Add store branding',
+            ],
+            [
+                'key' => 'business_details',
+                'label' => 'Business registration details',
+                'complete' => $businessDetailsComplete,
+                'required' => $requiresRegistration || $requiresTaxDocument,
+                'action_step' => 'my-store',
+                'action_label' => 'Update business details',
+            ],
+            [
+                'key' => 'address',
+                'label' => 'Business address',
+                'complete' => $addressComplete,
+                'required' => true,
+                'action_step' => 'my-store',
+                'action_label' => 'Add business address',
+            ],
+            [
+                'key' => 'delivery_zones',
+                'label' => 'Delivery zones',
+                'complete' => $deliveryComplete,
+                'required' => true,
+                'action_step' => 'delivery_zones',
+                'action_label' => 'Set up delivery zones',
+            ],
+            [
+                'key' => 'policies',
+                'label' => 'Return and shipping policies',
+                'complete' => $policiesComplete,
+                'required' => true,
+                'action_step' => 'settings',
+                'action_label' => 'Update policies',
+            ],
+            [
+                'key' => 'documents',
+                'label' => 'Required verification documents',
+                'complete' => $documentsComplete,
+                'required' => true,
+                'action_step' => 'my-store',
+                'action_label' => 'Upload documents',
+            ],
+        ];
+
+        $totalCount = count($items);
+        $completedCount = count(array_filter($items, fn($item) => $item['complete']));
+        $nextAction = collect($items)->first(fn($item) => !$item['complete']);
+
+        return [
+            'percentage' => $totalCount > 0 ? round(($completedCount / $totalCount) * 100) : 0,
+            'completed_count' => $completedCount,
+            'total_count' => $totalCount,
+            'is_complete' => $completedCount === $totalCount,
+            'items' => $items,
+            'next_action' => $nextAction ?: null,
+        ];
     }
 
     /**
@@ -1602,7 +1715,12 @@ class SellerController extends Controller
                 $currentStep = 'store-basic';
             }
 
-            $progress = (count($stepsCompleted) / count($stepOrder)) * 100;
+            $onboardingStepsCompleted = array_values(array_intersect($stepOrder, $stepsCompleted));
+            $progress = count($stepOrder) > 0
+                ? (count($onboardingStepsCompleted) / count($stepOrder)) * 100
+                : 0;
+            $progress = min(100, max(0, $progress));
+            $setupProgress = $this->buildStoreSetupProgress($sellerProfile);
 
             return response()->json([
                 'success' => true,
@@ -1615,6 +1733,7 @@ class SellerController extends Controller
                     'completed_steps' => $stepsCompleted,
                     'progress' => $progress,
                     'progress_percentage' => $progress,
+                    'setup_progress' => $setupProgress,
                     'profile_status' => $sellerProfile->status,
                     'business_type_info' => $sellerProfile->businessType ? [
                         'id' => $sellerProfile->businessType->id,
@@ -4324,14 +4443,29 @@ class SellerController extends Controller
             $oldStatus = $sellerProfile->verification_status;
             $oldDocStatus = $sellerProfile->document_status;
 
-            $sellerProfile->update([
+            $update = [
                 'onboarding_completed_at' => now(),
-                'status' => SellerProfile::STATUS_PENDING,
-                'verification_status' => SellerProfile::VERIFICATION_PENDING,
+                'verification_status' => $validated['verification_status'],
                 'document_status' => $validated['document_status'],
                 'verification_notes' => $validated['notes'] ?? null,
                 'document_rejection_reason' => $validated['document_status'] === 'rejected' ? ($validated['reason'] ?? null) : null,
-            ]);
+            ];
+
+            if ($validated['verification_status'] === SellerProfile::VERIFICATION_VERIFIED) {
+                $update['status'] = SellerProfile::STATUS_APPROVED;
+                $update['is_active'] = true;
+                $update['document_status'] = SellerProfile::DOCUMENT_APPROVED;
+                $update['verified_at'] = $sellerProfile->verified_at ?: now();
+                $update['verified_by'] = $sellerProfile->verified_by ?: $admin->id;
+            } elseif ($validated['verification_status'] === SellerProfile::VERIFICATION_REJECTED) {
+                $update['status'] = SellerProfile::STATUS_REJECTED;
+                $update['is_active'] = false;
+            } else {
+                $update['status'] = SellerProfile::STATUS_PENDING;
+                $update['is_active'] = false;
+            }
+
+            $sellerProfile->update($update);
 
             // Log status change
             $this->logVerificationAction(
@@ -4392,11 +4526,27 @@ class SellerController extends Controller
             // Store old status for logging
             $oldStatus = $sellerProfile->status;
 
-            // Update status
-            $sellerProfile->update([
+            $update = [
                 'status' => $validated['status'],
+                'is_active' => in_array($validated['status'], [
+                    SellerProfile::STATUS_APPROVED,
+                    SellerProfile::STATUS_ACTIVE,
+                ], true),
                 'admin_notes' => $validated['reason'] ?? null,
-            ]);
+            ];
+
+            if (in_array($validated['status'], [SellerProfile::STATUS_APPROVED, SellerProfile::STATUS_ACTIVE], true)) {
+                $update['verification_status'] = SellerProfile::VERIFICATION_VERIFIED;
+                $update['document_status'] = SellerProfile::DOCUMENT_APPROVED;
+                $update['verified_at'] = $sellerProfile->verified_at ?: now();
+                $update['verified_by'] = $sellerProfile->verified_by ?: $admin->id;
+            } elseif ($validated['status'] === SellerProfile::STATUS_REJECTED) {
+                $update['verification_status'] = SellerProfile::VERIFICATION_REJECTED;
+                $update['document_status'] = SellerProfile::DOCUMENT_REJECTED;
+                $update['document_rejection_reason'] = $validated['reason'] ?? null;
+            }
+
+            $sellerProfile->update($update);
 
             Log::info('Seller status updated', [
                 'seller_id' => $id,
@@ -6027,6 +6177,118 @@ class SellerController extends Controller
                 'status'  => $newStatus,
             ]);
         } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * PUT /admin/seller/{id}/approve
+     * Legacy admin approve endpoint kept in sync with the verification flow.
+     */
+    public function sellerApprove(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin' && !$admin->hasRole('admin')) {
+                return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+            }
+
+            $seller = SellerProfile::findOrFail($id);
+
+            if (!$seller->hasCompleteProfile()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.seller.cannot_verify_incomplete'),
+                    'missing_fields' => $seller->getMissingFields(),
+                ], 422);
+            }
+
+            if (!$seller->hasRequiredDocuments()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.seller.cannot_verify_missing_docs'),
+                    'missing_documents' => $seller->getMissingDocuments(),
+                ], 422);
+            }
+
+            $seller->update([
+                'status' => SellerProfile::STATUS_APPROVED,
+                'is_active' => true,
+                'verification_status' => SellerProfile::VERIFICATION_VERIFIED,
+                'verification_level' => $seller->verification_level === SellerProfile::LEVEL_UNVERIFIED
+                    ? SellerProfile::LEVEL_VERIFIED
+                    : ($seller->verification_level ?: SellerProfile::LEVEL_VERIFIED),
+                'verified_at' => $seller->verified_at ?: now(),
+                'verified_by' => $seller->verified_by ?: $admin->id,
+                'document_status' => SellerProfile::DOCUMENT_APPROVED,
+                'admin_notes' => $request->input('notes', $seller->admin_notes),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller approved successfully.',
+                'data' => $seller->fresh(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('sellerApprove failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /admin/seller/{id}/suspend
+     */
+    public function suspendSeller(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin' && !$admin->hasRole('admin')) {
+                return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+            }
+
+            $seller = SellerProfile::findOrFail($id);
+            $seller->update([
+                'status' => SellerProfile::STATUS_SUSPENDED,
+                'is_active' => false,
+                'admin_notes' => $request->input('reason', $seller->admin_notes),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller suspended successfully.',
+                'data' => $seller->fresh(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('suspendSeller failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /admin/seller/{id}/reactivate
+     */
+    public function reactivateSeller(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin' && !$admin->hasRole('admin')) {
+                return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+            }
+
+            $seller = SellerProfile::findOrFail($id);
+            $seller->update([
+                'status' => SellerProfile::STATUS_ACTIVE,
+                'is_active' => true,
+                'admin_notes' => $request->input('notes', $seller->admin_notes),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Seller reactivated successfully.',
+                'data' => $seller->fresh(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('reactivateSeller failed: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }

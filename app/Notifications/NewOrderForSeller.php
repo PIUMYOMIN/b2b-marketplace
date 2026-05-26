@@ -28,7 +28,7 @@ class NewOrderForSeller extends Notification
             ->subject("New Order Received — #{$this->order->order_number}")
             ->view('emails.new-order-seller', [
                 'order' => $this->order->load('items', 'buyer'),
-                // $notifiable is passed automatically by Laravel as the mail recipient
+                'notifiable' => $notifiable,
             ]);
     }
 

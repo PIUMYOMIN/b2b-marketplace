@@ -7,8 +7,11 @@ use App\Services\CommissionRateResolver;
 use App\Services\Payment\PaymentService;
 use App\Notifications\OrderPlaced;
 use App\Notifications\OrderDeliveredThankYou;
+use App\Notifications\OrderStatusChanged;
+use App\Notifications\DeliveryStatusUpdated;
 use App\Notifications\NewOrderForSeller;
 use App\Models\User as UserModel;
+use App\Models\CodCommissionInvoice;
 use App\Models\Coupon;
 use App\Models\CouponUsage;
 use App\Models\Cart;
@@ -21,6 +24,7 @@ use App\Models\DeliveryUpdate;
 use App\Models\Commission;
 use App\Models\CommissionRule;
 use App\Models\SellerProfile;
+use App\Models\SellerWallet;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -54,7 +58,7 @@ class OrderController extends Controller
             // For sellers, show orders where they are the seller
             $orders = Order::with([
                     'items',
-                    'delivery',
+                    'delivery.deliveryUpdates',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
                     'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
@@ -66,7 +70,7 @@ class OrderController extends Controller
             // For buyers, show their own orders with seller store name
             $orders = Order::with([
                     'items',
-                    'delivery',
+                    'delivery.deliveryUpdates',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
                     'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
@@ -78,7 +82,7 @@ class OrderController extends Controller
             // For admins, show all orders
             $orders = Order::with([
                     'items',
-                    'delivery',
+                    'delivery.deliveryUpdates',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
                     'seller.sellerProfile:id,user_id,store_name,store_slug,store_logo',
@@ -151,6 +155,24 @@ class OrderController extends Controller
             'status' => $this->jsonSafeString($delivery->status),
             'tracking_number' => $this->jsonSafeString($delivery->tracking_number),
             'carrier_name' => $this->jsonSafeString($delivery->carrier_name),
+            'platform_delivery_fee' => $delivery->platform_delivery_fee,
+            'delivery_fee_status' => $this->jsonSafeString($delivery->delivery_fee_status),
+            'pickup_address' => $this->jsonSafeString($delivery->pickup_address),
+            'delivery_address' => $this->jsonSafeString($delivery->delivery_address),
+            'assigned_driver_name' => $this->jsonSafeString($delivery->assigned_driver_name),
+            'assigned_driver_phone' => $this->jsonSafeString($delivery->assigned_driver_phone),
+            'package_weight' => $delivery->package_weight,
+            'estimated_delivery_date' => $delivery->estimated_delivery_date?->toIso8601String(),
+            'delivered_at' => $delivery->delivered_at?->toIso8601String(),
+            'delivery_updates' => $delivery->relationLoaded('deliveryUpdates')
+                ? $delivery->deliveryUpdates->map(fn (DeliveryUpdate $update) => [
+                    'id' => $update->id,
+                    'status' => $this->jsonSafeString($update->status),
+                    'notes' => $this->jsonSafeString($update->notes),
+                    'location' => $this->jsonSafeString($update->location),
+                    'created_at' => $update->created_at?->toIso8601String(),
+                ])->values()
+                : [],
         ];
     }
 
@@ -311,10 +333,15 @@ class OrderController extends Controller
         $firstSellerId   = Product::find($request->items[0]['product_id'])?->seller_id;
         $sellerProfile   = $firstSellerId ? SellerProfile::where('user_id', $firstSellerId)->first() : null;
         $matchedZone     = $sellerProfile?->activeDeliveryAreas()
-            ->byLocation($addr['country'] ?? 'Myanmar', $addr['state'] ?? null, $addr['city'] ?? null)
+            ->byLocation(
+                $addr['country'] ?? 'Myanmar',
+                $addr['state'] ?? null,
+                $addr['city'] ?? null,
+                $addr['township'] ?? null
+            )
             ->orderByDesc('sort_order')
             ->first();
-        $estimatedShipping = $matchedZone ? $matchedZone->getShippingFeeForOrder($subtotal) : 5000;
+        $estimatedShipping = $matchedZone ? $matchedZone->getShippingFeeForOrder($subtotal) : 8000;
 
         $total = $subtotal + $estimatedShipping + ($subtotal * 0.00); // shipping + 5% tax
         $formattedTotal = number_format($total, 0) . ' MMK';
@@ -601,13 +628,14 @@ class OrderController extends Controller
                     ->byLocation(
                         $addr['country'] ?? 'Myanmar',
                         $addr['state']   ?? null,
-                        $addr['city']    ?? null
+                        $addr['city']    ?? null,
+                        $addr['township'] ?? null
                     )
                     ->orderByDesc('sort_order')
                     ->first();
                 $sellerShippingFee = $matchedZone
                     ? $matchedZone->getShippingFeeForOrder($sellerSubtotal)
-                    : 5000;
+                    : 8000;
                 $sellerTax = $sellerSubtotal * 0.00;
 
                 // Distribute coupon discount proportionally across seller orders.
@@ -712,7 +740,7 @@ class OrderController extends Controller
                     'supplier_id' => $sellerId,
                     'delivery_method' => 'supplier', // Default to supplier delivery
                     'pickup_address' => $this->getSupplierAddress($sellerId),
-                    'delivery_address' => $request->shipping_address['address'],
+                    'delivery_address' => $this->formatShippingAddress($request->shipping_address),
                     'status' => 'pending',
                     'package_weight' => $this->calculateOrderWeight($sellerItems),
                     'estimated_delivery_date' => now()->addDays(5),
@@ -812,7 +840,7 @@ class OrderController extends Controller
         }
 
         // Load relations with delivery
-        $order->load(['items.product', 'buyer', 'seller', 'delivery']);
+        $order->load(['items.product', 'buyer', 'seller', 'delivery.deliveryUpdates']);
 
         // ✅ Transform images in order items
         foreach ($order->items as $item) {
@@ -898,7 +926,15 @@ class OrderController extends Controller
 
             // If payment is successful, update order status
             if ($request->payment_status === 'paid') {
-                $order->update(['status' => 'confirmed']);
+                $updates = ['status' => 'confirmed'];
+
+                if ($order->payment_method !== 'cash_on_delivery' && $order->escrow_status !== 'held') {
+                    $wallet = SellerWallet::forSeller($order->seller_id);
+                    $wallet->holdEscrow((float) $order->total_amount, $order->id, Auth::id());
+                    $updates['escrow_status'] = 'held';
+                }
+
+                $order->update($updates);
             }
 
             DB::commit();
@@ -1005,25 +1041,24 @@ class OrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Only pending orders can be confirmed'], 400);
         }
 
+        $previousStatus = $order->status;
         $order->status = 'confirmed';
         $order->save();
 
-        // FIX: store() already creates a Delivery record when the order is placed.
-        // Creating a second one here caused duplicate delivery rows and confusing
-        // tracking state. We just update the existing one to 'awaiting_pickup'.
+        // store() already creates a Delivery record when the order is placed.
+        // Keep it in "pending" so the seller must explicitly choose self delivery
+        // or platform logistics before dispatch.
         $delivery = Delivery::where('order_id', $order->id)->first();
         if ($delivery) {
-            $delivery->update(['status' => 'awaiting_pickup']);
-
-            // FIX: DeliveryUpdate was used here without being imported — fatal error.
-            // Import added at the top of this file.
             DeliveryUpdate::create([
                 'delivery_id' => $delivery->id,
                 'user_id' => Auth::id(),
-                'status' => 'awaiting_pickup',
-                'notes' => 'Order confirmed by seller. Awaiting pickup.',
+                'status' => 'pending',
+                'notes' => 'Order confirmed by seller. Delivery method selection is pending.',
             ]);
         }
+
+        $this->notifyBuyerOrderStatusChanged($order, $previousStatus);
 
         return response()->json([
             'success' => true,
@@ -1053,9 +1088,13 @@ class OrderController extends Controller
             ], 400);
         }
 
+        $previousStatus = $order->status;
+
         $order->update([
             'status' => self::STATUS_PROCESSING
         ]);
+
+        $this->notifyBuyerOrderStatusChanged($order, $previousStatus);
 
         return response()->json([
             'success' => true,
@@ -1089,11 +1128,51 @@ class OrderController extends Controller
             'shipping_carrier' => 'nullable|string'
         ]);
 
-        $order->update([
+        DB::beginTransaction();
+
+        try {
+            $previousStatus = $order->status;
+
+            $order->update([
             'status' => self::STATUS_SHIPPED,
             'tracking_number' => $request->tracking_number,
             'shipping_carrier' => $request->shipping_carrier
-        ]);
+            ]);
+
+            $delivery = Delivery::where('order_id', $order->id)->first();
+            if ($delivery) {
+                $trackingNumber = $request->tracking_number ?: $delivery->tracking_number ?: $delivery->generateTrackingNumber();
+                $previousDeliveryStatus = $delivery->status;
+
+                $delivery->update([
+                    'status' => 'in_transit',
+                    'tracking_number' => $trackingNumber,
+                    'carrier_name' => $request->shipping_carrier ?: $delivery->carrier_name ?: 'Self Delivery',
+                    'in_transit_at' => now(),
+                ]);
+
+                $delivery->deliveryUpdates()->create([
+                    'user_id' => $user->id,
+                    'status' => 'in_transit',
+                    'notes' => 'Order dispatched by seller.',
+                ]);
+            }
+
+            DB::commit();
+
+            $this->notifyBuyerOrderStatusChanged($order, $previousStatus);
+            if ($delivery ?? null) {
+                $this->notifyDeliveryStatusChanged($delivery->fresh(['order.buyer', 'order.seller']), $previousDeliveryStatus ?? null);
+            }
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Order shipment failed: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to mark order as shipped: ' . $e->getMessage(),
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
@@ -1122,19 +1201,19 @@ class OrderController extends Controller
             ], 400);
         }
 
-        $order->update([
-            'status'       => self::STATUS_DELIVERED,
-            'delivered_at' => now(),
-        ]);
+        DB::beginTransaction();
+        try {
+            $this->finalizeDeliveredOrder($order, $user, 'Delivery confirmed by buyer.');
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Delivery confirmation failed: ' . $e->getMessage());
 
-        // Mark the commission record as collected — platform revenue is realised
-        // on delivery, not on order placement.
-        Commission::where('order_id', $order->id)
-            ->where('status', 'pending')
-            ->update([
-                'status'       => 'collected',
-                'collected_at' => now(),
-            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to confirm delivery: ' . $e->getMessage(),
+            ], 500);
+        }
 
         try {
             $order->load('items', 'buyer', 'seller.sellerProfile');
@@ -1147,6 +1226,83 @@ class OrderController extends Controller
             'success' => true,
             'message' => __('messages.orders.delivery_confirmed')
         ]);
+    }
+
+    private function finalizeDeliveredOrder(Order $order, UserModel $actor, string $deliveryNote): void
+    {
+        $order->refresh();
+        $delivery = Delivery::where('order_id', $order->id)->first();
+
+        if ($delivery && $delivery->status !== 'delivered') {
+            $delivery->update([
+                'status' => 'delivered',
+                'delivered_at' => now(),
+            ]);
+
+            $delivery->deliveryUpdates()->create([
+                'user_id' => $actor->id,
+                'status' => 'delivered',
+                'notes' => $deliveryNote,
+            ]);
+        }
+
+        if ($order->status !== self::STATUS_DELIVERED) {
+            $order->update([
+                'status' => self::STATUS_DELIVERED,
+                'delivered_at' => now(),
+            ]);
+        }
+
+        Commission::where('order_id', $order->id)
+            ->where('status', 'pending')
+            ->update([
+                'status' => 'collected',
+                'collected_at' => now(),
+            ]);
+
+        $commission = Commission::where('order_id', $order->id)->first();
+
+        if ($order->payment_method !== 'cash_on_delivery') {
+            if ($order->escrow_status === 'held') {
+                $wallet = SellerWallet::lockForSeller($order->seller_id);
+                $wallet->releaseEscrow(
+                    escrowAmount: (float) $order->total_amount,
+                    sellerPayout: (float) ($commission?->seller_payout ?? ($order->subtotal_amount - $order->commission_amount)),
+                    commissionAmount: (float) $order->commission_amount,
+                    orderId: $order->id,
+                    actorId: $actor->id
+                );
+            }
+
+            $order->update(['escrow_status' => 'released']);
+            return;
+        }
+
+        if (!CodCommissionInvoice::where('order_id', $order->id)->exists()) {
+            CodCommissionInvoice::create([
+                'invoice_number' => 'COD-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999),
+                'order_id' => $order->id,
+                'seller_id' => $order->seller_id,
+                'order_subtotal' => $order->subtotal_amount,
+                'commission_rate' => $order->commission_rate,
+                'commission_amount' => $order->commission_amount,
+                'status' => 'outstanding',
+                'due_date' => now()->addDays(7)->toDateString(),
+                'seller_notes' => "Commission owed for COD order #{$order->order_number}. Please settle within 7 days via bank transfer.",
+            ]);
+
+            $wallet = SellerWallet::forSeller($order->seller_id);
+            $wallet->increment('cod_commission_outstanding', $order->commission_amount);
+            $wallet->transactions()->create([
+                'order_id' => $order->id,
+                'type' => 'cod_invoice',
+                'amount' => -(float) $order->commission_amount,
+                'escrow_balance_after' => $wallet->escrow_balance,
+                'available_balance_after' => $wallet->available_balance,
+                'notes' => "COD commission invoice raised for order #{$order->order_number}. Amount: {$order->commission_amount} MMK.",
+                'created_by' => $actor->id,
+            ]);
+        }
     }
 
     /**
@@ -1231,6 +1387,19 @@ class OrderController extends Controller
             $totalWeight += ($item['product']->weight_kg ?? 1) * $item['quantity'];
         }
         return $totalWeight;
+    }
+
+    private function formatShippingAddress(array $address): string
+    {
+        return implode(', ', array_filter([
+            $address['full_name'] ?? null,
+            $address['phone'] ?? null,
+            $address['address'] ?? null,
+            $address['township'] ?? null,
+            $address['city'] ?? null,
+            $address['state'] ?? null,
+            $address['country'] ?? null,
+        ]));
     }
 
     /**
@@ -1353,8 +1522,44 @@ class OrderController extends Controller
         $validated = $request->validate([
             'status' => 'required|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
+        $previousStatus = $order->status;
         $order->update(['status' => $validated['status']]);
+        $this->notifyBuyerOrderStatusChanged($order, $previousStatus);
         return response()->json(['success' => true, 'data' => $order->fresh()]);
+    }
+
+    private function notifyBuyerOrderStatusChanged(Order $order, string $previousStatus): void
+    {
+        if ($previousStatus === $order->status) {
+            return;
+        }
+
+        try {
+            $order->loadMissing('buyer', 'items', 'delivery');
+            $order->buyer?->notify(new OrderStatusChanged($order, $previousStatus));
+        } catch (\Exception $notifEx) {
+            Log::warning('OrderStatusChanged notification failed: ' . $notifEx->getMessage(), [
+                'order_id' => $order->id,
+            ]);
+        }
+    }
+
+    private function notifyDeliveryStatusChanged(Delivery $delivery, ?string $previousStatus = null): void
+    {
+        if ($previousStatus !== null && $previousStatus === $delivery->status) {
+            return;
+        }
+
+        try {
+            $delivery->loadMissing('order.buyer', 'order.seller');
+            if ($delivery->order?->buyer) {
+                $delivery->order->buyer->notify(new DeliveryStatusUpdated($delivery, $previousStatus));
+            }
+        } catch (\Exception $notifEx) {
+            Log::warning('DeliveryStatusUpdated notification failed from order flow: ' . $notifEx->getMessage(), [
+                'delivery_id' => $delivery->id,
+            ]);
+        }
     }
 
 }

@@ -15,7 +15,12 @@ class OrderStatusChanged extends Notification
 
     public function via($notifiable): array
     {
-        return $this->shouldSend($notifiable) ? ['mail', 'database'] : ['database'];
+        $channels = ['database'];
+        if (!empty($notifiable->email) && $this->shouldSend($notifiable)) {
+            $channels[] = 'mail';
+        }
+
+        return $channels;
     }
 
     public function toMail($notifiable)

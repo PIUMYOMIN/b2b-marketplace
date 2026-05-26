@@ -70,7 +70,7 @@ class DashboardController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'per_page' => 'sometimes|integer|min:1|max:100',
-            'status' => 'sometimes|in:pending,approved,active,suspended,closed',
+            'status' => 'sometimes|in:setup_pending,pending,approved,active,rejected,suspended,closed',
             'search' => 'sometimes|string|max:255'
         ]);
 
@@ -174,7 +174,13 @@ class DashboardController extends Controller
     {
         try {
             $seller = SellerProfile::findOrFail($id);
-            $seller->update(['status' => 'approved']);
+            $seller->update([
+                'status' => SellerProfile::STATUS_APPROVED,
+                'is_active' => true,
+                'verification_status' => SellerProfile::VERIFICATION_VERIFIED,
+                'document_status' => SellerProfile::DOCUMENT_APPROVED,
+                'verified_at' => $seller->verified_at ?: now(),
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -208,7 +214,9 @@ class DashboardController extends Controller
         try {
             $seller = SellerProfile::findOrFail($id);
             $seller->update([
-                'status' => 'rejected',
+                'status' => SellerProfile::STATUS_REJECTED,
+                'is_active' => false,
+                'verification_status' => SellerProfile::VERIFICATION_REJECTED,
                 'admin_notes' => $request->reason
             ]);
 

@@ -1,8 +1,9 @@
 {{-- resources/views/emails/order-placed.blade.php --}}
 @extends('emails.layout')
 @section('content')
-<p class="greeting">Order Confirmed! 🎉</p>
+<p class="greeting">Order Confirmed</p>
 <p class="text">Hi {{ $order->buyer->name }}, your order has been placed successfully. Here's your summary:</p>
+<p class="text" style="font-size:14px; color:#6b7280;">သင့်အော်ဒါကို အောင်မြင်စွာ လက်ခံပြီးပါပြီ။ အောက်တွင် အော်ဒါအကျဉ်းချုပ်ကို ကြည့်ရှုနိုင်ပါသည်။</p>
 
 <div class="info-box">
   <p><strong>Order #{{ $order->order_number }}</strong></p>

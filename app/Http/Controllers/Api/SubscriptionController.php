@@ -7,6 +7,9 @@ use App\Models\Product;
 use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
+use App\Notifications\SubscriptionApproved;
+use App\Notifications\SubscriptionRejected;
+use App\Notifications\SubscriptionRequestSubmitted;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -27,9 +30,10 @@ class SubscriptionController extends Controller
     {
         $seller = $request->user();
         $current = $this->activeSubscription($seller->id);
+        $pending = $this->pendingSubscriptionRequest($seller->id);
         $productCount = Product::where('seller_id', $seller->id)->whereNull('deleted_at')->count();
 
-        $plans = SubscriptionPlan::active()->get()->map(function (SubscriptionPlan $plan) use ($current, $productCount) {
+        $plans = SubscriptionPlan::active()->get()->map(function (SubscriptionPlan $plan) use ($current, $pending, $productCount) {
             return [
                 'id'                   => $plan->id,
                 'slug'                 => $plan->slug,
@@ -46,6 +50,7 @@ class SubscriptionController extends Controller
                 'priority_support'     => $plan->priority_support,
                 'custom_storefront'    => $plan->custom_storefront,
                 'is_current'           => $current && $current->plan_id === $plan->id,
+                'is_pending'           => $pending && $pending->plan_id === $plan->id,
                 'products_used'        => $plan->id === ($current?->plan_id) ? $productCount : null,
             ];
         });
@@ -54,6 +59,7 @@ class SubscriptionController extends Controller
             'success'              => true,
             'data'                 => $plans,
             'current_subscription' => $current ? $this->formatSubscription($current) : null,
+            'pending_request'      => $pending ? $this->formatSubscription($pending) : null,
         ]);
     }
 
@@ -64,6 +70,7 @@ class SubscriptionController extends Controller
     public function current(Request $request): JsonResponse
     {
         $subscription = $this->activeSubscription($request->user()->id);
+        $pending = $this->pendingSubscriptionRequest($request->user()->id);
 
         if (! $subscription) {
             // Auto-assign Basic plan on first access
@@ -78,7 +85,10 @@ class SubscriptionController extends Controller
             'success' => true,
             'data'    => array_merge(
                 $this->formatSubscription($subscription),
-                ['products_used' => $productCount]
+                [
+                    'products_used' => $productCount,
+                    'pending_request' => $pending ? $this->formatSubscription($pending) : null,
+                ]
             ),
         ]);
     }
@@ -87,9 +97,9 @@ class SubscriptionController extends Controller
      * POST /seller/subscription/upgrade
      * Body: { plan_slug: 'professional' | 'enterprise', payment_reference?: string }
      *
-     * For paid plans this records the subscription after payment has been
-     * collected externally (via your existing payment gateway). For Basic (free)
-     * downgrades it resets immediately.
+     * For paid plans this creates a pending payment request for admin approval.
+     * The current active plan remains usable until an admin approves the request.
+     * For Basic (free) downgrades it resets immediately.
      */
     public function upgrade(Request $request): JsonResponse
     {
@@ -142,6 +152,35 @@ class SubscriptionController extends Controller
 
         DB::beginTransaction();
         try {
+            if ($plan->price_mmk > 0) {
+                SellerSubscription::where('user_id', $seller->id)
+                    ->where('status', 'pending_payment')
+                    ->update(['status' => 'cancelled']);
+
+                $subscription = SellerSubscription::create([
+                    'user_id'           => $seller->id,
+                    'plan_id'           => $plan->id,
+                    'status'            => 'pending_payment',
+                    'starts_at'         => null,
+                    'ends_at'           => null,
+                    'next_billing_at'   => null,
+                    'amount_paid_mmk'   => $plan->price_mmk,
+                    'payment_reference' => $request->payment_reference,
+                    'changed_by'        => $seller->id,
+                    'notes'             => 'Waiting for admin payment approval.',
+                ]);
+
+                DB::commit();
+
+                $this->notifyAdmins(new SubscriptionRequestSubmitted($subscription->load(['plan', 'user.sellerProfile'])));
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Your {$plan->name} plan request was submitted. The plan will activate after admin approval.",
+                    'data'    => $this->formatSubscription($subscription->load('plan')),
+                ]);
+            }
+
             // Cancel any existing active subscription
             SellerSubscription::where('user_id', $seller->id)
                 ->where('status', 'active')
@@ -159,11 +198,12 @@ class SubscriptionController extends Controller
                 'ends_at'           => $endsAt,
                 'next_billing_at'   => $nextBilling,
                 'amount_paid_mmk'   => $plan->price_mmk,
-                'payment_reference' => $request->payment_reference,
                 'changed_by'        => $seller->id,
             ]);
 
             DB::commit();
+
+            $pending->fresh(['plan', 'user'])->user?->notify(new SubscriptionApproved($pending->fresh(['plan'])));
 
             return response()->json([
                 'success' => true,
@@ -241,6 +281,80 @@ class SubscriptionController extends Controller
                 'total'        => $subscriptions->total(),
                 'per_page'     => $subscriptions->perPage(),
             ],
+        ]);
+    }
+
+    /**
+     * POST /admin/subscriptions/requests/{subscriptionId}/approve
+     * Approve a seller's pending paid-plan request and activate it.
+     */
+    public function adminApproveRequest(Request $request, int $subscriptionId): JsonResponse
+    {
+        $request->validate([
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $pending = SellerSubscription::with(['plan', 'user.sellerProfile'])
+            ->where('status', 'pending_payment')
+            ->findOrFail($subscriptionId);
+
+        DB::beginTransaction();
+        try {
+            SellerSubscription::where('user_id', $pending->user_id)
+                ->where('status', 'active')
+                ->update(['status' => 'cancelled']);
+
+            $startsAt = Carbon::today();
+            $endsAt = $pending->plan?->price_mmk > 0 ? $startsAt->copy()->addMonth() : null;
+
+            $pending->update([
+                'status' => 'active',
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
+                'next_billing_at' => $endsAt?->copy(),
+                'changed_by' => $request->user()->id,
+                'notes' => $request->notes ?: 'Payment approved by admin.',
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Subscription request approved. {$pending->plan?->name} is now active.",
+                'data' => $this->formatSubscription($pending->fresh(['plan', 'user.sellerProfile'])),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Subscription request approval failed: ' . $e->getMessage(), ['subscription_id' => $subscriptionId]);
+            return response()->json(['success' => false, 'message' => 'Failed to approve subscription request.'], 500);
+        }
+    }
+
+    /**
+     * POST /admin/subscriptions/requests/{subscriptionId}/reject
+     */
+    public function adminRejectRequest(Request $request, int $subscriptionId): JsonResponse
+    {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        $pending = SellerSubscription::with(['plan', 'user.sellerProfile'])
+            ->where('status', 'pending_payment')
+            ->findOrFail($subscriptionId);
+
+        $pending->update([
+            'status' => 'cancelled',
+            'changed_by' => $request->user()->id,
+            'notes' => 'Payment rejected: ' . $request->reason,
+        ]);
+
+        $pending->fresh(['plan', 'user'])->user?->notify(new SubscriptionRejected($pending->fresh(['plan']), $request->reason));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Subscription request rejected.',
+            'data' => $this->formatSubscription($pending->fresh(['plan', 'user.sellerProfile'])),
         ]);
     }
 
@@ -366,6 +480,31 @@ class SubscriptionController extends Controller
             ->first();
     }
 
+    private function pendingSubscriptionRequest(int $userId): ?SellerSubscription
+    {
+        return SellerSubscription::with('plan')
+            ->where('user_id', $userId)
+            ->where('status', 'pending_payment')
+            ->latest()
+            ->first();
+    }
+
+    private function notifyAdmins($notification): void
+    {
+        $admins = User::where('type', 'admin')
+            ->orWhereHas('roles', fn ($query) => $query->where('name', 'admin'))
+            ->get()
+            ->unique('id');
+
+        foreach ($admins as $admin) {
+            try {
+                $admin->notify($notification);
+            } catch (\Throwable $e) {
+                Log::warning('Admin notification failed: ' . $e->getMessage(), ['admin_id' => $admin->id]);
+            }
+        }
+    }
+
     /** Auto-assign the Basic (free) plan when no subscription record exists. */
     private function assignBasicPlan(int $userId): SellerSubscription
     {
@@ -402,6 +541,7 @@ class SubscriptionController extends Controller
             'id'                => $s->id,
             'user_id'           => $s->user_id,
             'status'            => $s->status,
+            'status_label'      => $s->status_label,
             'starts_at'         => $s->starts_at?->toDateString(),
             'ends_at'           => $s->ends_at?->toDateString(),
             'next_billing_at'   => $s->next_billing_at?->toDateString(),
