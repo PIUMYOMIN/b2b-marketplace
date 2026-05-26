@@ -80,8 +80,7 @@ class BusinessType extends Model
      */
     public function getNameAttribute()
     {
-        $lang = request()->get('lang', 'en');
-        return $lang === 'mm' ? $this->name_mm : $this->name_en;
+        return $this->prefersMyanmar() ? $this->name_mm : $this->name_en;
     }
 
     /**
@@ -89,8 +88,7 @@ class BusinessType extends Model
      */
     public function getDescriptionAttribute()
     {
-        $lang = request()->get('lang', 'en');
-        return $lang === 'mm' ? $this->description_mm : $this->description_en;
+        return $this->prefersMyanmar() ? $this->description_mm : $this->description_en;
     }
 
 
@@ -99,8 +97,7 @@ class BusinessType extends Model
      */
     public function getSlugAttribute()
     {
-        $lang = request()->get('lang', 'en');
-        return $lang === 'mm' ? $this->slug_mm : $this->slug_en;
+        return $this->prefersMyanmar() ? $this->slug_mm : $this->slug_en;
     }
 
     /**
@@ -108,21 +105,21 @@ class BusinessType extends Model
      */
     public function getDocumentRequirements(): array
     {
-        $lang = request()->get('lang', 'en'); // current language
+        $isMyanmar = $this->prefersMyanmar();
         $requirements = [];
 
         // Identity documents (always required)
         $requirements[] = [
             'type' => 'identity_document_front',
-            'label' => $lang === 'mm' ? 'ကိုယ်ပိုင် မှတ်ပုံတင် အရင်ဘက်' : 'Front of Identity Document',
-            'description' => $lang === 'mm' ? 'ID ကတ်/Passport ရဲ့ရှေ့ဘက် ပုံရှင်းလင်းစွာ' : 'Clear photo of the front side of ID card/passport',
+            'label' => $isMyanmar ? 'ကိုယ်ပိုင် မှတ်ပုံတင် အရင်ဘက်' : 'Front of Identity Document',
+            'description' => $isMyanmar ? 'ID ကတ်/Passport ရဲ့ရှေ့ဘက် ပုံရှင်းလင်းစွာ' : 'Clear photo of the front side of ID card/passport',
             'required' => true
         ];
 
         $requirements[] = [
             'type' => 'identity_document_back',
-            'label' => $lang === 'mm' ? 'ကိုယ်ပိုင် မှတ်ပုံတင် နောက်ဘက်' : 'Back of Identity Document',
-            'description' => $lang === 'mm' ? 'ID ကတ်/Passport ရဲ့နောက်ဘက် ပုံရှင်းလင်းစွာ' : 'Clear photo of the back side of ID card/passport',
+            'label' => $isMyanmar ? 'ကိုယ်ပိုင် မှတ်ပုံတင် နောက်ဘက်' : 'Back of Identity Document',
+            'description' => $isMyanmar ? 'ID ကတ်/Passport ရဲ့နောက်ဘက် ပုံရှင်းလင်းစွာ' : 'Clear photo of the back side of ID card/passport',
             'required' => true
         ];
 
@@ -130,8 +127,8 @@ class BusinessType extends Model
         if ($this->requires_registration) {
             $requirements[] = [
                 'type' => 'business_registration_document',
-                'label' => $lang === 'mm' ? 'လုပ်ငန်း မှတ်ပုံတင်လက်မှတ်' : 'Business Registration Certificate',
-                'description' => $lang === 'mm' ? 'မှတ်ပုံတင်ထားသည့် လုပ်ငန်း စာရွက်စာတမ်း' : 'Official business registration document',
+                'label' => $isMyanmar ? 'လုပ်ငန်း မှတ်ပုံတင်လက်မှတ်' : 'Business Registration Certificate',
+                'description' => $isMyanmar ? 'မှတ်ပုံတင်ထားသည့် လုပ်ငန်း စာရွက်စာတမ်း' : 'Official business registration document',
                 'required' => true
             ];
         }
@@ -140,8 +137,8 @@ class BusinessType extends Model
         if ($this->requires_tax_document) {
             $requirements[] = [
                 'type' => 'tax_registration_document',
-                'label' => $lang === 'mm' ? 'အခွန်မှတ်ပုံတင်လက်မှတ်' : 'Tax Registration Certificate',
-                'description' => $lang === 'mm' ? 'အခွန်မှတ်ပုံတင် စာရွက်စာတမ်း' : 'Tax identification registration document',
+                'label' => $isMyanmar ? 'အခွန်မှတ်ပုံတင်လက်မှတ်' : 'Tax Registration Certificate',
+                'description' => $isMyanmar ? 'အခွန်မှတ်ပုံတင် စာရွက်စာတမ်း' : 'Tax identification registration document',
                 'required' => true
             ];
         }
@@ -150,8 +147,8 @@ class BusinessType extends Model
         if ($this->requires_business_certificate) {
             $requirements[] = [
                 'type' => 'business_certificate',
-                'label' => $lang === 'mm' ? 'လုပ်ငန်း လိုင်စင်/လက်မှတ်' : 'Business License/Certificate',
-                'description' => $lang === 'mm' ? 'လုပ်ငန်း လုပ်ကိုင်ခွင့် လိုင်စင်/လက်မှတ်' : 'Business operating license or certificate',
+                'label' => $isMyanmar ? 'လုပ်ငန်း လိုင်စင်/လက်မှတ်' : 'Business License/Certificate',
+                'description' => $isMyanmar ? 'လုပ်ငန်း လုပ်ကိုင်ခွင့် လိုင်စင်/လက်မှတ်' : 'Business operating license or certificate',
                 'required' => true
             ];
         }
@@ -159,8 +156,8 @@ class BusinessType extends Model
         // Always include a default optional document
         $requirements[] = [
             'type' => 'additional_documents',
-            'label' => $lang === 'mm' ? 'အပိုထောက်ပံ့စာရွက်စာတမ်းများ' : 'Additional Supporting Documents',
-            'description' => $lang === 'mm' ? 'အခြားလိုအပ်သည့်စာရွက်စာတမ်းများ' : 'Any other supporting documents',
+            'label' => $isMyanmar ? 'အပိုထောက်ပံ့စာရွက်စာတမ်းများ' : 'Additional Supporting Documents',
+            'description' => $isMyanmar ? 'အခြားလိုအပ်သည့်စာရွက်စာတမ်းများ' : 'Any other supporting documents',
             'required' => false
         ];
 
@@ -169,9 +166,9 @@ class BusinessType extends Model
             foreach ($this->additional_requirements as $req) {
                 $requirements[] = [
                     'type' => $req['type'] ?? 'additional_documents',
-                    'label' => $lang === 'mm' ? ($req['label_mm'] ?? $req['label_en'] ?? 'အပိုထောက်ပံ့စာရွက်စာတမ်းများ')
+                    'label' => $isMyanmar ? ($req['label_mm'] ?? $req['label_en'] ?? 'အပိုထောက်ပံ့စာရွက်စာတမ်းများ')
                         : ($req['label_en'] ?? 'Additional Supporting Documents'),
-                    'description' => $lang === 'mm' ? ($req['description_mm'] ?? $req['description_en'] ?? 'အခြားလိုအပ်သည့်စာရွက်စာတမ်းများ')
+                    'description' => $isMyanmar ? ($req['description_mm'] ?? $req['description_en'] ?? 'အခြားလိုအပ်သည့်စာရွက်စာတမ်းများ')
                         : ($req['description_en'] ?? 'Any other supporting documents'),
                     'required' => $req['required'] ?? false,
                 ];
@@ -179,6 +176,13 @@ class BusinessType extends Model
         }
 
         return $requirements;
+    }
+
+    protected function prefersMyanmar(): bool
+    {
+        $lang = strtolower(str_replace('_', '-', request()->get('lang', app()->getLocale())));
+
+        return str_starts_with($lang, 'my') || str_starts_with($lang, 'mm');
     }
 
 

@@ -20,23 +20,40 @@ class SetLocale
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $supported = ['en', 'my'];
-
         // 1. Explicit query param takes priority
-        $locale = $request->query('lang');
+        $locale = $this->normalizeLocale($request->query('lang'));
 
         // 2. Fall back to Accept-Language header
-        if (!$locale || !in_array($locale, $supported)) {
-            $locale = $request->getPreferredLanguage($supported);
+        if (!$locale) {
+            foreach ($request->getLanguages() as $acceptedLanguage) {
+                $locale = $this->normalizeLocale($acceptedLanguage);
+
+                if ($locale) {
+                    break;
+                }
+            }
         }
 
         // 3. Hard fallback
-        if (!in_array($locale, $supported)) {
-            $locale = 'en';
-        }
+        $locale = $locale ?: 'en';
 
         app()->setLocale($locale);
 
         return $next($request);
+    }
+
+    private function normalizeLocale(?string $locale): ?string
+    {
+        $locale = strtolower(str_replace('_', '-', trim((string) $locale)));
+
+        if (str_starts_with($locale, 'my') || str_starts_with($locale, 'mm')) {
+            return 'my';
+        }
+
+        if (str_starts_with($locale, 'en')) {
+            return 'en';
+        }
+
+        return null;
     }
 }
