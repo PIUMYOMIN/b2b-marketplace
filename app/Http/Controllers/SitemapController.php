@@ -27,19 +27,24 @@ class SitemapController extends Controller
             ['path' => '/',               'priority' => '1.0',  'changefreq' => 'daily'],
             ['path' => '/products',       'priority' => '0.9',  'changefreq' => 'daily'],
             ['path' => '/sellers',        'priority' => '0.8',  'changefreq' => 'daily'],
-            ['path' => '/categories',     'priority' => '0.8',  'changefreq' => 'weekly'],
+            ['path' => '/categories',     'priority' => '0.9',  'changefreq' => 'weekly'],
+            ['path' => '/bulk-order-tool','priority' => '0.7',  'changefreq' => 'weekly'],
             ['path' => '/local-deals',    'priority' => '0.7',  'changefreq' => 'daily'],
             ['path' => '/compare',        'priority' => '0.5',  'changefreq' => 'weekly'],
-            ['path' => '/about',          'priority' => '0.5',  'changefreq' => 'monthly'],
+            ['path' => '/about-us',       'priority' => '0.6',  'changefreq' => 'monthly'],
             ['path' => '/contact',        'priority' => '0.5',  'changefreq' => 'monthly'],
-            ['path' => '/pricing',        'priority' => '0.6',  'changefreq' => 'monthly'],
-            ['path' => '/help',           'priority' => '0.4',  'changefreq' => 'monthly'],
-            ['path' => '/privacy-policy', 'priority' => '0.3',  'changefreq' => 'yearly'],
-            ['path' => '/return-policy',  'priority' => '0.3',  'changefreq' => 'yearly'],
-            ['path' => '/legal',          'priority' => '0.3',  'changefreq' => 'yearly'],
+            ['path' => '/pricing',        'priority' => '0.7',  'changefreq' => 'monthly'],
+            ['path' => '/help',           'priority' => '0.6',  'changefreq' => 'monthly'],
+            ['path' => '/faq',            'priority' => '0.6',  'changefreq' => 'monthly'],
+            ['path' => '/shipping',       'priority' => '0.6',  'changefreq' => 'monthly'],
+            ['path' => '/seller-guidelines','priority' => '0.6','changefreq' => 'monthly'],
+            ['path' => '/terms',          'priority' => '0.4',  'changefreq' => 'yearly'],
+            ['path' => '/legal',          'priority' => '0.4',  'changefreq' => 'yearly'],
+            ['path' => '/privacy-policy', 'priority' => '0.4',  'changefreq' => 'yearly'],
+            ['path' => '/return-policy',  'priority' => '0.4',  'changefreq' => 'yearly'],
         ];
 
-        $products   = Product::where('is_active', true)
+        $products   = Product::approved()
             ->whereNull('deleted_at')
             ->select('slug_en', 'slug_mm', 'updated_at')
             ->get();
@@ -48,7 +53,9 @@ class SitemapController extends Controller
             ->select('store_slug', 'updated_at')
             ->get();
 
-        $categories = Category::select('slug', 'updated_at')->get();
+        $categories = Category::where('is_active', true)
+            ->select('id', 'updated_at')
+            ->get();
 
         // ── Build XML ──────────────────────────────────────────────────────
         $xml  = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
@@ -67,10 +74,9 @@ class SitemapController extends Controller
             );
         }
 
-        // Category pages
+        // Category-filtered product listing pages
         foreach ($categories as $cat) {
-            if (!$cat->slug) continue;
-            $baseLoc = $baseUrl . '/categories/' . $cat->slug;
+            $baseLoc = $baseUrl . '/products?category=' . $cat->id;
             $xml .= $this->urlEntry($baseLoc, $cat->updated_at, 'weekly', '0.7');
         }
 

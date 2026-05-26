@@ -173,7 +173,7 @@ class FrontendController extends Controller
             'pageDescription' => $m['default_desc'],
             'pageKeywords'    => '',
             'pageUrl'         => $canonicalUrl,
-            'pageImage'       => asset('og-image.jpg'),
+            'pageImage'       => $frontendUrl . '/og-image.png',
             'pageType'        => 'website',
             'canonicalPath'   => $path,
             'noindex'         => false,
@@ -353,13 +353,13 @@ class FrontendController extends Controller
             ];
         }
 
-        // ── About: /about ───────────────────────────────────────────────────
-        elseif ($trimmed === 'about') {
+        // ── About: /about-us ────────────────────────────────────────────────
+        elseif ($trimmed === 'about-us') {
             $metadata['pageTitle']       = $m['about_title'];
             $metadata['pageDescription'] = $m['about_desc'];
             $metadata['breadcrumbs'] = [
                 ['name' => $m['home_label'],  'url' => '/'],
-                ['name' => $m['about_label'], 'url' => '/about'],
+                ['name' => $m['about_label'], 'url' => '/about-us'],
             ];
         }
 
@@ -413,14 +413,19 @@ class FrontendController extends Controller
             ];
         }
 
-        // ── Legal: /legal ───────────────────────────────────────────────────
-        elseif ($trimmed === 'legal') {
+        // ── Legal / terms: /legal and /terms ────────────────────────────────
+        elseif (in_array($trimmed, ['legal', 'terms'], true)) {
             $metadata['pageTitle']       = $m['legal_title'];
             $metadata['pageDescription'] = $m['legal_desc'];
             $metadata['breadcrumbs'] = [
                 ['name' => $m['home_label'],  'url' => '/'],
-                ['name' => $m['legal_label'], 'url' => '/legal'],
+                ['name' => $m['legal_label'], 'url' => $path],
             ];
+        }
+
+        // ── Utility/support pages without search value ─────────────────────
+        elseif (in_array($trimmed, ['order-tracking', 'track-order', 'report'], true)) {
+            $metadata['noindex'] = true;
         }
 
         return $metadata;
