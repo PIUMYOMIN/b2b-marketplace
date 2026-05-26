@@ -42,7 +42,8 @@ class ProductController extends Controller
         // Accept both 'category_id' (legacy) and 'category' (frontend param)
         $categoryId = $request->filled('category_id') ? $request->category_id : $request->category;
         if ($categoryId) {
-            $query->where('category_id', $categoryId);
+            $categoryIds = $this->resolveCategoryTreeIds((int) $categoryId);
+            $query->whereIn('category_id', $categoryIds);
         }
  
         if ($request->filled('product_type')) {
@@ -74,15 +75,11 @@ class ProductController extends Controller
  
         // ── Search ───────────────────────────────────────────────────────────
         // Accept both 'search' (frontend param) and 'q' (legacy param)
-        $searchTerm = $request->filled('search') ? $request->search : $request->q;
+        $searchTerm = $this->normalizeSearchTerm(
+            $request->filled('search') ? $request->search : $request->q
+        );
         if ($searchTerm) {
-            $q = $searchTerm;
-            $query->where(function ($query) use ($q) {
-                $query->where('name_en', 'like', "%{$q}%")
-                      ->orWhere('name_mm', 'like', "%{$q}%")
-                      ->orWhere('description_en', 'like', "%{$q}%")
-                      ->orWhere('brand', 'like', "%{$q}%");
-            });
+            $this->applyPublicProductSearch($query, $searchTerm);
         }
 
         // ── Sorting ───────────────────────────────────────────────────────────
@@ -706,14 +703,10 @@ class ProductController extends Controller
             ->where('status', 'approved');
 
         if ($request->has('query')) {
-            $searchTerm = $request->input('query');
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('name_en', 'like', '%' . $searchTerm . '%')
-                    ->orWhere('name_mm', 'like', '%' . $searchTerm . '%')
-                    ->orWhere('description_en', 'like', '%' . $searchTerm . '%')
-                    ->orWhere('description_mm', 'like', '%' . $searchTerm . '%')
-                    ->orWhere('brand', 'like', '%' . $searchTerm . '%');
-            });
+            $searchTerm = $this->normalizeSearchTerm($request->input('query'));
+            if ($searchTerm) {
+                $this->applyPublicProductSearch($query, $searchTerm);
+            }
         }
 
         $products = $query->latest()->paginate($perPage);
@@ -963,6 +956,50 @@ class ProductController extends Controller
             'created_at' => $product->created_at?->toISOString(),
             'updated_at' => $product->updated_at?->toISOString(),
         ];
+    }
+
+    protected function normalizeSearchTerm(?string $term): string
+    {
+        return trim((string) $term);
+    }
+
+    protected function applyPublicProductSearch($query, string $searchTerm): void
+    {
+        $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $searchTerm) . '%';
+
+        $query->where(function ($q) use ($like) {
+            $q->where('name_en', 'like', $like)
+                ->orWhere('name_mm', 'like', $like)
+                ->orWhere('description_en', 'like', $like)
+                ->orWhere('description_mm', 'like', $like)
+                ->orWhere('brand', 'like', $like)
+                ->orWhere('model', 'like', $like)
+                ->orWhere('sku', 'like', $like)
+                ->orWhereHas('category', function ($categoryQuery) use ($like) {
+                    $categoryQuery->where('name_en', 'like', $like)
+                        ->orWhere('name_mm', 'like', $like)
+                        ->orWhere('description_en', 'like', $like)
+                        ->orWhere('description_mm', 'like', $like);
+                })
+                ->orWhereHas('seller.sellerProfile', function ($sellerProfileQuery) use ($like) {
+                    $sellerProfileQuery->where('store_name', 'like', $like);
+                });
+        });
+    }
+
+    protected function resolveCategoryTreeIds(int $categoryId): array
+    {
+        $category = Category::find($categoryId);
+
+        if (!$category) {
+            return [$categoryId];
+        }
+
+        return $category->getDescendantIds()
+            ->push($categoryId)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

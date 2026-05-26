@@ -128,9 +128,9 @@ Route::group([
     // Public Routes For Products
     Route::prefix('products')->group(function () {
         Route::get('/', [ProductController::class, 'indexPublic']);
-        Route::get('/{slugOrId}', [ProductController::class, 'showPublic']);
         Route::get('/search/public', [ProductController::class, 'searchPublic']);
         Route::get('/category/{categoryId}', [ProductController::class, 'categoryProducts']);
+        Route::get('/{slugOrId}', [ProductController::class, 'showPublic']);
     });
 
     // Categories
