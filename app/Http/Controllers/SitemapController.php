@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\SellerProfile;
 use App\Models\Category;
+use App\Models\BlogPost;
 use Illuminate\Http\Response;
 
 class SitemapController extends Controller
@@ -30,6 +31,7 @@ class SitemapController extends Controller
             ['path' => '/categories',     'priority' => '0.9',  'changefreq' => 'weekly'],
             ['path' => '/bulk-order-tool','priority' => '0.7',  'changefreq' => 'weekly'],
             ['path' => '/local-deals',    'priority' => '0.7',  'changefreq' => 'daily'],
+            ['path' => '/blog',           'priority' => '0.8',  'changefreq' => 'weekly'],
             ['path' => '/compare',        'priority' => '0.5',  'changefreq' => 'weekly'],
             ['path' => '/about-us',       'priority' => '0.6',  'changefreq' => 'monthly'],
             ['path' => '/contact',        'priority' => '0.5',  'changefreq' => 'monthly'],
@@ -55,6 +57,10 @@ class SitemapController extends Controller
 
         $categories = Category::where('is_active', true)
             ->select('id', 'updated_at')
+            ->get();
+
+        $blogPosts = BlogPost::published()
+            ->select('slug', 'updated_at', 'published_at')
             ->get();
 
         // ── Build XML ──────────────────────────────────────────────────────
@@ -102,6 +108,13 @@ class SitemapController extends Controller
             if (!$seller->store_slug) continue;
             $baseLoc = $baseUrl . '/sellers/' . $seller->store_slug;
             $xml .= $this->urlEntry($baseLoc, $seller->updated_at, 'weekly', '0.7');
+        }
+
+        // Blog posts / guides
+        foreach ($blogPosts as $post) {
+            if (!$post->slug) continue;
+            $baseLoc = $baseUrl . '/blog/' . $post->slug;
+            $xml .= $this->urlEntry($baseLoc, $post->updated_at ?? $post->published_at, 'monthly', '0.7');
         }
 
         $xml .= '</urlset>';

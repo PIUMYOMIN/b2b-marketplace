@@ -40,6 +40,7 @@ use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\WholesaleTierController;
 use App\Http\Controllers\Api\PaymentSettingController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\BlogPostController;
 use Laravel\Socialite\Facades\Socialite;
 
 
@@ -103,6 +104,10 @@ Route::group([
 
     // Subscription plans — public listing for the Pricing page
     Route::get('/subscription-plans', [SubscriptionController::class, 'publicPlans']);
+
+    // Blog / guides — public SEO content
+    Route::get('/blog', [BlogPostController::class, 'index']);
+    Route::get('/blog/{slug}', [BlogPostController::class, 'show']);
 
     // Checkout locations — aggregated states/cities from seller delivery zones
     Route::get('/checkout-locations', [DeliveryAreaController::class, 'getCheckoutLocations']);
@@ -195,6 +200,16 @@ Route::group([
                 Route::put('/campaigns/{id}', [NewsletterController::class, 'updateCampaign']);
                 Route::post('/campaigns/{id}/send', [NewsletterController::class, 'sendCampaign']);
                 Route::get('/campaigns/{id}/preview', [NewsletterController::class, 'previewCampaign']);
+            });
+
+            // Blog management
+            Route::prefix('blog')->group(function () {
+                Route::get('/', [BlogPostController::class, 'adminIndex']);
+                Route::post('/', [BlogPostController::class, 'store']);
+                Route::put('/{post}', [BlogPostController::class, 'update']);
+                Route::delete('/{post}', [BlogPostController::class, 'destroy']);
+                Route::post('/{post}/publish', [BlogPostController::class, 'publish']);
+                Route::post('/{post}/archive', [BlogPostController::class, 'archive']);
             });
 
             // Commission Rules (admin CRUD)
