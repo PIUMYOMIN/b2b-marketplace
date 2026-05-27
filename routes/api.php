@@ -314,6 +314,13 @@ Route::group([
             //Product management by admin
             Route::prefix('products')->group(function () {
                 Route::get('/', [ProductController::class, 'adminIndex']);
+                Route::get('/{id}/edit', [ProductController::class, 'getProductForEdit'])
+                    ->whereNumber('id');
+                Route::get('/{id}', [ProductController::class, 'adminShow'])
+                    ->whereNumber('id');
+                Route::put('/{slugOrId}', [ProductController::class, 'update']);
+                Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct'])
+                    ->whereNumber('product');
                 Route::post('/{id}/approve', [ProductController::class, 'approve'])
                     ->whereNumber('id');
                 Route::post('/{id}/reject', [ProductController::class, 'reject'])
