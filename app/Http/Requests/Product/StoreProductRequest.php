@@ -67,6 +67,11 @@ class StoreProductRequest extends FormRequest
             // ── Media ─────────────────────────────────────────────────────────
             'images'           => ['nullable', 'array'],
             'images.*'         => ['array'],
+            'images.*.url'     => ['nullable', 'string', 'max:2048'],
+            'images.*.path'    => ['nullable', 'string', 'max:2048'],
+            'images.*.angle'   => ['nullable', 'string', 'in:front,back,side,top,default'],
+            'images.*.is_primary' => ['nullable', 'boolean'],
+            'images.*.uploaded_at' => ['nullable', 'date'],
             'specifications'   => ['nullable', 'array'],
             'dimensions'       => ['nullable', 'array'],
 

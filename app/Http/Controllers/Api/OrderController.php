@@ -78,7 +78,7 @@ class OrderController extends Controller
                 ->where('buyer_id', $user->id)
                 ->orderBy('created_at', 'desc')
                 ->get();
-        } else {
+        } else if ($this->isAdmin($user)) {
             // For admins, show all orders
             $orders = Order::with([
                     'items',
@@ -89,6 +89,11 @@ class OrderController extends Controller
                 ])
                 ->orderBy('created_at', 'desc')
                 ->get();
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.orders.view_unauthorized'),
+            ], 403);
         }
 
         $orders = $orders->map(fn (Order $order) => $this->formatOrderForList($order, $baseUrl));
@@ -824,15 +829,7 @@ class OrderController extends Controller
     {
         $user = Auth::user();
 
-        // Authorization check
-        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.orders.view_unauthorized')
-            ], 403);
-        }
-
-        if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
+        if (! $this->canViewOrder($user, $order)) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.orders.view_unauthorized')
@@ -912,6 +909,11 @@ class OrderController extends Controller
     // Add payment update method
     public function updatePayment(Request $request, Order $order)
     {
+        $user = Auth::user();
+        if (! $this->isAdmin($user)) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
         $request->validate([
             'payment_status' => 'required|in:paid,failed,refunded',
             'payment_data' => 'nullable|array'
@@ -958,12 +960,7 @@ class OrderController extends Controller
     {
         $user = Auth::user();
 
-        // Authorization
-        if ($user->hasRole('buyer') && (int) $order->buyer_id !== (int) $user->id) {
-            return response()->json(['success' => false, 'message' => __('messages.orders.cancel_unauthorized')], 403);
-        }
-
-        if ($user->hasRole('seller') && (int) $order->seller_id !== (int) $user->id) {
+        if (! $this->canManageOrder($user, $order)) {
             return response()->json(['success' => false, 'message' => __('messages.orders.cancel_unauthorized')], 403);
         }
 
@@ -1033,7 +1030,7 @@ class OrderController extends Controller
     {
 
         $user = Auth::user();
-        if ($user->hasRole('seller') && (int) $order->seller_id !== (int) $user->id) {
+        if (! $this->canSellerManageOrder($user, $order)) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
@@ -1074,7 +1071,7 @@ class OrderController extends Controller
     {
         $user = Auth::user();
 
-        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
+        if (! $this->canSellerManageOrder($user, $order)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to process this order'
@@ -1109,7 +1106,7 @@ class OrderController extends Controller
     {
         $user = Auth::user();
 
-        if ($user->hasRole('seller') && $order->seller_id !== $user->id) {
+        if (! $this->canSellerManageOrder($user, $order)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to ship this order'
@@ -1187,7 +1184,7 @@ class OrderController extends Controller
     {
         $user = Auth::user();
 
-        if ($user->hasRole('buyer') && $order->buyer_id !== $user->id) {
+        if (! $this->canBuyerConfirmDelivery($user, $order)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to confirm delivery for this order'
@@ -1526,6 +1523,57 @@ class OrderController extends Controller
         $order->update(['status' => $validated['status']]);
         $this->notifyBuyerOrderStatusChanged($order, $previousStatus);
         return response()->json(['success' => true, 'data' => $order->fresh()]);
+    }
+
+    private function isAdmin(?UserModel $user): bool
+    {
+        return (bool) ($user?->hasRole('admin') || $user?->type === 'admin');
+    }
+
+    private function canViewOrder(?UserModel $user, Order $order): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+
+        if ($user->hasRole('buyer')) {
+            return (int) $order->buyer_id === (int) $user->id;
+        }
+
+        if ($user->hasRole('seller')) {
+            return (int) $order->seller_id === (int) $user->id;
+        }
+
+        return false;
+    }
+
+    private function canManageOrder(?UserModel $user, Order $order): bool
+    {
+        return $this->canViewOrder($user, $order);
+    }
+
+    private function canSellerManageOrder(?UserModel $user, Order $order): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->isAdmin($user)
+            || ($user->hasRole('seller') && (int) $order->seller_id === (int) $user->id);
+    }
+
+    private function canBuyerConfirmDelivery(?UserModel $user, Order $order): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->isAdmin($user)
+            || ($user->hasRole('buyer') && (int) $order->buyer_id === (int) $user->id);
     }
 
     private function notifyBuyerOrderStatusChanged(Order $order, string $previousStatus): void

@@ -336,6 +336,9 @@ class ProductController extends Controller
         $data = $request->validated();
         $data['moq'] = max(1, (int) ($data['moq'] ?? 1));
         $data['quantity_step'] = $data['moq'];
+        if (isset($data['images']) && is_array($data['images'])) {
+            $data['images'] = $this->sanitizeProductImages($data['images'], $sellerId);
+        }
  
         $data['seller_id'] = $sellerId;
         $data['slug_en']   = $this->generateSlug($data['name_en']);
@@ -379,8 +382,15 @@ class ProductController extends Controller
      */
     public function uploadImage(Request $request)
     {
+        if (! $request->user()?->hasRole('seller')) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.products.unauthorized_update'),
+            ], 403);
+        }
+
         $validator = Validator::make($request->all(), [
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120',
             'angle' => 'sometimes|string|in:front,back,side,top,default'
         ]);
 
@@ -511,6 +521,10 @@ class ProductController extends Controller
         }
  
         $data = $request->validated();
+        if (isset($data['images']) && is_array($data['images'])) {
+            $data['images'] = $this->sanitizeProductImages($data['images'], (int) $product->seller_id, (int) $product->id);
+        }
+
         if (array_key_exists('moq', $data)) {
             $data['moq'] = max(1, (int) ($data['moq'] ?? 1));
             $data['quantity_step'] = $data['moq'];
@@ -536,6 +550,53 @@ class ProductController extends Controller
             'message' => __('messages.products.updated'),
             'data'    => new ProductResource($product->fresh(['options.values', 'activeVariants.optionValues.option'])),
         ]);
+    }
+
+    private function sanitizeProductImages(array $images, int $sellerId, ?int $productId = null): array
+    {
+        $allowedPrefixes = ["products/temp/{$sellerId}/"];
+        if ($productId) {
+            $allowedPrefixes[] = "products/{$productId}/";
+        }
+
+        $sanitized = [];
+
+        foreach ($images as $index => $image) {
+            if (! is_array($image)) {
+                continue;
+            }
+
+            $path = $image['path'] ?? $image['url'] ?? null;
+            if (! is_string($path) || $path === '') {
+                continue;
+            }
+
+            if (str_starts_with($path, 'http')) {
+                $path = preg_replace('#^https?://[^/]+/storage/#', '', $path);
+            }
+
+            $path = ltrim($path, '/');
+            if (
+                str_starts_with($path, 'http')
+                || ! preg_match('/\.(jpe?g|png|webp)$/i', $path)
+                || ! collect($allowedPrefixes)->contains(fn ($prefix) => str_starts_with($path, $prefix))
+            ) {
+                continue;
+            }
+
+            $sanitized[] = [
+                'url' => $path,
+                'angle' => $image['angle'] ?? 'default',
+                'is_primary' => (bool) ($image['is_primary'] ?? $index === 0),
+                'uploaded_at' => $image['uploaded_at'] ?? now()->toISOString(),
+            ];
+        }
+
+        if (! empty($sanitized) && ! collect($sanitized)->contains(fn ($image) => $image['is_primary'])) {
+            $sanitized[0]['is_primary'] = true;
+        }
+
+        return $sanitized;
     }
 
     /**
@@ -1082,7 +1143,7 @@ class ProductController extends Controller
     public function uploadImageToProduct(Request $request, Product $product)
     {
         // Authorization check
-        if ((int) Auth::id() !== (int) $product->seller_id) {
+        if (! Auth::user()?->hasRole('admin') && (int) Auth::id() !== (int) $product->seller_id) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update')
@@ -1090,7 +1151,7 @@ class ProductController extends Controller
         }
 
         $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120',
             'angle' => 'sometimes|string|in:front,back,side,top,default'
         ]);
 

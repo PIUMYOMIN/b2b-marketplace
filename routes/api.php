@@ -704,7 +704,8 @@ Route::group([
             Route::post('/', [OrderController::class, 'store'])->middleware(['role:buyer|admin', 'throttle:checkout']);
             Route::get('/{order}', [OrderController::class, 'show']);
             Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
-            Route::patch('/{order}/payment', [OrderController::class, 'updatePayment']);
+            Route::patch('/{order}/payment', [OrderController::class, 'updatePayment'])
+                ->middleware('role:admin');
 
             // Seller order management
             Route::middleware('role:seller|admin')->group(function () {

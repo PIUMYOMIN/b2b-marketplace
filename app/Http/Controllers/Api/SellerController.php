@@ -448,7 +448,7 @@ class SellerController extends Controller
     public function uploadStoreLogo(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048'
         ]);
 
         if ($validator->fails()) {
@@ -518,7 +518,7 @@ class SellerController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120'
+                'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120'
             ]);
 
             if ($validator->fails()) {
@@ -981,8 +981,8 @@ class SellerController extends Controller
                 'state' => 'sometimes|string|max:100',
                 'country' => 'sometimes|string|max:100',
                 'postal_code' => 'nullable|string|max:20',
-                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
+                'store_logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+                'store_banner' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
                 'certificate' => 'nullable|string|max:500',
                 'location' => 'nullable|string|max:255',
                 'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
@@ -1076,7 +1076,7 @@ class SellerController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'logo' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
+                'logo' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048'
             ]);
 
             if ($validator->fails()) {
@@ -1148,7 +1148,7 @@ class SellerController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'banner' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120'
+                'banner' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120'
             ]);
 
             if ($validator->fails()) {
