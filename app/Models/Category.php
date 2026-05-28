@@ -19,7 +19,8 @@ class Category extends Model
         'parent_id',
         'is_active',
         'image',
-        'slug_en'
+        'slug_en',
+        'slug_mm'
     ];
 
     protected $casts = [
@@ -71,6 +72,11 @@ class Category extends Model
     public function children()
     {
         return $this->hasMany(Category::class, 'parent_id');
+    }
+
+    public function childrenRecursive()
+    {
+        return $this->children()->with('childrenRecursive');
     }
 
     // Scopes

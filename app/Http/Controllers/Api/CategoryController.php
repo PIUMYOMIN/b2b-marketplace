@@ -63,30 +63,29 @@ class CategoryController extends Controller
     public function indexAdmin()
     {
         $categories = Category::whereNull('parent_id')
-            ->with('children')
+            ->with('childrenRecursive')
             ->orderBy('name_en')
             ->get();
 
-foreach ($categories as $category) {
-            foreach ($category->children as $child) {
-                $child->products_count = Product::where('category_id', $child->id)
-                    ->where('is_active', true)
-                    ->count();
-                $child->children_count = 0;
-            }
-
-            $allIds = $category->getDescendantIds();
-            $category->products_count = Product::whereIn('category_id', $allIds)
-                ->where('is_active', true)
-                ->count();
-
-            $category->children_count = $category->children->count();
+        foreach ($categories as $category) {
+            $this->attachAdminCounts($category);
         }
 
         return response()->json([
             'success' => true,
             'data'    => CategoryResource::collection($categories),
             'meta'    => ['total' => $categories->count()],
+        ]);
+    }
+
+    public function showAdmin(Category $category)
+    {
+        $category->load('childrenRecursive');
+        $this->attachAdminCounts($category);
+
+        return response()->json([
+            'success' => true,
+            'data' => new CategoryResource($category),
         ]);
     }
 
@@ -274,24 +273,31 @@ foreach ($categories as $category) {
             $category->image = null;
         }
 
-        // save basic fields
-        $category->save();
-
         // parent (NestedSet)
         if ($request->has('parent_id')) {
-            if ($request->parent_id != $category->id) {
-                if ($request->parent_id) {
-                    $parent = Category::find($request->parent_id);
-                    if ($parent) {
-                        $category->appendToNode($parent)->save();
-                    } else {
-                        $category->makeRoot()->save();
-                    }
-                } else {
-                    $category->makeRoot()->save(); // root
+            $parentId = $request->filled('parent_id') ? (int) $request->parent_id : null;
+
+            if ($parentId && $category->getDescendantIds()->contains($parentId)) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => [
+                        'parent_id' => ['A category cannot be moved under itself or one of its child categories.'],
+                    ],
+                ], 422);
+            }
+
+            if ($parentId) {
+                $parent = Category::find($parentId);
+                if ($parent) {
+                    $category->appendToNode($parent);
                 }
+            } else {
+                $category->makeRoot();
             }
         }
+
+        // save basic fields and parent changes together
+        $category->save();
 
         $category->refresh();
 
@@ -426,6 +432,24 @@ foreach ($categories as $category) {
         ]);
     }
 
+    public function forFilter()
+    {
+        return $this->all();
+    }
+
+    public function descendants(Category $category)
+    {
+        $descendants = $category->descendants()
+            ->where('is_active', true)
+            ->orderBy('name_en')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => CategoryResource::collection($descendants),
+        ]);
+    }
+
     /**
      * Remove the specified category (admin only).
      */
@@ -441,7 +465,16 @@ foreach ($categories as $category) {
 
         try {
             // Check if category has products – prevent deletion if any
-            if ($category->products()->exists()) {
+            $categoryIds = $category->getDescendantIds();
+
+            if (Category::whereIn('parent_id', $categoryIds)->exists()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please delete or move child categories before deleting this category.'
+                ], 422);
+            }
+
+            if (Product::whereIn('category_id', $categoryIds)->exists()) {
                 return response()->json([
                     'success' => false,
                     'message' => __('messages.categories.has_products')
@@ -516,5 +549,22 @@ foreach ($categories as $category) {
         $nextNumber = empty($numbers) ? 1 : max($numbers) + 1;
 
         return $baseSlug . '-' . $nextNumber;
+    }
+
+    private function attachAdminCounts(Category $category): void
+    {
+        $children = $category->relationLoaded('childrenRecursive')
+            ? $category->childrenRecursive
+            : ($category->relationLoaded('children') ? $category->children : collect());
+
+        foreach ($children as $child) {
+            $this->attachAdminCounts($child);
+        }
+
+        $categoryIds = $category->getDescendantIds();
+        $category->products_count = Product::whereIn('category_id', $categoryIds)
+            ->where('is_active', true)
+            ->count();
+        $category->children_count = $children->count();
     }
 }

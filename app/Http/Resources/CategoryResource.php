@@ -26,7 +26,9 @@ class CategoryResource extends JsonResource
             'children_count' => $this->children_count ?? 0,
         ];
 
-        if ($this->relationLoaded('children') && $this->children->isNotEmpty()) {
+        if ($this->relationLoaded('childrenRecursive') && $this->childrenRecursive->isNotEmpty()) {
+            $data['children'] = CategoryResource::collection($this->childrenRecursive);
+        } elseif ($this->relationLoaded('children') && $this->children->isNotEmpty()) {
             $data['children'] = CategoryResource::collection($this->children);
         }
 

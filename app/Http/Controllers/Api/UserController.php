@@ -46,7 +46,10 @@ class UserController extends Controller
                 $query->where('is_active', $isActive);
             });
 
-        $users = $query->paginate($perPage);
+        $users = $query
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($perPage);
 
         return response()->json([
             'success' => true,
