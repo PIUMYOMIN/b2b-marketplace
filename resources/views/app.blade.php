@@ -28,6 +28,7 @@
 
   $ogLocale    = $isMyanmar ? 'my_MM' : 'en_US';
   $ogLocaleAlt = $isMyanmar ? 'en_US' : 'my_MM';
+  $facebookAppId = config('services.facebook.client_id');
 @endphp
 <html lang="{{ $locale }}">
 
@@ -62,11 +63,15 @@
   <meta property="og:title"            content="{{ $pageTitle ?? 'Pyonea Marketplace' }}" />
   <meta property="og:description"      content="{{ $pageDescription ?? 'Buy and sell products easily across Myanmar with Pyonea marketplace.' }}" />
   <meta property="og:image"            content="{{ $pageImage ?? 'https://pyonea.com/og-image.png' }}" />
+  <meta property="og:image:secure_url" content="{{ $pageImage ?? 'https://pyonea.com/og-image.png' }}" />
   <meta property="og:image:width"      content="1200" />
   <meta property="og:image:height"     content="630" />
   <meta property="og:image:alt"        content="{{ $pageTitle ?? 'Pyonea Marketplace' }}" />
   <meta property="og:url"              content="{{ $pageUrl ?? 'https://pyonea.com/' }}" />
   <meta property="og:site_name"        content="Pyonea" />
+  @if (!empty($facebookAppId))
+  <meta property="fb:app_id"           content="{{ $facebookAppId }}" />
+  @endif
   <!-- og:locale reflects the language actually on this page -->
   <meta property="og:locale"           content="{{ $ogLocale }}" />
   <meta property="og:locale:alternate" content="{{ $ogLocaleAlt }}" />
@@ -77,6 +82,7 @@
   <meta name="twitter:title"           content="{{ $pageTitle ?? 'Pyonea Marketplace' }}" />
   <meta name="twitter:description"     content="{{ $pageDescription ?? 'Buy and sell products easily across Myanmar with Pyonea marketplace.' }}" />
   <meta name="twitter:image"           content="{{ $pageImage ?? 'https://pyonea.com/og-image.png' }}" />
+  <meta name="twitter:image:alt"       content="{{ $pageTitle ?? 'Pyonea Marketplace' }}" />
 
   <!-- Breadcrumb JSON-LD -->
   @if (!empty($breadcrumbs))
@@ -130,6 +136,38 @@
       "reviewCount": "{{ $product['review_count'] }}"
     }
     @endif
+  }
+  </script>
+  @endif
+
+  <!-- Blog Article JSON-LD -->
+  @if (!empty($article))
+  <script type="application/ld+json">
+  {
+    "@@context": "https://schema.org",
+    "@@type": "Article",
+    "headline": "{{ addslashes($article['headline'] ?? '') }}",
+    "description": "{{ addslashes($article['description'] ?? '') }}",
+    @if (!empty($article['image']))
+    "image": "{{ $article['image'] }}",
+    @else
+    "image": "https://pyonea.com/og-image.png",
+    @endif
+    "datePublished": "{{ $article['datePublished'] ?? '' }}",
+    "dateModified": "{{ $article['dateModified'] ?? '' }}",
+    "author": {
+      "@@type": "Person",
+      "name": "{{ addslashes($article['authorName'] ?? 'Pyonea') }}"
+    },
+    "publisher": {
+      "@@type": "Organization",
+      "name": "Pyonea",
+      "logo": {
+        "@@type": "ImageObject",
+        "url": "https://pyonea.com/logo.png"
+      }
+    },
+    "mainEntityOfPage": "{{ $pageUrl ?? 'https://pyonea.com/blog/' . ($article['slug'] ?? '') }}"
   }
   </script>
   @endif

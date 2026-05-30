@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Product;
 use App\Models\SellerProfile;
 use App\Models\Category;
+use App\Models\BlogPost;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 
@@ -182,6 +183,7 @@ class FrontendController extends Controller
             'product'         => null,
             'seller'          => null,
             'categories'      => null,
+            'article'         => null,
         ];
 
         $trimmed = ltrim($path, '/');
@@ -280,6 +282,43 @@ class FrontendController extends Controller
             }
         }
 
+        // ── Blog detail: /blog/some-slug ───────────────────────────────────
+        elseif (preg_match('#^blog/([^/]+)$#', $trimmed, $matches)) {
+            $slug = $matches[1];
+            $post = BlogPost::query()
+                ->visible()
+                ->with('author:id,name')
+                ->where('slug', $slug)
+                ->first();
+
+            if ($post) {
+                $displayTitle = $locale === 'my'
+                    ? ($post->seo_title_mm ?? $post->title_mm ?? $post->seo_title_en ?? $post->title_en)
+                    : ($post->seo_title_en ?? $post->title_en ?? $post->seo_title_mm ?? $post->title_mm);
+
+                $rawDescription = $locale === 'my'
+                    ? ($post->seo_description_mm ?? $post->excerpt_mm ?? $post->content_mm ?? $post->seo_description_en ?? $post->excerpt_en ?? $post->content_en)
+                    : ($post->seo_description_en ?? $post->excerpt_en ?? $post->content_en ?? $post->seo_description_mm ?? $post->excerpt_mm ?? $post->content_mm);
+
+                $pageImage = $post->featured_image
+                    ? $this->resolveImageUrl($post->featured_image)
+                    : null;
+
+                $metadata['pageTitle']       = $displayTitle . ' | Pyonea Blog';
+                $metadata['pageDescription'] = Str::limit(trim(strip_tags((string) $rawDescription)), 155);
+                $metadata['pageImage']       = $pageImage ?? $metadata['pageImage'];
+                $metadata['pageType']        = 'article';
+                $metadata['article']         = $this->formatBlogPostForJsonLd($post, $locale);
+                $metadata['breadcrumbs'] = [
+                    ['name' => $m['home_label'], 'url' => '/'],
+                    ['name' => 'Blog',           'url' => '/blog'],
+                    ['name' => $displayTitle,    'url' => $path],
+                ];
+            } else {
+                abort(404);
+            }
+        }
+
         // ── Products listing: /products ─────────────────────────────────────
         elseif ($trimmed === 'products') {
             $metadata['pageTitle']       = $m['products_title'];
@@ -287,6 +326,16 @@ class FrontendController extends Controller
             $metadata['breadcrumbs'] = [
                 ['name' => $m['home_label'],     'url' => '/'],
                 ['name' => $m['products_label'], 'url' => '/products'],
+            ];
+        }
+
+        // ── Blog listing: /blog ─────────────────────────────────────────────
+        elseif ($trimmed === 'blog') {
+            $metadata['pageTitle']       = 'Pyonea Blog | Myanmar B2B Guides';
+            $metadata['pageDescription'] = 'Read Myanmar business guides, wholesale tips, supplier advice, and marketplace updates from Pyonea.';
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'], 'url' => '/'],
+                ['name' => 'Blog',           'url' => '/blog'],
             ];
         }
 
@@ -505,6 +554,27 @@ class FrontendController extends Controller
                 'state' => $seller->state,
             ] : null,
             'sameAs' => $seller->social_links ?? [],
+        ];
+    }
+
+    protected function formatBlogPostForJsonLd(BlogPost $post, string $locale = 'en'): array
+    {
+        $title = $locale === 'my'
+            ? ($post->title_mm ?? $post->title_en)
+            : ($post->title_en ?? $post->title_mm);
+
+        $description = $locale === 'my'
+            ? ($post->seo_description_mm ?? $post->excerpt_mm ?? $post->seo_description_en ?? $post->excerpt_en)
+            : ($post->seo_description_en ?? $post->excerpt_en ?? $post->seo_description_mm ?? $post->excerpt_mm);
+
+        return [
+            'headline'      => $title,
+            'description'   => Str::limit(trim(strip_tags((string) $description)), 155),
+            'image'         => $post->featured_image ? $this->resolveImageUrl($post->featured_image) : null,
+            'datePublished' => $post->published_at?->toIso8601String(),
+            'dateModified'  => $post->updated_at?->toIso8601String(),
+            'authorName'    => $post->author->name ?? 'Pyonea',
+            'slug'          => $post->slug,
         ];
     }
 }
