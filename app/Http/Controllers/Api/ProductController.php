@@ -349,6 +349,14 @@ class ProductController extends Controller
         $data['listed_at'] = now();
  
         $product = Product::create($data);
+
+        if (! empty($data['images'])) {
+            $stableImages = $this->moveTempProductImages($data['images'], $sellerId, (int) $product->id);
+            if ($stableImages !== $data['images']) {
+                $product->update(['images' => $stableImages]);
+                $product->refresh();
+            }
+        }
  
         return response()->json([
             'success' => true,
@@ -523,6 +531,7 @@ class ProductController extends Controller
         $data = $request->validated();
         if (isset($data['images']) && is_array($data['images'])) {
             $data['images'] = $this->sanitizeProductImages($data['images'], (int) $product->seller_id, (int) $product->id);
+            $data['images'] = $this->moveTempProductImages($data['images'], (int) $product->seller_id, (int) $product->id);
         }
 
         if (array_key_exists('moq', $data)) {
@@ -597,6 +606,40 @@ class ProductController extends Controller
         }
 
         return $sanitized;
+    }
+
+    private function moveTempProductImages(array $images, int $sellerId, int $productId): array
+    {
+        $disk = Storage::disk('public');
+        $tempPrefix = "products/temp/{$sellerId}/";
+        $finalPrefix = "products/{$productId}/";
+
+        return array_map(function (array $image) use ($disk, $tempPrefix, $finalPrefix) {
+            $path = $image['url'] ?? '';
+
+            if (! is_string($path) || ! str_starts_with($path, $tempPrefix)) {
+                return $image;
+            }
+
+            if (! $disk->exists($path)) {
+                return $image;
+            }
+
+            $extension = pathinfo($path, PATHINFO_EXTENSION);
+            $basename = pathinfo($path, PATHINFO_FILENAME);
+            $target = $finalPrefix . $basename . ($extension ? ".{$extension}" : '');
+
+            if ($disk->exists($target)) {
+                $target = $finalPrefix . $basename . '-' . Str::random(8) . ($extension ? ".{$extension}" : '');
+            }
+
+            $disk->move($path, $target);
+
+            return [
+                ...$image,
+                'url' => $target,
+            ];
+        }, $images);
     }
 
     /**
