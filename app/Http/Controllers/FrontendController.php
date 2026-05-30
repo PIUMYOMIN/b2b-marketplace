@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\SellerProfile;
 use App\Models\Category;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 class FrontendController extends Controller
 {
@@ -213,7 +214,15 @@ class FrontendController extends Controller
                 if (!empty($images)) {
                     // Prefer the image explicitly marked as primary; fall back to index 0.
                     $primaryImg = collect($images)->first(
-                        fn($img) => is_array($img) && !empty($img['is_primary'])
+                        fn($img) => is_array($img)
+                            && (
+                                ($img['is_primary'] ?? false) === true
+                                || ($img['is_primary'] ?? null) === 1
+                                || ($img['is_primary'] ?? null) === '1'
+                                || ($img['primary'] ?? false) === true
+                                || ($img['primary'] ?? null) === 1
+                                || ($img['primary'] ?? null) === '1'
+                            )
                     ) ?? $images[0];
 
                     $rawPath = is_array($primaryImg)
@@ -255,10 +264,10 @@ class FrontendController extends Controller
                 $metadata['pageTitle']       = $storeName . ' | Pyonea';
                 $metadata['pageDescription'] = sprintf($m['seller_desc'], $storeName)
                     . ($storeDesc ? ' ' . $storeDesc : '');
-                $sellerLogo = $seller->store_logo
+                $sellerImage = $seller->store_logo
                     ? $this->resolveImageUrl($seller->store_logo)
-                    : null;
-                $metadata['pageImage']  = $sellerLogo ?? $metadata['pageImage'];
+                    : ($seller->store_banner ? $this->resolveImageUrl($seller->store_banner) : null);
+                $metadata['pageImage']  = $sellerImage ?? $metadata['pageImage'];
                 $metadata['pageType']   = 'profile';
                 $metadata['seller']     = $this->formatSellerForJsonLd($seller);
                 $metadata['breadcrumbs'] = [
@@ -437,7 +446,9 @@ class FrontendController extends Controller
             return $rawPath;
         }
 
-        return rtrim(config('app.url', 'https://api.pyonea.com'), '/') . '/storage/' . ltrim(str_replace('public/', '', $rawPath), '/');
+        $cleanPath = ltrim(str_replace(['public/', 'storage/'], '', $rawPath), '/');
+
+        return Storage::disk('public')->url($cleanPath);
     }
 
     protected function formatProductForJsonLd($product, string $locale = 'en'): array
@@ -485,7 +496,9 @@ class FrontendController extends Controller
             'store_name'        => $seller->store_name,
             'slug'              => $seller->store_slug,
             'store_description' => $seller->store_description,
-            'store_logo'        => $seller->store_logo ? $this->resolveImageUrl($seller->store_logo) : null,
+            'store_logo'        => $seller->store_logo
+                ? $this->resolveImageUrl($seller->store_logo)
+                : ($seller->store_banner ? $this->resolveImageUrl($seller->store_banner) : null),
             'hasStorefront'     => $seller->has_physical_store,
             'address'           => $seller->address ? [
                 'city'  => $seller->city,
