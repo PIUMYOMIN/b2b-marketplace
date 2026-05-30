@@ -371,6 +371,9 @@ class FrontendController extends Controller
 
                 $metadata['pageTitle']       = $catName . ' | Pyonea';
                 $metadata['pageDescription'] = sprintf($m['category_desc'], $catName);
+                $metadata['pageImage']       = $category->image
+                    ? $this->resolveImageUrl($category->image)
+                    : $metadata['pageImage'];
                 $metadata['breadcrumbs'] = [
                     ['name' => $m['home_label'],       'url' => '/'],
                     ['name' => $m['categories_label'], 'url' => '/categories'],
@@ -400,14 +403,25 @@ class FrontendController extends Controller
             ];
         }
 
-        // ── Product compare: /compare ───────────────────────────────────────
-        elseif ($trimmed === 'compare') {
+        // ── Product compare: /compare and /product-comparison ───────────────
+        elseif (in_array($trimmed, ['compare', 'product-comparison'], true)) {
             $metadata['pageTitle']       = $m['compare_title'];
             $metadata['pageDescription'] = $m['compare_desc'];
             $metadata['breadcrumbs'] = [
                 ['name' => $m['home_label'],     'url' => '/'],
                 ['name' => $m['products_label'], 'url' => '/products'],
-                ['name' => $m['compare_label'],  'url' => '/compare'],
+                ['name' => $m['compare_label'],  'url' => $path],
+            ];
+        }
+
+        // ── Bulk order tool: /bulk-order-tool ───────────────────────────────
+        elseif ($trimmed === 'bulk-order-tool') {
+            $metadata['pageTitle']       = 'Bulk Order Tool | Pyonea';
+            $metadata['pageDescription'] = 'Build and submit bulk wholesale orders from multiple Pyonea products in one fast workflow.';
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],     'url' => '/'],
+                ['name' => $m['products_label'], 'url' => '/products'],
+                ['name' => 'Bulk Order Tool',    'url' => '/bulk-order-tool'],
             ];
         }
 
@@ -448,6 +462,37 @@ class FrontendController extends Controller
             $metadata['breadcrumbs'] = [
                 ['name' => $m['home_label'], 'url' => '/'],
                 ['name' => $m['help_label'], 'url' => '/help'],
+            ];
+        }
+
+        // ── FAQ: /faq ───────────────────────────────────────────────────────
+        elseif ($trimmed === 'faq') {
+            $metadata['pageTitle']       = 'FAQ | Pyonea';
+            $metadata['pageDescription'] = 'Find quick answers about buying, selling, payments, shipping, accounts, and wholesale orders on Pyonea.';
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'], 'url' => '/'],
+                ['name' => 'FAQ',            'url' => '/faq'],
+            ];
+        }
+
+        // ── Shipping information: /shipping ─────────────────────────────────
+        elseif ($trimmed === 'shipping') {
+            $metadata['pageTitle']       = 'Shipping Information | Pyonea';
+            $metadata['pageDescription'] = 'Learn about Pyonea shipping options, delivery zones, handling times, packaging, and order tracking across Myanmar.';
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'], 'url' => '/'],
+                ['name' => 'Shipping',       'url' => '/shipping'],
+            ];
+        }
+
+        // ── Seller guidelines: /seller-guidelines ───────────────────────────
+        elseif ($trimmed === 'seller-guidelines') {
+            $metadata['pageTitle']       = 'Seller Guidelines | Pyonea';
+            $metadata['pageDescription'] = 'Review Pyonea seller guidelines for listings, pricing, delivery, service quality, and marketplace policies.';
+            $metadata['breadcrumbs'] = [
+                ['name' => $m['home_label'],    'url' => '/'],
+                ['name' => $m['sellers_label'], 'url' => '/sellers'],
+                ['name' => 'Seller Guidelines', 'url' => '/seller-guidelines'],
             ];
         }
 

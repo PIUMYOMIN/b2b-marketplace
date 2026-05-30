@@ -21,7 +21,7 @@ class SitemapController extends Controller
      */
     public function index(): Response
     {
-        $baseUrl = rtrim(env('APP_FRONTEND_URL', 'https://pyonea.com'), '/');
+        $baseUrl = rtrim(config('app.frontend_url', 'https://pyonea.com'), '/');
 
         // Static pages — one entry per language
         $static = [
