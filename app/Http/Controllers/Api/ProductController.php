@@ -1006,22 +1006,28 @@ class ProductController extends Controller
         ]);
     }
 
-    public function toggleStatus($id)
+    public function toggleStatus(Request $request, $id)
     {
         // FIX: same slug-binding issue as approve() and reject().
         // Product::getRouteKeyName() returns 'slug_en', so implicit binding would
         // look up by slug. Admin sends numeric IDs — resolve by primary key directly.
         $product = Product::withoutGlobalScopes()->findOrFail($id);
 
-        // Seller-only ownership check (no admin bypass on seller endpoints)
-        if ((int) Auth::id() !== (int) $product->seller_id) {
+        $user = Auth::user();
+        $isAdmin = $user && method_exists($user, 'hasRole') && $user->hasRole('admin');
+
+        if (!$isAdmin && (int) Auth::id() !== (int) $product->seller_id) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update'),
             ], 403);
         }
 
-        $product->update(['is_active' => !$product->is_active]);
+        $nextStatus = $request->has('is_active')
+            ? $request->boolean('is_active')
+            : !$product->is_active;
+
+        $product->update(['is_active' => $nextStatus]);
 
         return response()->json([
             'success' => true,
