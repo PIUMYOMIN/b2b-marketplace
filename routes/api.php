@@ -495,8 +495,10 @@ Route::group([
                 Route::delete('/{product}/wholesale-tiers/{tier}',  [WholesaleTierController::class, 'destroy']);
 
                 // Image Management
-                Route::post('/upload-image', [ProductController::class, 'uploadImage']);
-                Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct']);
+                Route::post('/upload-image', [ProductController::class, 'uploadImage'])
+                    ->middleware('throttle:30,1');
+                Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct'])
+                    ->middleware('throttle:30,1');
                 Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);
                 Route::post('/{product}/set-primary-image/{imageIndex}', [ProductController::class, 'setPrimaryImage']);
                 Route::post('/{id}/apply-discount', [ProductController::class, 'applyProductDiscount']);
