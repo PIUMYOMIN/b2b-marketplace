@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PaymentSetting;
 use App\Models\Product;
 use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
@@ -140,6 +141,21 @@ class SubscriptionController extends Controller
                 'message' => 'A payment method is required for paid plans.',
                 'error'   => 'payment_method_missing',
             ], 422);
+        }
+
+        if ($plan->price_mmk > 0) {
+            $enabledSubscriptionMethods = array_values(array_diff(
+                PaymentSetting::enabledMethods(),
+                ['cash_on_delivery']
+            ));
+
+            if (! in_array($request->payment_method, $enabledSubscriptionMethods, true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The selected payment method is not currently available for subscription payments.',
+                    'error'   => 'payment_method_unavailable',
+                ], 422);
+            }
         }
 
         // Check downgrade: if moving to a lower plan, ensure current product count is within new limit
