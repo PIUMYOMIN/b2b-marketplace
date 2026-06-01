@@ -205,6 +205,56 @@ class SubscriptionController extends Controller
     }
 
     /**
+     * POST /seller/subscription/payment-session/verify
+     * Body: { payment_method: 'mmqr' | 'kbz_pay' | 'wave_pay', payment_reference: string }
+     */
+    public function verifyPayment(Request $request): JsonResponse
+    {
+        $request->validate([
+            'payment_method'    => 'required|string|in:mmqr,kbz_pay,wave_pay',
+            'payment_reference' => 'required|string|max:255',
+        ]);
+
+        $enabledSubscriptionMethods = array_values(array_intersect(
+            PaymentSetting::enabledMethods(),
+            self::ONLINE_SUBSCRIPTION_PAYMENT_METHODS
+        ));
+
+        if (! in_array($request->payment_method, $enabledSubscriptionMethods, true)) {
+            return response()->json([
+                'success' => false,
+                'paid' => false,
+                'message' => 'The selected payment method is not currently available for subscription payments.',
+            ]);
+        }
+
+        try {
+            $gateway = PaymentService::gateway($request->payment_method);
+            $result = $gateway->verifyPayment($request->payment_reference);
+
+            return response()->json([
+                'success' => (bool) ($result['success'] ?? false),
+                'paid' => (bool) ($result['paid'] ?? false),
+                'reference' => $request->payment_reference,
+                'gateway_ref' => $result['gateway_ref'] ?? null,
+                'message' => $result['message'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Subscription payment verification failed: ' . $e->getMessage(), [
+                'user_id' => $request->user()->id,
+                'payment_method' => $request->payment_method,
+                'payment_reference' => $request->payment_reference,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'paid' => false,
+                'message' => 'Payment is not confirmed yet.',
+            ]);
+        }
+    }
+
+    /**
      * POST /seller/subscription/upgrade
      * Body: { plan_slug: 'professional' | 'enterprise', payment_reference?: string }
      *

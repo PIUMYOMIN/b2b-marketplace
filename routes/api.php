@@ -566,6 +566,7 @@ Route::group([
                 Route::get('/plans', [SubscriptionController::class, 'plans']);
                 Route::get('/', [SubscriptionController::class, 'current']);
                 Route::post('/payment-session', [SubscriptionController::class, 'initiatePayment']);
+                Route::post('/payment-session/verify', [SubscriptionController::class, 'verifyPayment'])->middleware('throttle:30,1');
                 Route::post('/upgrade',[SubscriptionController::class, 'upgrade']);
             });
 

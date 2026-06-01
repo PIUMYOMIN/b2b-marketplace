@@ -35,7 +35,7 @@ class SubscriptionRequestSubmitted extends Notification
             ->line('Seller email: ' . ($seller?->email ?? 'Not provided'))
             ->line('Amount: ' . number_format((float) $this->subscription->amount_paid_mmk) . ' MMK')
             ->line('Payment method: ' . ($this->paymentMethodLabel($this->subscription->payment_method) ?: 'Not provided'))
-            ->line('Payment reference: ' . ($this->subscription->payment_reference ?: 'Not provided'))
+            ->line('Payment reference number: ' . ($this->subscription->payment_reference ?: 'Not provided'))
             ->action('Review Subscription Request', $dashboard)
             ->line('Please verify the payment and approve or reject the request from the admin dashboard.');
     }
