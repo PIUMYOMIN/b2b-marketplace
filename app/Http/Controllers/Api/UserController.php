@@ -32,9 +32,11 @@ class UserController extends Controller
 
         $query = User::with('roles')
             ->when($search, function ($query) use ($search) {
-                $query->where('name', 'like', "%$search%")
-                    ->orWhere('email', 'like', "%$search%")
-                    ->orWhere('phone', 'like', "%$search%");
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%$search%")
+                        ->orWhere('email', 'like', "%$search%")
+                        ->orWhere('phone', 'like', "%$search%");
+                });
             })
             ->when($role, function ($query) use ($role) {
                 $query->whereHas('roles', function ($q) use ($role) {
@@ -58,6 +60,9 @@ class UserController extends Controller
                 'current_page' => $users->currentPage(),
                 'per_page' => $users->perPage(),
                 'total' => $users->total(),
+                'last_page' => $users->lastPage(),
+                'from' => $users->firstItem(),
+                'to' => $users->lastItem(),
             ]
         ]);
     }
@@ -176,6 +181,10 @@ class UserController extends Controller
 
             if ($request->has('password')) {
                 $updateData['password'] = Hash::make($validated['password']);
+            }
+
+            if ($request->has('is_active') && ! $request->has('status')) {
+                $updateData['status'] = $request->boolean('is_active') ? 'active' : 'inactive';
             }
 
             if ($request->has('type') && $user->type !== $validated['type']) {
