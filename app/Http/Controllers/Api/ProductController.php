@@ -1078,6 +1078,36 @@ class ProductController extends Controller
         ]);
     }
 
+    public function toggleFeatured(Request $request, $id)
+    {
+        $product = Product::withoutGlobalScopes()->findOrFail($id);
+
+        $user = Auth::user();
+        $isAdmin = $user && method_exists($user, 'hasRole') && $user->hasRole('admin');
+
+        if (! $isAdmin) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.products.unauthorized_update'),
+            ], 403);
+        }
+
+        $request->validate([
+            'is_featured' => ['required', 'boolean'],
+        ]);
+
+        $nextFeatured = $request->boolean('is_featured');
+
+        $product->update(['is_featured' => $nextFeatured]);
+        $this->flushPublicCatalogCaches();
+
+        return response()->json([
+            'success' => true,
+            'message' => $nextFeatured ? 'Product marked as featured' : 'Product removed from featured',
+            'is_featured' => (bool) $product->is_featured,
+        ]);
+    }
+
     protected function formatAdminProduct(Product $product): array
     {
         return [
@@ -1098,6 +1128,7 @@ class ProductController extends Controller
             'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
             'is_new' => (bool) $product->is_new,
             'is_on_sale' => (bool) $product->is_on_sale,
+            'is_featured' => (bool) $product->is_featured,
             'discount_start' => $product->discount_start,
             'discount_end' => $product->discount_end,
             'is_active' => (bool) $product->is_active,

@@ -28,6 +28,25 @@ class ProductResource extends JsonResource
         }
 
         return array_map(function ($img) {
+            if (is_string($img)) {
+                $url = $img;
+                if ($url && !str_starts_with($url, 'http')) {
+                    $url = Storage::disk('public')->url(ltrim($url, '/'));
+                }
+
+                return [
+                    'url' => $url,
+                    'is_primary' => false,
+                ];
+            }
+
+            if (! is_array($img)) {
+                return [
+                    'url' => '',
+                    'is_primary' => false,
+                ];
+            }
+
             $url = $img['url'] ?? $img['path'] ?? '';
             if ($url && !str_starts_with($url, 'http')) {
                 $url = Storage::disk('public')->url(ltrim($url, '/'));
@@ -120,7 +139,7 @@ class ProductResource extends JsonResource
             ),
 
             // ── Media ─────────────────────────────────────────────────────────
-            'images'           => $this->images,
+            'images'           => $this->normalizeImages(),
             'dimensions'       => $this->dimensions,
             'specifications'   => $this->specifications,
 

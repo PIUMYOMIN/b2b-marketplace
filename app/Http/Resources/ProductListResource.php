@@ -19,6 +19,20 @@ class ProductListResource extends JsonResource
 
         if (!$img) return null;
 
+        if (is_string($img)) {
+            $url = $img;
+            if ($url && !str_starts_with($url, 'http')) {
+                $url = Storage::disk('public')->url(ltrim($url, '/'));
+            }
+
+            return [
+                'url' => $url,
+                'is_primary' => true,
+            ];
+        }
+
+        if (! is_array($img)) return null;
+
         $url = $img['url'] ?? $img['path'] ?? '';
         if ($url && !str_starts_with($url, 'http')) {
             $url = Storage::disk('public')->url(ltrim($url, '/'));

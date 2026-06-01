@@ -331,6 +331,8 @@ Route::group([
                     ->whereNumber('id');
                 Route::patch('/{id}/toggle-status', [ProductController::class, 'toggleStatus'])
                     ->whereNumber('id');
+                Route::patch('/{id}/toggle-featured', [ProductController::class, 'toggleFeatured'])
+                    ->whereNumber('id');
                 Route::delete('/{product}', [ProductController::class, 'destroy'])
                     ->whereNumber('product');
             });
