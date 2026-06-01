@@ -542,7 +542,15 @@ class FrontendController extends Controller
 
         $cleanPath = ltrim(str_replace(['public/', 'storage/'], '', $rawPath), '/');
 
-        return Storage::disk('public')->url($cleanPath);
+        $url = Storage::disk('public')->url($cleanPath);
+
+        if (str_starts_with($url, 'http')) {
+            return $url;
+        }
+
+        $frontendUrl = rtrim(config('app.frontend_url', config('app.url')), '/');
+
+        return $frontendUrl . '/' . ltrim($url, '/');
     }
 
     protected function formatProductForJsonLd($product, string $locale = 'en'): array

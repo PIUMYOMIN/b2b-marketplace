@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\CategoryResource;
 use App\Models\Category;
 use App\Models\Product;
+use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -148,8 +149,12 @@ class CategoryController extends Controller
 
             // Handle image upload
             if ($request->hasFile('image')) {
-                $path = $request->file('image')->store('categories', 'public');
-                $data['image'] = $path;
+                $result = app(ImageOptimizationService::class)->store(
+                    $request->file('image'),
+                    'categories',
+                    'default'
+                );
+                $data['image'] = $result['path'];
             }
 
             $category = Category::create($data);
@@ -264,8 +269,12 @@ class CategoryController extends Controller
             if ($category->image && Storage::disk('public')->exists($category->image)) {
                 Storage::disk('public')->delete($category->image);
             }
-            $path = $request->file('image')->store('categories', 'public');
-            $category->image = $path;
+            $result = app(ImageOptimizationService::class)->store(
+                $request->file('image'),
+                'categories',
+                'default'
+            );
+            $category->image = $result['path'];
         } elseif ($request->has('image') && $request->image === "") {
             if ($category->image && Storage::disk('public')->exists($category->image)) {
                 Storage::disk('public')->delete($category->image);

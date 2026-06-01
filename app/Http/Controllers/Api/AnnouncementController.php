@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
+use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -78,7 +79,12 @@ class AnnouncementController extends Controller
         $data = $v->validated();
 
         if ($request->hasFile('image')) {
-            $data['image'] = $request->file('image')->store('announcements', 'public');
+            $result = app(ImageOptimizationService::class)->store(
+                $request->file('image'),
+                'announcements',
+                'banner'
+            );
+            $data['image'] = $result['path'];
         }
 
         $announcement = Announcement::create($data);
@@ -125,7 +131,12 @@ class AnnouncementController extends Controller
 
         if ($request->hasFile('image')) {
             if ($announcement->image) Storage::disk('public')->delete($announcement->image);
-            $data['image'] = $request->file('image')->store('announcements', 'public');
+            $result = app(ImageOptimizationService::class)->store(
+                $request->file('image'),
+                'announcements',
+                'banner'
+            );
+            $data['image'] = $result['path'];
         } elseif ($request->input('remove_image') == '1' && $announcement->image) {
             Storage::disk('public')->delete($announcement->image);
             $data['image'] = null;

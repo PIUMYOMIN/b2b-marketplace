@@ -148,6 +148,12 @@ class ProductController extends Controller
         if ($request->has('seller_id')) {
             $query->where('seller_id', $request->seller_id);
         }
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+        if ($request->filled('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
         if ($request->has('search')) {
             $query->where(function ($q) use ($request) {
                 $q->where('name_en', 'like', '%' . $request->search . '%')
@@ -1207,10 +1213,11 @@ class ProductController extends Controller
         try {
             $angle = $request->angle ?? 'default';
 
-            // Store image in product-specific directory
-            $path = $request->file('image')->store(
+            // Store optimized image in product-specific directory.
+            $result = app(ImageOptimizationService::class)->store(
+                $request->file('image'),
                 'products/' . $product->id,
-                'public'
+                'product'
             );
 
             // Get current images
@@ -1221,9 +1228,12 @@ class ProductController extends Controller
 
             // Add new image (not primary by default)
             $newImage = [
-                'url' => $path,
+                'url' => $result['path'],
                 'angle' => $angle,
                 'is_primary' => empty($images), // Set as primary if no images exist
+                'width' => $result['width'],
+                'height' => $result['height'],
+                'size_bytes' => $result['size_bytes'],
                 'uploaded_at' => now()->toISOString()
             ];
 
