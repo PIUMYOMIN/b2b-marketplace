@@ -565,6 +565,7 @@ Route::group([
             Route::prefix('subscription')->group(function () {
                 Route::get('/plans', [SubscriptionController::class, 'plans']);
                 Route::get('/', [SubscriptionController::class, 'current']);
+                Route::post('/payment-session', [SubscriptionController::class, 'initiatePayment']);
                 Route::post('/upgrade',[SubscriptionController::class, 'upgrade']);
             });
 

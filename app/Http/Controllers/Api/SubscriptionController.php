@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Notifications\SubscriptionApproved;
 use App\Notifications\SubscriptionRejected;
 use App\Notifications\SubscriptionRequestSubmitted;
+use App\Services\Payment\PaymentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Log;
 
 class SubscriptionController extends Controller
 {
+    private const ONLINE_SUBSCRIPTION_PAYMENT_METHODS = ['mmqr', 'kbz_pay', 'wave_pay'];
+
     // ══════════════════════════════════════════════════════════════════════
     //  SELLER ROUTES
     // ══════════════════════════════════════════════════════════════════════
@@ -92,6 +95,113 @@ class SubscriptionController extends Controller
                 ]
             ),
         ]);
+    }
+
+    /**
+     * POST /seller/subscription/payment-session
+     * Body: { plan_slug: 'professional' | 'enterprise', payment_method: 'mmqr' | 'kbz_pay' | 'wave_pay' }
+     *
+     * Creates a gateway payment session for the selected paid subscription plan.
+     * The seller submits the returned reference after completing payment in the wallet app.
+     */
+    public function initiatePayment(Request $request): JsonResponse
+    {
+        $request->validate([
+            'plan_slug'      => 'required|string|exists:subscription_plans,slug',
+            'payment_method' => 'required|string|in:mmqr,kbz_pay,wave_pay',
+        ]);
+
+        $plan = SubscriptionPlan::where('slug', $request->plan_slug)
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        if ($plan->price_mmk <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No payment is required for the selected plan.',
+                'error'   => 'payment_not_required',
+            ], 422);
+        }
+
+        $seller = $request->user();
+        $current = $this->activeSubscription($seller->id);
+        if ($current && $current->plan_id === $plan->id) {
+            return response()->json([
+                'success' => false,
+                'message' => "You are already on the {$plan->name} plan.",
+                'error'   => 'already_on_plan',
+            ], 422);
+        }
+
+        $enabledSubscriptionMethods = array_values(array_intersect(
+            PaymentSetting::enabledMethods(),
+            self::ONLINE_SUBSCRIPTION_PAYMENT_METHODS
+        ));
+
+        if (! in_array($request->payment_method, $enabledSubscriptionMethods, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The selected payment method is not currently available for subscription payments.',
+                'error'   => 'payment_method_unavailable',
+            ], 422);
+        }
+
+        if ($plan->product_limit !== -1) {
+            $productCount = Product::where('seller_id', $seller->id)->whereNull('deleted_at')->count();
+            if ($productCount > $plan->product_limit) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "You have {$productCount} products, which exceeds the {$plan->name} plan limit of {$plan->product_limit}. "
+                        . 'Please remove products before downgrading.',
+                    'error'   => 'product_count_exceeds_plan_limit',
+                    'data'    => [
+                        'current_count' => $productCount,
+                        'plan_limit'    => $plan->product_limit,
+                    ],
+                ], 422);
+            }
+        }
+
+        try {
+            $gateway = PaymentService::gateway($request->payment_method);
+            $orderNumber = 'SUB-' . $seller->id . '-' . strtoupper($plan->slug) . '-' . now()->format('YmdHis');
+
+            $result = $gateway->initiatePayment(
+                amount: (float) $plan->price_mmk,
+                currency: 'MMK',
+                orderNumber: $orderNumber,
+                metadata: [
+                    'description' => "Pyonea {$plan->name} subscription",
+                    'seller_id' => $seller->id,
+                    'plan_slug' => $plan->slug,
+                ]
+            );
+
+            if (! ($result['success'] ?? false)) {
+                return response()->json($result, 502);
+            }
+
+            return response()->json(array_merge($result, [
+                'amount' => (int) $plan->price_mmk,
+                'currency' => 'MMK',
+                'plan' => [
+                    'slug' => $plan->slug,
+                    'name' => $plan->name,
+                ],
+                'payment_method' => $request->payment_method,
+            ]));
+        } catch (\Throwable $e) {
+            Log::error('Subscription payment session failed: ' . $e->getMessage(), [
+                'user_id' => $seller->id,
+                'plan_slug' => $request->plan_slug,
+                'payment_method' => $request->payment_method,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not generate the payment session. Please try again.',
+            ], 500);
+        }
     }
 
     /**
