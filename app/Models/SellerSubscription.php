@@ -18,6 +18,7 @@ class SellerSubscription extends Model
         'next_billing_at',
         'amount_paid_mmk',
         'payment_reference',
+        'payment_method',
         'changed_by',
         'notes',
     ];

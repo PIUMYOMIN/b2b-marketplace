@@ -106,6 +106,7 @@ class SubscriptionController extends Controller
         $request->validate([
             'plan_slug'         => 'required|string|exists:subscription_plans,slug',
             'payment_reference' => 'nullable|string|max:255',
+            'payment_method'    => 'nullable|string|in:mmqr,kbz_pay,wave_pay,cb_pay,aya_pay,bank_transfer',
         ]);
 
         $plan = SubscriptionPlan::where('slug', $request->plan_slug)
@@ -130,6 +131,14 @@ class SubscriptionController extends Controller
                 'success' => false,
                 'message' => 'A payment reference is required for paid plans.',
                 'error'   => 'payment_reference_missing',
+            ], 422);
+        }
+
+        if ($plan->price_mmk > 0 && empty($request->payment_method)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A payment method is required for paid plans.',
+                'error'   => 'payment_method_missing',
             ], 422);
         }
 
@@ -166,6 +175,7 @@ class SubscriptionController extends Controller
                     'next_billing_at'   => null,
                     'amount_paid_mmk'   => $plan->price_mmk,
                     'payment_reference' => $request->payment_reference,
+                    'payment_method'    => $request->payment_method,
                     'changed_by'        => $seller->id,
                     'notes'             => 'Waiting for admin payment approval.',
                 ]);
@@ -567,6 +577,7 @@ class SubscriptionController extends Controller
             'days_remaining'    => $s->days_remaining,
             'amount_paid_mmk'   => $s->amount_paid_mmk,
             'payment_reference' => $s->payment_reference,
+            'payment_method'    => $s->payment_method,
             'notes'             => $s->notes,
             'plan'              => $s->plan ? [
                 'id'                 => $s->plan->id,

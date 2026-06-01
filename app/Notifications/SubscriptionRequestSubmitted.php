@@ -34,6 +34,7 @@ class SubscriptionRequestSubmitted extends Notification
             ->line("{$sellerName} requested approval for the {$plan?->name} plan.")
             ->line('Seller email: ' . ($seller?->email ?? 'Not provided'))
             ->line('Amount: ' . number_format((float) $this->subscription->amount_paid_mmk) . ' MMK')
+            ->line('Payment method: ' . ($this->paymentMethodLabel($this->subscription->payment_method) ?: 'Not provided'))
             ->line('Payment reference: ' . ($this->subscription->payment_reference ?: 'Not provided'))
             ->action('Review Subscription Request', $dashboard)
             ->line('Please verify the payment and approve or reject the request from the admin dashboard.');
@@ -53,9 +54,24 @@ class SubscriptionRequestSubmitted extends Notification
             'plan_name' => $plan?->name,
             'amount_mmk' => $this->subscription->amount_paid_mmk,
             'payment_reference' => $this->subscription->payment_reference,
+            'payment_method' => $this->subscription->payment_method,
+            'payment_method_label' => $this->paymentMethodLabel($this->subscription->payment_method),
             'url' => $dashboardPath,
             'message' => ($seller?->sellerProfile?->store_name ?? $seller?->name ?? 'A seller')
                 . " requested {$plan?->name} plan approval.",
         ];
+    }
+
+    private function paymentMethodLabel(?string $method): ?string
+    {
+        return match ($method) {
+            'mmqr' => 'MMQR',
+            'kbz_pay' => 'KBZ Pay',
+            'wave_pay' => 'Wave Money',
+            'cb_pay' => 'CB Pay',
+            'aya_pay' => 'AYA Pay',
+            'bank_transfer' => 'Bank Transfer',
+            default => $method,
+        };
     }
 }
