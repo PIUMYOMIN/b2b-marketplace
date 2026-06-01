@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -30,6 +31,34 @@ class ProductController extends Controller
      */
     public function indexPublic(Request $request): JsonResponse
     {
+        if ($this->isFeaturedProductsCacheableRequest($request)) {
+            $payload = Cache::remember('featured_products', 120, function () {
+                $products = Product::approved()
+                    ->with([
+                        'seller.sellerProfile',
+                        'category',
+                        'wholesaleTiers' => fn($q) => $q->where('is_active', true)->orderBy('min_qty'),
+                    ])
+                    ->withCount('reviews')
+                    ->where('is_featured', true)
+                    ->orderByDesc('listed_at')
+                    ->paginate(20);
+
+                return [
+                    'success' => true,
+                    'data'    => ProductListResource::collection($products)->resolve(),
+                    'meta'    => [
+                        'current_page' => $products->currentPage(),
+                        'last_page'    => $products->lastPage(),
+                        'total'        => $products->total(),
+                        'per_page'     => $products->perPage(),
+                    ],
+                ];
+            });
+
+            return response()->json($payload);
+        }
+
         $query = Product::approved()
             ->with([
                 'seller.sellerProfile',
@@ -65,7 +94,7 @@ class ProductController extends Controller
             });
         }
  
-        if ($request->boolean('is_featured')) {
+        if ($request->boolean('featured') || $request->boolean('is_featured')) {
             $query->where('is_featured', true);
         }
  
@@ -201,6 +230,7 @@ class ProductController extends Controller
             'listed_at' => now(),
             'rejection_reason' => null,
         ]);
+        $this->flushPublicCatalogCaches();
 
         $product->load(['category', 'seller'])->loadSum('activeVariants', 'quantity');
 
@@ -238,6 +268,7 @@ class ProductController extends Controller
             'listed_at' => null,
             'rejection_reason' => $request->reason ?: null,
         ]);
+        $this->flushPublicCatalogCaches();
 
         $product->load(['category', 'seller'])->loadSum('activeVariants', 'quantity');
 
@@ -355,12 +386,14 @@ class ProductController extends Controller
         $data['listed_at'] = now();
  
         $product = Product::create($data);
+        $this->flushPublicCatalogCaches();
 
         if (! empty($data['images'])) {
             $stableImages = $this->moveTempProductImages($data['images'], $sellerId, (int) $product->id);
             if ($stableImages !== $data['images']) {
                 $product->update(['images' => $stableImages]);
                 $product->refresh();
+                $this->flushPublicCatalogCaches();
             }
         }
  
@@ -559,6 +592,7 @@ class ProductController extends Controller
         }
  
         $product->update($data);
+        $this->flushPublicCatalogCaches();
  
         return response()->json([
             'success' => true,
@@ -666,6 +700,7 @@ class ProductController extends Controller
 
         try {
             $product->delete();
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,
@@ -1034,6 +1069,7 @@ class ProductController extends Controller
             : !$product->is_active;
 
         $product->update(['is_active' => $nextStatus]);
+        $this->flushPublicCatalogCaches();
 
         return response()->json([
             'success' => true,
@@ -1088,27 +1124,49 @@ class ProductController extends Controller
         return trim((string) $term);
     }
 
+    protected function isFeaturedProductsCacheableRequest(Request $request): bool
+    {
+        if (! ($request->boolean('featured') || $request->boolean('is_featured'))) {
+            return false;
+        }
+
+        if ((int) $request->get('per_page', 20) !== 20 || (int) $request->get('page', 1) !== 1) {
+            return false;
+        }
+
+        foreach ([
+            'category',
+            'category_id',
+            'product_type',
+            'min_price',
+            'max_price',
+            'in_stock',
+            'on_sale',
+            'search',
+            'q',
+            'sort',
+            'sort_by',
+            'sort_order',
+        ] as $filter) {
+            if ($request->filled($filter) || $request->boolean($filter)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected function flushPublicCatalogCaches(): void
+    {
+        Cache::forget('categories_tree');
+        Cache::forget('featured_products');
+    }
+
     protected function applyPublicProductSearch($query, string $searchTerm): void
     {
-        $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $searchTerm) . '%';
-
-        $query->where(function ($q) use ($like) {
-            $q->where('name_en', 'like', $like)
-                ->orWhere('name_mm', 'like', $like)
-                ->orWhere('description_en', 'like', $like)
-                ->orWhere('description_mm', 'like', $like)
-                ->orWhere('brand', 'like', $like)
-                ->orWhere('model', 'like', $like)
-                ->orWhere('sku', 'like', $like)
-                ->orWhereHas('category', function ($categoryQuery) use ($like) {
-                    $categoryQuery->where('name_en', 'like', $like)
-                        ->orWhere('name_mm', 'like', $like)
-                        ->orWhere('description_en', 'like', $like)
-                        ->orWhere('description_mm', 'like', $like);
-                })
-                ->orWhereHas('seller.sellerProfile', function ($sellerProfileQuery) use ($like) {
-                    $sellerProfileQuery->where('store_name', 'like', $like);
-                });
+        $query->where(function ($q) use ($searchTerm) {
+            $q->whereFullText(['name_en', 'description_en'], $searchTerm)
+                ->orWhereFullText(['name_mm', 'description_mm'], $searchTerm);
         });
     }
 
@@ -1241,6 +1299,7 @@ class ProductController extends Controller
 
             // Update product with new images array
             $product->update(['images' => $images]);
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,
@@ -1299,6 +1358,7 @@ class ProductController extends Controller
 
             // Update product
             $product->update(['images' => $images]);
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,
@@ -1346,6 +1406,7 @@ class ProductController extends Controller
 
             // Update product
             $product->update(['images' => $images]);
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,

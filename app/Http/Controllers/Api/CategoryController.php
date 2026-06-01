@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -21,36 +22,40 @@ class CategoryController extends Controller
      */
     public function index()
     {
-        // Get only root categories that are active
-        $categories = Category::whereNull('parent_id')
-            ->where('is_active', true)
-            ->with('children')
-            ->get();
+        $payload = Cache::remember('categories_tree', 300, function () {
+            // Get only root categories that are active
+            $categories = Category::whereNull('parent_id')
+                ->where('is_active', true)
+                ->with('children')
+                ->get();
 
-// Per-child product count (drives the animated list on the card)
-        foreach ($categories as $category) {
-            foreach ($category->children as $child) {
-                $child->products_count = Product::where('category_id', $child->id)
+            // Per-child product count (drives the animated list on the card)
+            foreach ($categories as $category) {
+                foreach ($category->children as $child) {
+                    $child->products_count = Product::where('category_id', $child->id)
+                        ->where('is_active', true)
+                        ->count();
+                    $child->children_count = 0;
+                }
+
+                // Root total = all descendants (any active product counts)
+                $allIds = $category->getDescendantIds();
+                $category->products_count = Product::whereIn('category_id', $allIds)
                     ->where('is_active', true)
                     ->count();
-                $child->children_count = 0;
+
+                $category->children_count = $category->children->count();
             }
 
-            // Root total = all descendants (any active product counts)
-            $allIds = $category->getDescendantIds();
-            $category->products_count = Product::whereIn('category_id', $allIds)
-                ->where('is_active', true)
-                ->count();
+            // Only return roots that have at least one product in the tree
+            $categories = $categories->filter(fn ($c) => $c->products_count > 0)->values();
 
-            $category->children_count = $category->children->count();
-        }
-
-        // Only return roots that have at least one product in the tree
-        $categories = $categories->filter(fn ($c) => $c->products_count > 0)->values();
+            return CategoryResource::collection($categories)->resolve();
+        });
 
         return response()->json([
             'success' => true,
-            'data' => CategoryResource::collection($categories)
+            'data' => $payload
         ]);
     }
 
@@ -158,6 +163,7 @@ class CategoryController extends Controller
             }
 
             $category = Category::create($data);
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,
@@ -307,6 +313,7 @@ class CategoryController extends Controller
 
         // save basic fields and parent changes together
         $category->save();
+        $this->flushPublicCatalogCaches();
 
         $category->refresh();
 
@@ -496,6 +503,7 @@ class CategoryController extends Controller
             }
 
             $category->delete();
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,
@@ -575,5 +583,11 @@ class CategoryController extends Controller
             ->where('is_active', true)
             ->count();
         $category->children_count = $children->count();
+    }
+
+    private function flushPublicCatalogCaches(): void
+    {
+        Cache::forget('categories_tree');
+        Cache::forget('featured_products');
     }
 }
