@@ -849,7 +849,7 @@ class SellerController extends Controller
     /**
      * Get seller details (public endpoint)
      */
-    public function show(SellerProfile $seller)
+    public function show(Request $request, SellerProfile $seller)
     {
         // Check if seller is approved/active (optional)
         if (!in_array($seller->status, ['approved', 'active'])) {
@@ -867,12 +867,14 @@ class SellerController extends Controller
         $seller->loadCount('reviews');
 
         // Get seller's products (only active ones)
+        $perPage = min(max((int) $request->input('per_page', 24), 1), 48);
+
         $products = Product::where('seller_id', $seller->user_id)
             ->where('is_active', true)
             ->with(['category'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
-            ->paginate(12);
+            ->paginate($perPage);
 
         // Convert seller logo and banner to full URLs
         $sellerData = $seller->toArray();
