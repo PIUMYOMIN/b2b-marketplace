@@ -161,7 +161,7 @@ class SubscriptionController extends Controller
                     'user_id'           => $seller->id,
                     'plan_id'           => $plan->id,
                     'status'            => 'pending_payment',
-                    'starts_at'         => null,
+                    'starts_at'         => Carbon::today(),
                     'ends_at'           => null,
                     'next_billing_at'   => null,
                     'amount_paid_mmk'   => $plan->price_mmk,
@@ -203,17 +203,18 @@ class SubscriptionController extends Controller
 
             DB::commit();
 
-            $pending->fresh(['plan', 'user'])->user?->notify(new SubscriptionApproved($pending->fresh(['plan'])));
-
             return response()->json([
                 'success' => true,
                 'message' => "Successfully upgraded to the {$plan->name} plan.",
                 'data'    => $this->formatSubscription($subscription->load('plan')),
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Subscription upgrade failed: ' . $e->getMessage(), ['user_id' => $seller->id]);
+            Log::error('Subscription upgrade failed: ' . $e->getMessage(), [
+                'user_id' => $seller->id,
+                'plan_slug' => $request->plan_slug,
+            ]);
             return response()->json(['success' => false, 'message' => 'Upgrade failed. Please try again.'], 500);
         }
     }
@@ -318,10 +319,20 @@ class SubscriptionController extends Controller
 
             DB::commit();
 
+            $approved = $pending->fresh(['plan', 'user.sellerProfile']);
+            try {
+                $approved->user?->notify(new SubscriptionApproved($approved));
+            } catch (\Throwable $e) {
+                Log::warning('Subscription approval notification failed: ' . $e->getMessage(), [
+                    'subscription_id' => $subscriptionId,
+                    'user_id' => $approved->user_id,
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => "Subscription request approved. {$pending->plan?->name} is now active.",
-                'data' => $this->formatSubscription($pending->fresh(['plan', 'user.sellerProfile'])),
+                'data' => $this->formatSubscription($approved),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -349,12 +360,20 @@ class SubscriptionController extends Controller
             'notes' => 'Payment rejected: ' . $request->reason,
         ]);
 
-        $pending->fresh(['plan', 'user'])->user?->notify(new SubscriptionRejected($pending->fresh(['plan']), $request->reason));
+        $rejected = $pending->fresh(['plan', 'user.sellerProfile']);
+        try {
+            $rejected->user?->notify(new SubscriptionRejected($rejected, $request->reason));
+        } catch (\Throwable $e) {
+            Log::warning('Subscription rejection notification failed: ' . $e->getMessage(), [
+                'subscription_id' => $subscriptionId,
+                'user_id' => $rejected->user_id,
+            ]);
+        }
 
         return response()->json([
             'success' => true,
             'message' => 'Subscription request rejected.',
-            'data' => $this->formatSubscription($pending->fresh(['plan', 'user.sellerProfile'])),
+            'data' => $this->formatSubscription($rejected),
         ]);
     }
 
