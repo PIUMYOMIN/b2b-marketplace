@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Notifications\ProductLimitWarning;
 
 class BulkImportController extends Controller
 {
@@ -98,6 +99,7 @@ class BulkImportController extends Controller
         }
 
         // 4. Enforce plan product limit.
+        $beforeCount = Product::where('seller_id', $sellerId)->whereNull('deleted_at')->count();
         $limitError = $this->checkProductLimit($sellerId, count($rows));
         if ($limitError) {
             return response()->json($limitError, 422);
@@ -181,6 +183,9 @@ class BulkImportController extends Controller
             }
 
             DB::commit();
+            $plan = $this->resolveSellerPlan($sellerId);
+            $currentCount = $beforeCount + count($imported);
+            $this->notifyProductLimitWarningIfNeeded($seller, $plan, $beforeCount, $currentCount);
 
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -286,14 +291,7 @@ class BulkImportController extends Controller
      */
     private function checkProductLimit(int $sellerId, int $newCount): ?array
     {
-        $subscription = SellerSubscription::with('plan')
-            ->where('user_id', $sellerId)
-            ->active()
-            ->first();
-
-        $plan = $subscription?->plan
-            ?? SubscriptionPlan::where('slug', 'basic')->first()
-            ?? new SubscriptionPlan(['product_limit' => 20, 'name' => 'Basic']);
+        $plan = $this->resolveSellerPlan($sellerId);
 
         if ($plan->product_limit === -1) return null; // unlimited
 
@@ -318,6 +316,48 @@ class BulkImportController extends Controller
         }
 
         return null;
+    }
+
+    private function resolveSellerPlan(int $sellerId): SubscriptionPlan
+    {
+        $subscription = SellerSubscription::with('plan')
+            ->where('user_id', $sellerId)
+            ->active()
+            ->first();
+
+        return $subscription?->plan
+            ?? SubscriptionPlan::where('slug', 'basic')->first()
+            ?? new SubscriptionPlan(['product_limit' => 20, 'name' => 'Basic', 'slug' => 'basic']);
+    }
+
+    private function notifyProductLimitWarningIfNeeded($seller, SubscriptionPlan $plan, int $beforeCount, int $currentCount): void
+    {
+        $planSlug = $plan->slug;
+        $warningAt = $plan->product_limit - 1;
+
+        if ($plan->product_limit === -1 || $beforeCount >= $warningAt || $currentCount < $warningAt) {
+            return;
+        }
+
+        $alreadyNotified = $seller->notifications()
+            ->where('type', ProductLimitWarning::class)
+            ->where('data->plan_slug', $planSlug)
+            ->where('data->current_count', $warningAt)
+            ->exists();
+
+        if ($alreadyNotified) {
+            return;
+        }
+
+        try {
+            $seller->notify(new ProductLimitWarning($warningAt, $plan));
+        } catch (\Throwable $e) {
+            Log::warning('Product limit warning notification failed: ' . $e->getMessage(), [
+                'seller_id' => $seller->id,
+                'current_count' => $currentCount,
+                'plan_slug' => $planSlug,
+            ]);
+        }
     }
 
     private function generateSlug(string $text): string

@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
+use App\Notifications\ProductLimitWarning;
 
 class ProductController extends Controller
 {
@@ -396,6 +397,11 @@ class ProductController extends Controller
                 $this->flushPublicCatalogCaches();
             }
         }
+
+        $currentCount = Product::where('seller_id', $sellerId)
+            ->whereNull('deleted_at')
+            ->count();
+        $this->notifyProductLimitWarningIfNeeded($seller, $plan, $currentCount);
  
         return response()->json([
             'success' => true,
@@ -759,6 +765,13 @@ class ProductController extends Controller
             }
 
             $perPage = $request->input('per_page', 15);
+            $subscription = SellerSubscription::with('plan')
+                ->where('user_id', $user->id)
+                ->active()
+                ->first();
+            $plan = $subscription?->plan
+                ?? SubscriptionPlan::where('slug', 'basic')->first()
+                ?? new SubscriptionPlan(['product_limit' => 20, 'name' => 'Basic', 'slug' => 'basic']);
 
             $products = Product::where('seller_id', $user->id)
                 ->with(['category', 'seller.sellerProfile'])
@@ -811,6 +824,17 @@ class ProductController extends Controller
                     'per_page'     => $products->perPage(),
                     'total'        => $products->total(),
                     'last_page'    => $products->lastPage(),
+                    'subscription_usage' => [
+                        'plan_name' => $plan->name,
+                        'plan_slug' => $plan->slug ?? 'basic',
+                        'product_limit' => $plan->product_limit,
+                        'products_used' => $products->total(),
+                        'remaining' => $plan->product_limit === -1
+                            ? null
+                            : max(0, $plan->product_limit - $products->total()),
+                        'is_near_limit' => $plan->product_limit !== -1
+                            && $products->total() >= max(0, $plan->product_limit - 1),
+                    ],
                 ]
             ]);
         } catch (\Exception $e) {
@@ -819,6 +843,34 @@ class ProductController extends Controller
                 'success' => false,
                 'message' => 'Failed to fetch products: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    private function notifyProductLimitWarningIfNeeded($seller, SubscriptionPlan $plan, int $currentCount): void
+    {
+        $planSlug = $plan->slug;
+        if ($plan->product_limit === -1 || $currentCount !== $plan->product_limit - 1) {
+            return;
+        }
+
+        $alreadyNotified = $seller->notifications()
+            ->where('type', ProductLimitWarning::class)
+            ->where('data->plan_slug', $planSlug)
+            ->where('data->current_count', $currentCount)
+            ->exists();
+
+        if ($alreadyNotified) {
+            return;
+        }
+
+        try {
+            $seller->notify(new ProductLimitWarning($currentCount, $plan));
+        } catch (\Throwable $e) {
+            \Log::warning('Product limit warning notification failed: ' . $e->getMessage(), [
+                'seller_id' => $seller->id,
+                'current_count' => $currentCount,
+                'plan_slug' => $planSlug,
+            ]);
         }
     }
 
