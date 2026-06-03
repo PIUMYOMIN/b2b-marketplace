@@ -140,7 +140,6 @@ class OrderTrackingController extends Controller
         } catch (\Exception $e) {
             Log::error('Order tracking failed: ' . $e->getMessage(), [
                 'order_number' => $orderNumber,
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
