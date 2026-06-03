@@ -21,6 +21,7 @@ class ImageOptimizationService
         'product_thumb' => ['width' => 300,  'height' => 300],
         'logo'          => ['width' => 400,  'height' => 400],
         'banner'        => ['width' => 1200, 'height' => 400],
+        'proof'         => ['width' => 1200, 'height' => 1200, 'quality' => 80],
         'default'       => ['width' => 1024, 'height' => 1024],
     ];
 
@@ -57,7 +58,7 @@ class ImageOptimizationService
                 height: $dimensions['height'],
             );
 
-        $encoded = $image->toWebp(self::WEBP_QUALITY);
+        $encoded = $image->toWebp($dimensions['quality'] ?? self::WEBP_QUALITY);
         Storage::disk('public')->put($storagePath, $encoded);
 
         return [

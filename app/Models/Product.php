@@ -21,6 +21,7 @@ class Product extends Model
         'description_mm',
         'product_type',
         'price',
+        'quantity',
         'category_id',
         'seller_id',
         'average_rating',
@@ -81,6 +82,7 @@ class Product extends Model
 
     protected $casts = [
         'price'               => 'decimal:2',
+        'quantity'            => 'decimal:3',
         'discount_price'      => 'decimal:2',
         'discount_percentage' => 'decimal:2',
         'compare_at_price'    => 'decimal:2',
@@ -155,7 +157,8 @@ class Product extends Model
     }
 
     /**
-     * Total available stock across all active variants.
+     * Total available stock across active variants, or product-level stock
+     * for simple physical products with no active variants.
      * Returns null for digital / service products (no stock tracking).
      */
     public function totalStock(): ?float
@@ -164,7 +167,11 @@ class Product extends Model
             return null;
         }
 
-        return $this->activeVariants()->sum('quantity');
+        if ($this->activeVariants()->exists()) {
+            return (float) $this->activeVariants()->sum('quantity');
+        }
+
+        return (float) ($this->quantity ?? 0);
     }
 
     /**
@@ -176,7 +183,11 @@ class Product extends Model
             return true; // Digital/service always available
         }
 
-        return $this->activeVariants()->where('quantity', '>', 0)->exists();
+        if ($this->activeVariants()->exists()) {
+            return $this->activeVariants()->where('quantity', '>', 0)->exists();
+        }
+
+        return (float) ($this->quantity ?? 0) > 0;
     }
 
     /**

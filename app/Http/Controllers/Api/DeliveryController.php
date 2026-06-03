@@ -10,10 +10,10 @@ use App\Models\Order;
 use App\Models\SellerWallet;
 use App\Notifications\DeliveryStatusUpdated;
 use App\Notifications\OrderDeliveredThankYou;
+use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class DeliveryController extends Controller
 {
@@ -351,12 +351,15 @@ class DeliveryController extends Controller
             DB::beginTransaction();
             $previousStatus = $delivery->status;
 
-            // ── 1. Store the proof image ────────────────────────────────────
-            $path = $request->file('delivery_proof')
-                ->store("deliveries/{$delivery->id}/proof", 'public');
+            // ── 1. Store the optimized proof image ─────────────────────────
+            $result = app(ImageOptimizationService::class)->store(
+                $request->file('delivery_proof'),
+                "deliveries/{$delivery->id}/proof",
+                'proof'
+            );
 
             $delivery->update([
-                'delivery_proof_image' => $path,
+                'delivery_proof_image' => $result['path'],
                 'recipient_name'       => $request->recipient_name,
                 'recipient_phone'      => $request->recipient_phone,
                 'delivered_at'         => now(),

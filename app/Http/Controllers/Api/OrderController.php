@@ -25,7 +25,6 @@ use App\Models\Commission;
 use App\Models\CommissionRule;
 use App\Models\SellerProfile;
 use App\Models\SellerWallet;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +32,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\OrderOtpMail;
+use Carbon\Carbon;
 
 class OrderController extends Controller
 {
@@ -315,8 +315,15 @@ class OrderController extends Controller
                 if ($error = $variant->validateMoqStep($item['quantity'])) {
                     return response()->json(['success' => false, 'message' => $error], 422);
                 }
-            } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
-                return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name_en}\"."], 422);
+            } elseif ($product->product_type === 'physical') {
+                if ((float) ($product->quantity ?? 0) < (float) $item['quantity']) {
+                    return response()->json(['success' => false, 'message' => "Insufficient stock for \"{$product->name_en}\"."], 422);
+                }
+
+                // MOQ + step validation (product-level, no variant)
+                if ($error = $product->validateMoqStep($item['quantity'])) {
+                    return response()->json(['success' => false, 'message' => $error], 422);
+                }
             } else {
                 // MOQ + step validation (product-level, no variant)
                 if ($error = $product->validateMoqStep($item['quantity'])) {
@@ -543,7 +550,7 @@ class OrderController extends Controller
             $subtotal = 0;
 
             foreach ($cartItems as $item) {
-                $product = Product::find($item['product_id']);
+                $product = Product::whereKey($item['product_id'])->lockForUpdate()->first();
 
                 if (!$product) {
                     throw new \Exception("Product not found: " . $item['product_id']);
@@ -567,8 +574,15 @@ class OrderController extends Controller
                     if ($error = $variant->validateMoqStep($item['quantity'])) {
                         throw new \Exception($error);
                     }
-                } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
-                    throw new \Exception("Insufficient stock for: " . $product->name_en);
+                } elseif ($product->product_type === 'physical') {
+                    if ((float) ($product->quantity ?? 0) < (float) $item['quantity']) {
+                        throw new \Exception("Insufficient stock for: " . $product->name_en);
+                    }
+
+                    // MOQ + step validation (product-level, no variant)
+                    if ($error = $product->validateMoqStep($item['quantity'])) {
+                        throw new \Exception($error);
+                    }
                 } else {
                     // MOQ + step validation (product-level, no variant)
                     if ($error = $product->validateMoqStep($item['quantity'])) {
@@ -651,8 +665,8 @@ class OrderController extends Controller
 
                 $sellerTotal = max(0, $sellerSubtotal + $sellerShippingFee + $sellerTax - $sellerCouponDiscount);
 
-                // Generate order number
-                $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(Order::count() + 1, 5, '0', STR_PAD_LEFT);
+                // Generate a concurrency-safe public order reference.
+                $orderNumber = Order::generateOrderNumber();
 
                 // Resolve commission rate via priority chain:
                 // account_level (tier) → business_type → category → default (5%)
@@ -732,10 +746,16 @@ class OrderController extends Controller
                         ],
                     ]);
 
-                    // Deduct stock from the specific variant (physical products only).
-                    // Uses ProductVariant::deductStock() which throws if stock would go negative.
+                    // Deduct stock from the selected variant or from product-level stock
+                    // for simple physical products with no variant rows.
                     if ($item['variant'] && $item['product']->product_type === 'physical') {
                         $item['variant']->deductStock($item['quantity']);
+                    } elseif ($item['product']->product_type === 'physical') {
+                        if ((float) ($item['product']->quantity ?? 0) < (float) $item['quantity']) {
+                            throw new \Exception("Insufficient stock for: " . $item['product']->name_en);
+                        }
+
+                        $item['product']->decrement('quantity', $item['quantity']);
                     }
                 }
 
@@ -978,10 +998,12 @@ class OrderController extends Controller
             $order->load('items.product', 'items.variant');
 
             foreach ($order->items as $item) {
-                // Restore stock to the specific variant that was decremented at order time.
-                // Only physical products have tracked stock.
+                // Restore stock to the specific variant, or to product-level stock
+                // for simple physical products with no variant rows.
                 if ($item->variant && $item->product?->product_type === 'physical') {
                     $item->variant->increment('quantity', $item->quantity);
+                } elseif ($item->product?->product_type === 'physical') {
+                    $item->product->increment('quantity', $item->quantity);
                 }
             }
 
@@ -1519,9 +1541,43 @@ class OrderController extends Controller
         $validated = $request->validate([
             'status' => 'required|in:pending,confirmed,processing,shipped,delivered,cancelled',
         ]);
+
         $previousStatus = $order->status;
-        $order->update(['status' => $validated['status']]);
+        $delivery = Delivery::where('order_id', $order->id)->first();
+        $previousDeliveryStatus = $delivery?->status;
+
+        DB::beginTransaction();
+        try {
+            if ($validated['status'] === self::STATUS_DELIVERED) {
+                $this->finalizeDeliveredOrder($order, $user, 'Manually marked delivered by admin.');
+            } else {
+                $order->update(['status' => $validated['status']]);
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Admin order status update failed: ' . $e->getMessage(), [
+                'order_id' => $order->id,
+                'status' => $validated['status'],
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update order status: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        $order->refresh();
         $this->notifyBuyerOrderStatusChanged($order, $previousStatus);
+
+        if ($validated['status'] === self::STATUS_DELIVERED) {
+            $delivery = Delivery::where('order_id', $order->id)->first();
+            if ($delivery) {
+                $this->notifyDeliveryStatusChanged($delivery->fresh(['order.buyer', 'order.seller']), $previousDeliveryStatus);
+            }
+        }
+
         return response()->json(['success' => true, 'data' => $order->fresh()]);
     }
 

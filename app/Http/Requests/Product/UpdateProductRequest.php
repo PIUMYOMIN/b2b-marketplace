@@ -38,6 +38,7 @@ class UpdateProductRequest extends FormRequest
             'product_type'     => ['sometimes', 'in:physical,digital,service'],
             'category_id'      => ['sometimes', 'integer', 'exists:categories,id'],
             'price'            => ['sometimes', 'numeric', 'min:0'],
+            'quantity'         => ['nullable', 'numeric', 'min:0'],
             'sku'              => ['nullable', 'string', 'max:100', "unique:products,sku,{$productId}"],
             'barcode'          => ['nullable', 'string', 'max:100', "unique:products,barcode,{$productId}"],
             'brand'            => ['nullable', 'string', 'max:100'],

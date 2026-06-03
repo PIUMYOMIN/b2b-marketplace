@@ -316,8 +316,11 @@ class CartController extends Controller
             } elseif ($product->hasVariants()) {
                 return response()->json(['success' => false, 'message' => 'Please select a variant before adding to cart'], 400);
             } else {
-                if ($product->product_type === 'physical' && !$product->isInStock()) {
-                    return response()->json(['success' => false, 'message' => 'This product is out of stock'], 400);
+                if ($product->product_type === 'physical' && (float) ($product->quantity ?? 0) < (float) $request->quantity) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Insufficient stock. Only ' . (int) ($product->quantity ?? 0) . ' items available'
+                    ], 400);
                 }
             }
 
@@ -358,6 +361,13 @@ class CartController extends Controller
                     return response()->json([
                         'success' => false,
                         'message' => 'Cannot add more. Only ' . (int) $variant->quantity . ' items available'
+                    ], 400);
+                }
+
+                if (!$variant && $product->product_type === 'physical' && (float) ($product->quantity ?? 0) < (float) $newQuantity) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Cannot add more. Only ' . (int) ($product->quantity ?? 0) . ' items available'
                     ], 400);
                 }
 
@@ -461,8 +471,11 @@ class CartController extends Controller
                         'message' => 'Only ' . (int) $variant->quantity . ' items available in stock'
                     ], 400);
                 }
-            } elseif ($product->product_type === 'physical' && !$product->isInStock()) {
-                return response()->json(['success' => false, 'message' => 'This product is out of stock'], 400);
+            } elseif ($product->product_type === 'physical' && (float) ($product->quantity ?? 0) < (float) $request->quantity) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only ' . (int) ($product->quantity ?? 0) . ' items available in stock'
+                ], 400);
             }
 
             $effectiveMoq = $variant ? $variant->effectiveMoq() : $product->effectiveMoq();

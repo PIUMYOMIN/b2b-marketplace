@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Order extends Model
 {
@@ -143,15 +144,7 @@ class Order extends Model
      */
     public static function generateOrderNumber()
     {
-        $prefix = 'ORD';
-        $date = now()->format('Ymd');
-
-        do {
-            $random = strtoupper(substr(uniqid(), -6));
-            $orderNumber = "{$prefix}{$date}{$random}";
-        } while (static::where('order_number', $orderNumber)->exists());
-
-        return $orderNumber;
+        return 'ORD-' . now()->format('Ymd') . '-' . strtoupper((string) Str::uuid());
     }
 
     /**

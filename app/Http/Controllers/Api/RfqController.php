@@ -355,7 +355,7 @@ class RfqController extends Controller
             $shippingAddress = $this->buildShippingAddress($buyer);
 
             // ── 4. Create the Order ───────────────────────────────────────
-            $orderNumber = 'ORD-' . date('Ymd') . '-' . str_pad(Order::count() + 1, 5, '0', STR_PAD_LEFT);
+            $orderNumber = Order::generateOrderNumber();
 
             $order = Order::create([
                 'order_number'     => $orderNumber,

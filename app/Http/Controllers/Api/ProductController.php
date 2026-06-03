@@ -91,7 +91,10 @@ class ProductController extends Controller
         if ($request->boolean('in_stock')) {
             $query->where(function ($q) {
                 $q->whereHas('activeVariants', fn($vq) => $vq->where('quantity', '>', 0))
-                  ->orWhereDoesntHave('variants');
+                  ->orWhere(function ($simple) {
+                      $simple->whereDoesntHave('variants')
+                          ->where('quantity', '>', 0);
+                  });
             });
         }
  

@@ -25,6 +25,7 @@ class StoreProductRequest extends FormRequest
 
             // ── Pricing ───────────────────────────────────────────────────────
             'price'            => ['required', 'numeric', 'min:0'],
+            'quantity'         => ['nullable', 'numeric', 'min:0'],
 
             // ── Identification ────────────────────────────────────────────────
             'sku'              => ['nullable', 'string', 'max:100', 'unique:products,sku'],

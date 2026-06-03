@@ -6,7 +6,11 @@
 namespace App\Services\Payment;
 
 use App\Models\Order;
+use App\Models\SellerWallet;
+use App\Notifications\OrderPaymentConfirmed;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class PaymentService
 {
@@ -99,17 +103,64 @@ class PaymentService
      */
     public static function markPaid(Order $order, array $gatewayResult): void
     {
-        if ($order->payment_status === 'paid') return; // idempotent
+        $shouldNotifySeller = false;
 
-        $order->update([
-            'payment_status'       => 'paid',
-            'transaction_id'       => $gatewayResult['gateway_ref'] ?? $order->transaction_id,
-            'payment_confirmed_at' => now(),
-            'payment_data'         => array_merge(
-                is_array($order->payment_data) ? $order->payment_data : [],
-                ['confirmed' => $gatewayResult['raw'] ?? $gatewayResult]
-            ),
-        ]);
+        DB::transaction(function () use ($order, $gatewayResult, &$shouldNotifySeller) {
+            $lockedOrder = Order::whereKey($order->id)->lockForUpdate()->first();
+
+            if (! $lockedOrder) {
+                return;
+            }
+
+            $escrowRequired = $lockedOrder->payment_method !== Order::PAYMENT_CASH_ON_DELIVERY;
+            $isFullyApplied = $lockedOrder->payment_status === Order::PAYMENT_STATUS_PAID
+                && $lockedOrder->status === Order::STATUS_CONFIRMED
+                && (! $escrowRequired || $lockedOrder->escrow_status === 'held');
+
+            if ($isFullyApplied) {
+                return;
+            }
+
+            $shouldNotifySeller = $lockedOrder->payment_status !== Order::PAYMENT_STATUS_PAID
+                || $lockedOrder->status !== Order::STATUS_CONFIRMED;
+
+            $updates = [
+                'payment_status' => Order::PAYMENT_STATUS_PAID,
+                'status'         => Order::STATUS_CONFIRMED,
+                'payment_data'   => array_merge(
+                    is_array($lockedOrder->payment_data) ? $lockedOrder->payment_data : [],
+                    ['confirmed' => $gatewayResult['raw'] ?? $gatewayResult]
+                ),
+            ];
+
+            if ($lockedOrder->payment_status !== Order::PAYMENT_STATUS_PAID) {
+                $updates['transaction_id'] = $gatewayResult['gateway_ref'] ?? $lockedOrder->transaction_id;
+                $updates['payment_confirmed_at'] = now();
+            }
+
+            if ($escrowRequired && $lockedOrder->escrow_status !== 'held') {
+                $wallet = SellerWallet::lockForSeller($lockedOrder->seller_id);
+                $wallet->holdEscrow((float) $lockedOrder->total_amount, $lockedOrder->id);
+                $updates['escrow_status'] = 'held';
+            }
+
+            $lockedOrder->update($updates);
+        });
+
+        $order->refresh();
+
+        if ($shouldNotifySeller) {
+            $order->loadMissing('seller');
+            try {
+                $order->seller?->notify(new OrderPaymentConfirmed($order));
+            } catch (Throwable $e) {
+                Log::warning('Seller payment confirmation notification failed', [
+                    'order_id' => $order->id,
+                    'seller_id' => $order->seller_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         Log::info("Payment confirmed", [
             'order'   => $order->order_number,
