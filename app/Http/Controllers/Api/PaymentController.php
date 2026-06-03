@@ -239,8 +239,12 @@ class PaymentController extends Controller
 
         $order = Order::where('payment_reference', $reference)
             ->orWhere('order_number', $reference)
-            ->orWhere('transaction_id', $result['gateway_ref'] ?? '__none__')
             ->first();
+
+        $gatewayRef = $result['gateway_ref'] ?? null;
+        if (! $order && $gatewayRef && $gatewayRef !== 'MMPX_MANUAL') {
+            $order = Order::where('transaction_id', $gatewayRef)->first();
+        }
 
         if (!$order) {
             Log::error("{$method} webhook: order not found for reference {$reference}", [
