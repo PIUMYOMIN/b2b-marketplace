@@ -171,6 +171,16 @@ class PaymentService
         if ($shouldNotifySeller) {
             $order->loadMissing('seller');
             try {
+                $order->seller?->notify(new NewOrderForSeller($order));
+            } catch (Throwable $e) {
+                Log::warning('Seller new order notification after payment failed', [
+                    'order_id' => $order->id,
+                    'seller_id' => $order->seller_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
                 $order->seller?->notify(new OrderPaymentConfirmed($order));
             } catch (Throwable $e) {
                 Log::warning('Seller payment confirmation notification failed', [
