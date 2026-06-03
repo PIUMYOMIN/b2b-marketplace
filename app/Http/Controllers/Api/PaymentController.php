@@ -148,6 +148,11 @@ class PaymentController extends Controller
                 '__nonce' => $nonce,
             ]), $signature);
 
+            Log::error('MMQR webhook debug result', [
+                'payload' => $payload,
+                'result' => $result,
+            ]);
+
             if (!$result['success']) {
                 return response()->json(['code' => 'FAIL'], 400);
             }
@@ -244,6 +249,16 @@ class PaymentController extends Controller
                 'paid' => $result['paid'] ?? null,
             ]);
             return false;
+        }
+
+        if ($method === 'mmqr') {
+            Log::error('MMQR webhook matched order', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'paid' => $result['paid'] ?? null,
+                'reference' => $reference,
+                'gateway_ref' => $result['gateway_ref'] ?? null,
+            ]);
         }
 
         if ($result['paid']) {
