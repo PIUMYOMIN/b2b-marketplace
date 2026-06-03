@@ -28,7 +28,13 @@ class Order extends Model
         'status',
         'payment_method',
         'payment_status',
+        'payment_gateway',
+        'transaction_id',
+        'payment_reference',
         'payment_data',
+        'payment_initiated_at',
+        'payment_confirmed_at',
+        'payment_failed_at',
         'escrow_status',
         'shipping_address',
         'billing_address',
@@ -71,6 +77,9 @@ class Order extends Model
         'estimated_delivery' => 'datetime',
         'delivered_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'payment_initiated_at' => 'datetime',
+        'payment_confirmed_at' => 'datetime',
+        'payment_failed_at' => 'datetime',
     ];
 
     /**
@@ -82,6 +91,9 @@ class Order extends Model
         'estimated_delivery',
         'delivered_at',
         'cancelled_at',
+        'payment_initiated_at',
+        'payment_confirmed_at',
+        'payment_failed_at',
         'deleted_at',
     ];
 
