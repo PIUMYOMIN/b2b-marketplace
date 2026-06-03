@@ -797,8 +797,11 @@ class OrderController extends Controller
                 $coupon->recordUsage($user->id, $orders[0]->id, $totalCouponDiscount);
             }
 
-            // Clear user's cart
-            Cart::where('user_id', $user->id)->delete();
+            // Clear cart immediately only for COD. Online payments keep the cart
+            // until the gateway callback confirms payment, so buyers can retry.
+            if ($request->payment_method === Order::PAYMENT_CASH_ON_DELIVERY) {
+                Cart::where('user_id', $user->id)->delete();
+            }
 
             // ── Create seller_orders rows (one per seller) ──────────────
             // This gives each seller an independent sub-order with their own

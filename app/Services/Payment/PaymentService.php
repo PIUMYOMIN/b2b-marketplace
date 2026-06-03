@@ -7,6 +7,7 @@ namespace App\Services\Payment;
 
 use App\Models\Order;
 use App\Models\SellerWallet;
+use App\Models\Cart;
 use App\Notifications\OrderPlaced;
 use App\Notifications\OrderPaymentConfirmed;
 use Illuminate\Support\Facades\DB;
@@ -154,6 +155,8 @@ class PaymentService
 
         if ($shouldNotifyBuyer) {
             $order->loadMissing('buyer');
+            Cart::where('user_id', $order->buyer_id)->delete();
+
             try {
                 $order->buyer?->notify(new OrderPlaced($order));
             } catch (Throwable $e) {
