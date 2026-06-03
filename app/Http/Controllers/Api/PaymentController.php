@@ -136,12 +136,17 @@ class PaymentController extends Controller
      */
     public function handleMMQRWebhook(Request $request)
     {
-        $payload   = $request->all();
-        $signature = $request->header('X-Signature', '');
+        $rawPayload = $request->getContent();
+        $payload    = json_decode($rawPayload, true) ?: $request->all();
+        $signature  = $request->header('X-Mmpay-Signature', $request->header('X-Signature', ''));
+        $nonce      = $request->header('X-Mmpay-Nonce', '');
 
         try {
             $gateway = PaymentService::gateway('mmqr');
-            $result  = $gateway->handleWebhook($payload, $signature);
+            $result  = $gateway->handleWebhook(array_merge($payload, [
+                '__raw'   => $rawPayload,
+                '__nonce' => $nonce,
+            ]), $signature);
 
             if (!$result['success']) {
                 return response()->json(['code' => 'FAIL'], 400);

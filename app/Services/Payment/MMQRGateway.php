@@ -1,37 +1,31 @@
 <?php
-// app/Services/Payment/MMQRGateway.php
-// Myanmar Mobile QR (MMQR) payment gateway.
-// MMQR is the CBM-mandated interoperable QR standard — scan with any
-// Myanmar mobile banking app (KBZPay, WaveMoney, AYA, CB Pay, etc.)
-//
-// Set in .env:
-//   MMQR_MERCHANT_ID=
-//   MMQR_MERCHANT_KEY=
-//   MMQR_API_URL=https://api.mmqr.com.mm/v1   (replace with actual endpoint)
-//   MMQR_WEBHOOK_SECRET=
 
 namespace App\Services\Payment;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
+use MMPay\MMPay;
 
 class MMQRGateway implements PaymentGatewayInterface
 {
-    private string $merchantId;
-    private string $merchantKey;
+    private string $appId;
+    private string $publicKey;
+    private string $secretKey;
     private string $apiUrl;
-    private string $webhookSecret;
+    private bool $sandbox;
 
     public function __construct()
     {
-        $this->merchantId    = config('services.mmqr.merchant_id', '');
-        $this->merchantKey   = config('services.mmqr.merchant_key', '');
-        $this->apiUrl        = config('services.mmqr.api_url', 'https://api.mmqr.com.mm/v1');
-        $this->webhookSecret = config('services.mmqr.webhook_secret', '');
+        $this->appId     = (string) config('services.mmqr.app_id', '');
+        $this->publicKey = (string) (config('services.mmqr.public_key') ?: config('services.mmqr.merchant_id', ''));
+        $this->secretKey = (string) (config('services.mmqr.secret_key') ?: config('services.mmqr.merchant_key', ''));
+        $this->apiUrl    = rtrim((string) config('services.mmqr.api_url', ''), '/');
+        $this->sandbox   = str_starts_with($this->publicKey, 'pk_test_');
     }
 
-    public function getName(): string { return 'MMQR'; }
+    public function getName(): string
+    {
+        return 'MyanMyanPay MMQR';
+    }
 
     public function initiatePayment(
         float $amount,
@@ -39,133 +33,134 @@ class MMQRGateway implements PaymentGatewayInterface
         string $orderNumber,
         array $metadata = []
     ): array {
-        // If credentials are not configured, return sandbox/demo response
-        if (empty($this->merchantId)) {
-            return $this->sandboxResponse($amount, $orderNumber);
+        if ($this->missingConfig()) {
+            return $this->localResponse($amount, $orderNumber);
         }
 
         try {
-            $reference = 'MMQR-' . strtoupper(Str::random(12));
-            $payload   = [
-                'merchant_id'  => $this->merchantId,
-                'reference'    => $reference,
-                'amount'       => (int) round($amount),   // MMK is integer-based
-                'currency'     => 'MMK',
-                'order_number' => $orderNumber,
-                'description'  => $metadata['description'] ?? "Order {$orderNumber}",
-                'callback_url' => url('/api/v1/webhooks/mmqr'),
-                'expires_in'   => 900,   // 15 minutes
+            $payload = [
+                'orderId'       => $orderNumber,
+                'amount'        => (int) round($amount),
+                'currency'      => $currency ?: 'MMK',
+                'callbackUrl'   => url('/api/v1/webhooks/mmqr'),
+                'customMessage' => $metadata['description'] ?? "Pyonea order {$orderNumber}",
+                'items'         => $metadata['items'] ?? [[
+                    'name'     => "Order {$orderNumber}",
+                    'amount'   => (int) round($amount),
+                    'quantity' => 1,
+                ]],
             ];
 
-            $signature = $this->sign($payload);
-            $response  = Http::timeout(10)
-                ->withHeaders([
-                    'X-Merchant-ID'  => $this->merchantId,
-                    'X-Signature'    => $signature,
-                    'Content-Type'   => 'application/json',
-                ])
-                ->post("{$this->apiUrl}/qr/create", $payload);
+            $data = $this->sandbox
+                ? $this->client()->sandboxPay($payload)
+                : $this->client()->pay($payload);
 
-            if ($response->successful()) {
-                $data = $response->json();
-                return [
-                    'success'      => true,
-                    'reference'    => $reference,
-                    'gateway_ref'  => $data['transaction_id'] ?? $reference,
-                    'qr_string'    => $data['qr_string'] ?? null,
-                    'qr_image_url' => $data['qr_image_url'] ?? null,
-                    'expires_at'   => now()->addMinutes(15)->toIso8601String(),
-                ];
-            }
+            $qr = $data['qr'] ?? $data['qrImage'] ?? $data['qr_image'] ?? null;
 
-            Log::error('MMQR initiate failed', ['status' => $response->status(), 'body' => $response->body()]);
-            return ['success' => false, 'message' => 'Payment gateway error. Please try again.'];
+            return [
+                'success'      => true,
+                'reference'    => $data['orderId'] ?? $orderNumber,
+                'gateway_ref'  => $data['transactionRefId'] ?? $data['transaction_id'] ?? $data['orderId'] ?? $orderNumber,
+                'qr_string'    => $data['qrString'] ?? $data['qr_string'] ?? null,
+                'qr_image_url' => $this->normalizeQrImage($qr),
+                'expires_at'   => now()->addMinutes(15)->toIso8601String(),
+                'raw'          => $data,
+                'sandbox'      => $this->sandbox,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('MyanMyanPay MMQR initiate failed: ' . $e->getMessage(), [
+                'order_number' => $orderNumber,
+            ]);
 
-        } catch (\Exception $e) {
-            Log::error('MMQR exception: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Could not connect to payment gateway.'];
+            return [
+                'success' => false,
+                'message' => 'Could not generate the MMQR payment. Please try again.',
+            ];
         }
     }
 
     public function verifyPayment(string $reference): array
     {
-        if (empty($this->merchantId)) {
-            // Sandbox: simulate paid after first verification
-            return [
-                'success'    => true,
-                'paid'       => true,
-                'gateway_ref'=> $reference,
-                'amount'     => 0,
-                'raw'        => ['sandbox' => true],
-            ];
-        }
-
-        try {
-            $response = Http::timeout(10)
-                ->withHeaders(['X-Merchant-ID' => $this->merchantId])
-                ->get("{$this->apiUrl}/qr/status/{$reference}");
-
-            if ($response->successful()) {
-                $data = $response->json();
-                return [
-                    'success'     => true,
-                    'paid'        => ($data['status'] ?? '') === 'paid',
-                    'gateway_ref' => $data['transaction_id'] ?? $reference,
-                    'amount'      => (float) ($data['amount'] ?? 0),
-                    'raw'         => $data,
-                ];
-            }
-            return ['success' => false, 'paid' => false, 'message' => 'Verification failed.'];
-        } catch (\Exception $e) {
-            Log::error('MMQR verify exception: ' . $e->getMessage());
-            return ['success' => false, 'paid' => false, 'message' => $e->getMessage()];
-        }
+        return [
+            'success'     => true,
+            'paid'        => false,
+            'gateway_ref' => $reference,
+            'amount'      => 0,
+            'raw'         => ['message' => 'Waiting for MyanMyanPay callback.'],
+        ];
     }
 
     public function handleWebhook(array $payload, string $signature): array
     {
-        // Verify webhook signature
-        $expected = $this->sign($payload);
-        if (!hash_equals($expected, $signature)) {
-            Log::warning('MMQR webhook signature mismatch');
+        if ($this->missingConfig()) {
+            return ['success' => false, 'message' => 'MMQR gateway is not configured'];
+        }
+
+        $rawPayload = (string) ($payload['__raw'] ?? json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $nonce = (string) ($payload['__nonce'] ?? '');
+
+        if (! $this->client()->verifyCb($rawPayload, $nonce, $signature)) {
+            Log::warning('MyanMyanPay MMQR webhook signature mismatch');
             return ['success' => false, 'message' => 'Invalid signature'];
         }
 
+        unset($payload['__raw'], $payload['__nonce']);
+        $status = strtoupper((string) ($payload['status'] ?? ''));
+
         return [
             'success'     => true,
-            'reference'   => $payload['reference'] ?? null,
-            'paid'        => ($payload['status'] ?? '') === 'paid',
-            'gateway_ref' => $payload['transaction_id'] ?? null,
+            'reference'   => $payload['orderId'] ?? null,
+            'paid'        => $status === 'SUCCESS',
+            'gateway_ref' => $payload['transactionRefId'] ?? null,
             'amount'      => (float) ($payload['amount'] ?? 0),
             'raw'         => $payload,
         ];
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private function sign(array $payload): string
+    private function client(): MMPay
     {
-        ksort($payload);
-        $string = implode('|', array_map(
-            fn($k, $v) => "{$k}={$v}",
-            array_keys($payload), array_values($payload)
-        ));
-        return hash_hmac('sha256', $string, $this->merchantKey);
+        return new MMPay([
+            'appId'          => $this->appId,
+            'publishableKey' => $this->publicKey,
+            'secretKey'      => $this->secretKey,
+            'apiBaseUrl'     => $this->apiUrl,
+        ]);
     }
 
-    private function sandboxResponse(float $amount, string $orderNumber): array
+    private function missingConfig(): bool
     {
-        $ref = 'MMQR-SANDBOX-' . strtoupper(Str::random(8));
-        // Generate a real-looking QR using a public service for development only
-        $qrData = urlencode("PYONEA|{$ref}|{$amount}|MMK");
+        return $this->appId === ''
+            || $this->publicKey === ''
+            || $this->secretKey === ''
+            || $this->apiUrl === '';
+    }
+
+    private function normalizeQrImage(?string $qr): ?string
+    {
+        if (! $qr) {
+            return null;
+        }
+
+        if (str_starts_with($qr, 'http://') || str_starts_with($qr, 'https://') || str_starts_with($qr, 'data:image/')) {
+            return $qr;
+        }
+
+        return 'data:image/png;base64,' . $qr;
+    }
+
+    private function localResponse(float $amount, string $orderNumber): array
+    {
+        $qrString = "PYONEA|LOCAL-MMQR|{$orderNumber}|{$amount}|MMK";
+
         return [
             'success'      => true,
-            'reference'    => $ref,
-            'gateway_ref'  => $ref,
-            'qr_string'    => "PYONEA|{$ref}|{$amount}|MMK",
-            'qr_image_url' => "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$qrData}",
+            'reference'    => $orderNumber,
+            'gateway_ref'  => $orderNumber,
+            'qr_string'    => $qrString,
+            'qr_image_url' => 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($qrString),
             'expires_at'   => now()->addMinutes(15)->toIso8601String(),
             'sandbox'      => true,
+            'raw'          => ['local_fallback' => true],
         ];
     }
 }
