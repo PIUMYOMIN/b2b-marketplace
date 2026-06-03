@@ -34,7 +34,7 @@ return [
         'secret_key'     => env('MYANMYANPAY_SECRET_KEY', env('MMPAY_SECRET_KEY', env('MMQR_SECRET_KEY'))),
         'merchant_id'    => env('MMQR_MERCHANT_ID', env('MYANMYANPAY_PUBLIC_KEY')),
         'merchant_key'   => env('MMQR_MERCHANT_KEY', env('MYANMYANPAY_SECRET_KEY')),
-        'api_url'        => env('MYANMYANPAY_API_URL', env('MMPAY_API_URL', env('MMQR_API_URL', 'https://api.myanmyanpay.com'))),
+        'api_url'        => env('MYANMYANPAY_API_URL', env('MMPAY_API_URL', env('MMQR_API_URL', 'https://ezapi.myanmyanpay.com'))),
         'webhook_secret' => env('MYANMYANPAY_WEBHOOK_SECRET', env('MMQR_WEBHOOK_SECRET')),
     ],
 
