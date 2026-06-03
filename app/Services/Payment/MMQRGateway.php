@@ -56,12 +56,17 @@ class MMQRGateway implements PaymentGatewayInterface
                 : $this->client()->pay($payload);
 
             $qr = $data['qr'] ?? $data['qrImage'] ?? $data['qr_image'] ?? null;
+            $qrString = $data['qrString'] ?? $data['qr_string'] ?? null;
+
+            if ($qr && ! $this->isImageSource($qr) && ! $this->isBase64Image($qr)) {
+                $qrString = $qr;
+            }
 
             return [
                 'success'      => true,
                 'reference'    => $data['orderId'] ?? $orderNumber,
                 'gateway_ref'  => $data['transactionRefId'] ?? $data['transaction_id'] ?? $data['orderId'] ?? $orderNumber,
-                'qr_string'    => $data['qrString'] ?? $data['qr_string'] ?? null,
+                'qr_string'    => $qrString,
                 'qr_image_url' => $this->normalizeQrImage($qr),
                 'expires_at'   => now()->addMinutes(15)->toIso8601String(),
                 'raw'          => $data,
@@ -141,11 +146,29 @@ class MMQRGateway implements PaymentGatewayInterface
             return null;
         }
 
-        if (str_starts_with($qr, 'http://') || str_starts_with($qr, 'https://') || str_starts_with($qr, 'data:image/')) {
+        if ($this->isImageSource($qr)) {
             return $qr;
         }
 
-        return 'data:image/png;base64,' . $qr;
+        if ($this->isBase64Image($qr)) {
+            return 'data:image/png;base64,' . $qr;
+        }
+
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' . urlencode($qr);
+    }
+
+    private function isImageSource(string $value): bool
+    {
+        return str_starts_with($value, 'http://')
+            || str_starts_with($value, 'https://')
+            || str_starts_with($value, 'data:image/');
+    }
+
+    private function isBase64Image(string $value): bool
+    {
+        return preg_match('/^[A-Za-z0-9+\/]+={0,2}$/', $value) === 1
+            && strlen($value) % 4 === 0
+            && base64_decode($value, true) !== false;
     }
 
     private function localResponse(float $amount, string $orderNumber): array
