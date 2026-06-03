@@ -7,6 +7,7 @@ namespace App\Services\Payment;
 
 use App\Models\Order;
 use App\Models\SellerWallet;
+use App\Notifications\OrderPlaced;
 use App\Notifications\OrderPaymentConfirmed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -103,9 +104,10 @@ class PaymentService
      */
     public static function markPaid(Order $order, array $gatewayResult): void
     {
+        $shouldNotifyBuyer = false;
         $shouldNotifySeller = false;
 
-        DB::transaction(function () use ($order, $gatewayResult, &$shouldNotifySeller) {
+        DB::transaction(function () use ($order, $gatewayResult, &$shouldNotifyBuyer, &$shouldNotifySeller) {
             $lockedOrder = Order::whereKey($order->id)->lockForUpdate()->first();
 
             if (! $lockedOrder) {
@@ -123,6 +125,7 @@ class PaymentService
 
             $shouldNotifySeller = $lockedOrder->payment_status !== Order::PAYMENT_STATUS_PAID
                 || $lockedOrder->status !== Order::STATUS_CONFIRMED;
+            $shouldNotifyBuyer = $lockedOrder->payment_status !== Order::PAYMENT_STATUS_PAID;
 
             $updates = [
                 'payment_status' => Order::PAYMENT_STATUS_PAID,
@@ -148,6 +151,19 @@ class PaymentService
         });
 
         $order->refresh();
+
+        if ($shouldNotifyBuyer) {
+            $order->loadMissing('buyer');
+            try {
+                $order->buyer?->notify(new OrderPlaced($order));
+            } catch (Throwable $e) {
+                Log::warning('Buyer order confirmation notification failed', [
+                    'order_id' => $order->id,
+                    'buyer_id' => $order->buyer_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         if ($shouldNotifySeller) {
             $order->loadMissing('seller');

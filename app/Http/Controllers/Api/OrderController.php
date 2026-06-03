@@ -781,7 +781,9 @@ class OrderController extends Controller
 
                 // ── Fire notifications ──────────────────────────────────────
                 try {
-                    $order->buyer->notify(new OrderPlaced($order));
+                    if ($order->payment_method === Order::PAYMENT_CASH_ON_DELIVERY) {
+                        $order->buyer->notify(new OrderPlaced($order));
+                    }
                     $sellerUser = UserModel::find($sellerId);
                     if ($sellerUser)
                         $sellerUser->notify(new NewOrderForSeller($order));

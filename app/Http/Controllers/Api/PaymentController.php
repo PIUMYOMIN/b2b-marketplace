@@ -224,6 +224,7 @@ class PaymentController extends Controller
         }
 
         $order = Order::where('payment_reference', $reference)
+            ->orWhere('order_number', $reference)
             ->orWhere('transaction_id', $result['gateway_ref'] ?? '__none__')
             ->first();
 
