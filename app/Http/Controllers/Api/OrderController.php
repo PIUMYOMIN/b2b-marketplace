@@ -18,6 +18,7 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\SellerOrder;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\OrderItem;
 use App\Models\Delivery;
 use App\Models\DeliveryUpdate;
@@ -563,7 +564,12 @@ class OrderController extends Controller
                 // Variant-aware stock check
                 $variant = null;
                 if (!empty($item['variant_id'])) {
-                    $variant = $product->variants()->where('id', $item['variant_id'])->where('is_active', true)->first();
+                    $variant = ProductVariant::whereKey($item['variant_id'])
+                        ->where('product_id', $product->id)
+                        ->where('is_active', true)
+                        ->lockForUpdate()
+                        ->first();
+
                     if (!$variant) {
                         throw new \Exception("Selected variant is not available for: " . $product->name_en);
                     }

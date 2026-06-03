@@ -53,6 +53,7 @@ class OrderTrackingController extends Controller
             }
 
             $delivery = $order->delivery;
+            $deliveryLocation = $this->publicDeliveryLocation($order->shipping_address);
 
             // Build items — merge stored snapshot with live product image
             $items = $order->items->map(function ($item) {
@@ -133,7 +134,7 @@ class OrderTrackingController extends Controller
                     'items' => $items,
                     'delivery' => $deliveryData,
                     'seller' => $seller,
-                    'shipping_address' => $order->shipping_address,
+                    'delivery_location' => $deliveryLocation,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -147,5 +148,24 @@ class OrderTrackingController extends Controller
                 'message' => 'Unable to retrieve order details. Please try again.',
             ], 500);
         }
+    }
+
+    private function publicDeliveryLocation(array|string|null $shippingAddress): ?string
+    {
+        if (is_string($shippingAddress)) {
+            $decoded = json_decode($shippingAddress, true);
+            $shippingAddress = is_array($decoded) ? $decoded : [];
+        }
+
+        if (! is_array($shippingAddress)) {
+            return null;
+        }
+
+        $parts = array_filter([
+            $shippingAddress['city'] ?? null,
+            $shippingAddress['township'] ?? null,
+        ]);
+
+        return $parts ? implode(', ', $parts) : null;
     }
 }
