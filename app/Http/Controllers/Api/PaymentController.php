@@ -152,7 +152,10 @@ class PaymentController extends Controller
                 return response()->json(['code' => 'FAIL'], 400);
             }
 
-            $this->applyWebhookResult($result, 'mmqr');
+            if (! $this->applyWebhookResult($result, 'mmqr')) {
+                return response()->json(['code' => 'ORDER_NOT_PROCESSED'], 422);
+            }
+
             return response()->json(['code' => 'SUCCESS']);
 
         } catch (\Exception $e) {
@@ -178,7 +181,10 @@ class PaymentController extends Controller
                 return response('FAIL', 400);
             }
 
-            $this->applyWebhookResult($result, 'kbz_pay');
+            if (! $this->applyWebhookResult($result, 'kbz_pay')) {
+                return response('ORDER_NOT_PROCESSED', 422);
+            }
+
             return response('SUCCESS');
 
         } catch (\Exception $e) {
@@ -204,7 +210,10 @@ class PaymentController extends Controller
                 return response()->json(['status' => 'FAIL'], 400);
             }
 
-            $this->applyWebhookResult($result, 'wave_pay');
+            if (! $this->applyWebhookResult($result, 'wave_pay')) {
+                return response()->json(['status' => 'ORDER_NOT_PROCESSED'], 422);
+            }
+
             return response()->json(['status' => 'SUCCESS']);
 
         } catch (\Exception $e) {
@@ -215,12 +224,12 @@ class PaymentController extends Controller
 
     // ── Private helper ─────────────────────────────────────────────────────────
 
-    private function applyWebhookResult(array $result, string $method): void
+    private function applyWebhookResult(array $result, string $method): bool
     {
         $reference = $result['reference'] ?? null;
         if (!$reference) {
-            Log::warning("Webhook missing reference", $result);
-            return;
+            Log::error("{$method} webhook missing reference", $result);
+            return false;
         }
 
         $order = Order::where('payment_reference', $reference)
@@ -229,8 +238,12 @@ class PaymentController extends Controller
             ->first();
 
         if (!$order) {
-            Log::warning("Webhook: order not found for reference {$reference}");
-            return;
+            Log::error("{$method} webhook: order not found for reference {$reference}", [
+                'reference' => $reference,
+                'gateway_ref' => $result['gateway_ref'] ?? null,
+                'paid' => $result['paid'] ?? null,
+            ]);
+            return false;
         }
 
         if ($result['paid']) {
@@ -238,5 +251,7 @@ class PaymentController extends Controller
         } else {
             PaymentService::markFailed($order, $result['message'] ?? 'Gateway reported failure');
         }
+
+        return true;
     }
 }
