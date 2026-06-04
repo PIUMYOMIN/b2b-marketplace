@@ -1001,6 +1001,13 @@ class OrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Order cannot be cancelled at this stage'], 400);
         }
 
+        if (! $this->isAdmin($user) && $order->payment_status === self::PAYMENT_STATUS_PAID) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paid orders cannot be cancelled by the buyer. Please contact support for refund assistance.',
+            ], 400);
+        }
+
         DB::beginTransaction();
         try {
             $order->update([

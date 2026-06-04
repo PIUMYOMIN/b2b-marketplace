@@ -809,9 +809,7 @@ class ProductController extends Controller
                     'discount_end'         => $product->discount_end,
                     'compare_at_price'     => $product->compare_at_price ? (float) $product->compare_at_price : null,
                     // Stock — sum of all active variant quantities (null for non-physical)
-                    'total_stock'      => $product->product_type === 'physical'
-                        ? (int) ($product->active_variants_sum_quantity ?? 0)
-                        : null,
+                    'total_stock'      => $product->totalStock(),
                     // Timestamps
                     'created_at'       => $product->created_at?->toISOString(),
                     'updated_at'       => $product->updated_at?->toISOString(),
@@ -1174,9 +1172,7 @@ class ProductController extends Controller
             'min_order' => $product->moq,
             'min_order_unit' => $product->min_order_unit,
             'price' => (float) $product->price,
-            'total_stock' => $product->product_type === 'physical'
-                ? (int) ($product->active_variants_sum_quantity ?? 0)
-                : null,
+            'total_stock' => $product->totalStock(),
             'product_type' => $product->product_type,
             'status' => $product->status,
             'discount_price' => $product->discount_price ? (float) $product->discount_price : null,

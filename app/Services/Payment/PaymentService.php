@@ -8,6 +8,9 @@ namespace App\Services\Payment;
 use App\Models\Order;
 use App\Models\SellerWallet;
 use App\Models\Cart;
+use App\Models\Coupon;
+use App\Models\CouponUsage;
+use App\Models\Delivery;
 use App\Notifications\OrderPlaced;
 use App\Notifications\OrderPaymentConfirmed;
 use Illuminate\Support\Facades\DB;
@@ -238,13 +241,53 @@ class PaymentService
      */
     public static function markFailed(Order $order, string $reason = ''): void
     {
-        $order->update([
-            'payment_status'   => 'failed',
-            'payment_failed_at'=> now(),
-            'payment_data'     => array_merge(
-                is_array($order->payment_data) ? $order->payment_data : [],
-                ['failure_reason' => $reason]
-            ),
-        ]);
+        DB::transaction(function () use ($order, $reason) {
+            $lockedOrder = Order::whereKey($order->id)->lockForUpdate()->first();
+
+            if (! $lockedOrder || $lockedOrder->payment_status === Order::PAYMENT_STATUS_PAID) {
+                return;
+            }
+
+            if ($lockedOrder->status !== Order::STATUS_CANCELLED) {
+                $lockedOrder->load('items.product', 'items.variant');
+
+                foreach ($lockedOrder->items as $item) {
+                    if ($item->variant && $item->product?->product_type === 'physical') {
+                        $item->variant->increment('quantity', $item->quantity);
+                    } elseif ($item->product?->product_type === 'physical') {
+                        $item->product->increment('quantity', $item->quantity);
+                    }
+                }
+
+                if ($lockedOrder->coupon_id) {
+                    $usage = CouponUsage::where('coupon_id', $lockedOrder->coupon_id)
+                        ->where('user_id', $lockedOrder->buyer_id)
+                        ->where('order_id', $lockedOrder->id)
+                        ->first();
+
+                    if ($usage) {
+                        $usage->delete();
+                        Coupon::where('id', $lockedOrder->coupon_id)
+                            ->where('used_count', '>', 0)
+                            ->decrement('used_count');
+                    }
+                }
+
+                Delivery::where('order_id', $lockedOrder->id)
+                    ->whereNotIn('status', ['delivered', 'failed', 'cancelled'])
+                    ->update(['status' => 'cancelled']);
+            }
+
+            $lockedOrder->update([
+                'status'            => Order::STATUS_CANCELLED,
+                'payment_status'    => 'failed',
+                'payment_failed_at' => now(),
+                'cancelled_at'      => $lockedOrder->cancelled_at ?? now(),
+                'payment_data'      => array_merge(
+                    is_array($lockedOrder->payment_data) ? $lockedOrder->payment_data : [],
+                    ['failure_reason' => $reason]
+                ),
+            ]);
+        });
     }
 }

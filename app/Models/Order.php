@@ -475,6 +475,10 @@ class Order extends Model
      */
     public function getCanBeCancelledAttribute()
     {
+        if ($this->payment_status === self::PAYMENT_STATUS_PAID) {
+            return false;
+        }
+
         return in_array($this->status, [
             self::STATUS_PENDING,
             self::STATUS_CONFIRMED,
