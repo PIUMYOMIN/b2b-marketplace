@@ -1041,6 +1041,12 @@ class OrderController extends Controller
                 $delivery->update(['status' => 'cancelled']);
             }
 
+            if ($order->escrow_status === 'held') {
+                $wallet = SellerWallet::lockForSeller($order->seller_id);
+                $wallet->reverseEscrow((float) $order->total_amount, $order->id, Auth::id());
+                $order->update(['escrow_status' => 'released']);
+            }
+
             DB::commit();
 
             return response()->json([
@@ -1523,23 +1529,14 @@ class OrderController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            Log::error('checkoutFees failed: ' . $e->getMessage());
+            Log::error('checkoutFees failed: ' . $e->getMessage(), [
+                'user_id' => optional($request->user())->id,
+            ]);
 
             return response()->json([
-                'success' => true,
-                'data'    => [
-                    'shipping_fee'      => 8000,
-                    'seller_shipping'   => [],
-                    'default_shipping'  => 8000,
-                    'platform_fee_rate' => 0.05,
-                    'platform_fee_pct'  => 5.0,
-                    'tax_rate'          => 0.00,
-                    'tax_pct'           => 0.0,
-                    'shipping_fee'     => 8000,
-                    'seller_shipping'  => [],
-                    'default_shipping' => 8000,
-                ],
-            ]);
+                'success' => false,
+                'message' => 'Unable to calculate checkout fees. Please try again.',
+            ], 500);
         }
     }
     /**
@@ -1680,3 +1677,4 @@ class OrderController extends Controller
     }
 
 }
+

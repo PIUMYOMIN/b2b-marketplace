@@ -115,6 +115,25 @@ class PaymentService
                 return;
             }
 
+            $paidAmount = isset($gatewayResult['amount']) && is_numeric($gatewayResult['amount'])
+                ? (float) $gatewayResult['amount']
+                : 0.0;
+            $expectedAmount = (float) $lockedOrder->total_amount;
+
+            if ($paidAmount > 0 && abs($paidAmount - $expectedAmount) > 1) {
+                Log::critical('Payment amount mismatch', [
+                    'order_id' => $lockedOrder->id,
+                    'order_number' => $lockedOrder->order_number,
+                    'payment_method' => $lockedOrder->payment_method,
+                    'expected_amount' => $expectedAmount,
+                    'paid_amount' => $paidAmount,
+                    'gateway_ref' => $gatewayResult['gateway_ref'] ?? null,
+                    'payment_reference' => $lockedOrder->payment_reference,
+                ]);
+
+                return;
+            }
+
             $escrowRequired = $lockedOrder->payment_method !== Order::PAYMENT_CASH_ON_DELIVERY;
             $isFullyApplied = $lockedOrder->payment_status === Order::PAYMENT_STATUS_PAID
                 && $lockedOrder->status === Order::STATUS_CONFIRMED
