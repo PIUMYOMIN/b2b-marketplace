@@ -50,6 +50,22 @@ class PaymentService
             $order->update(['payment_initiated_at' => now()]);
             return ['success' => true, 'method' => 'cash_on_delivery'];
         }
+        if ((float) $order->total_amount < 1000) {
+            return [
+                'success' => false,
+                'message' => 'MMQR payments must be at least 1,000 MMK.',
+            ];
+        }
+
+        $existingPaymentData = is_array($order->payment_data) ? $order->payment_data : [];
+        $existingExpiresAt = isset($existingPaymentData['expires_at']) ? strtotime((string) $existingPaymentData['expires_at']) : false;
+        $hasReusableQr = ($existingPaymentData['success'] ?? false)
+            && (! empty($existingPaymentData['qr_string']) || ! empty($existingPaymentData['qr_image_url']))
+            && (! $existingExpiresAt || $existingExpiresAt > now()->timestamp);
+
+        if ($order->payment_reference && $order->payment_status !== Order::PAYMENT_STATUS_PAID && $hasReusableQr) {
+            return $existingPaymentData;
+        }
 
         $result = $gateway->initiatePayment(
             amount:      (float) $order->total_amount,
