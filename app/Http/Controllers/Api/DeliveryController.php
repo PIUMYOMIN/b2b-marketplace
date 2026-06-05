@@ -338,6 +338,10 @@ class DeliveryController extends Controller
                         }
                     }
                 }
+
+                if ($order) {
+                    $this->ensureCodInvoiceForDeliveredOrder($order->fresh(), $user, 'platform logistics delivery');
+                }
             }
 
             DB::commit();
@@ -496,6 +500,11 @@ class DeliveryController extends Controller
                         ]);
                     }
                 }
+
+            }
+
+            if ($order) {
+                $this->ensureCodInvoiceForDeliveredOrder($order->fresh(), $user, 'seller delivery proof');
             }
 
             DB::commit();
@@ -598,6 +607,50 @@ class DeliveryController extends Controller
             Log::error('Failed to get tracking updates: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Failed to fetch tracking'], 500);
         }
+    }
+
+    private function ensureCodInvoiceForDeliveredOrder(Order $order, User $actor, string $deliveryContext): void
+    {
+        if ($order->status !== Order::STATUS_DELIVERED || $order->payment_method !== Order::PAYMENT_CASH_ON_DELIVERY) {
+            return;
+        }
+
+        Commission::where('order_id', $order->id)
+            ->where('status', 'pending')
+            ->update(['status' => 'collected', 'collected_at' => now()]);
+
+        if (CodCommissionInvoice::where('order_id', $order->id)->exists()) {
+            return;
+        }
+
+        CodCommissionInvoice::create([
+            'invoice_number'    => 'COD-' . now()->format('YmdHis') . '-' . mt_rand(1000, 9999),
+            'order_id'          => $order->id,
+            'seller_id'         => $order->seller_id,
+            'order_subtotal'    => $order->subtotal_amount,
+            'commission_rate'   => $order->commission_rate,
+            'commission_amount' => $order->commission_amount,
+            'status'            => 'outstanding',
+            'due_date'          => now()->addDays(7)->toDateString(),
+            'seller_notes'      => "Commission owed for COD order #{$order->order_number}. "
+                                 . "Delivered via {$deliveryContext}. "
+                                 . "Please settle within 7 days via bank transfer.",
+        ]);
+
+        $wallet = SellerWallet::forSeller($order->seller_id);
+        $wallet->increment('cod_commission_outstanding', $order->commission_amount);
+        $wallet->refresh();
+        $wallet->transactions()->create([
+            'order_id'                => $order->id,
+            'type'                    => 'cod_invoice',
+            'amount'                  => -(float) $order->commission_amount,
+            'escrow_balance_after'    => $wallet->escrow_balance,
+            'available_balance_after' => $wallet->available_balance,
+            'notes'                   => "COD commission invoice raised for order #{$order->order_number}. "
+                                       . "Amount: {$order->commission_amount} MMK. "
+                                       . "Due: " . now()->addDays(7)->toDateString(),
+            'created_by'              => $actor->id,
+        ]);
     }
 
     private function notifyDeliveryStatusChanged(

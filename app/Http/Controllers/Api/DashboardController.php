@@ -1210,13 +1210,31 @@ class DashboardController extends Controller
 
         $invoices = $query->paginate($request->get('per_page', 20));
 
+        $outstandingCount = CodCommissionInvoice::where('status', 'outstanding')->count();
+        $overdueCount = CodCommissionInvoice::where('status', 'overdue')->count();
+        $paidCount = CodCommissionInvoice::where('status', 'paid')->count();
+        $waivedCount = CodCommissionInvoice::where('status', 'waived')->count();
+        $outstandingAmount = CodCommissionInvoice::whereIn('status', ['outstanding', 'overdue'])->sum('commission_amount');
+        $paidAmount = CodCommissionInvoice::where('status', 'paid')->sum('commission_amount');
+
         $summary = [
-            'outstanding' => CodCommissionInvoice::where('status', 'outstanding')->count(),
-            'overdue'     => CodCommissionInvoice::where('status', 'overdue')->count(),
-            'paid'        => CodCommissionInvoice::where('status', 'paid')->count(),
-            'waived'      => CodCommissionInvoice::where('status', 'waived')->count(),
-            'total_owed'  => CodCommissionInvoice::whereIn('status', ['outstanding','overdue'])->sum('commission_amount'),
-            'total_paid'  => CodCommissionInvoice::where('status', 'paid')->sum('commission_amount'),
+            'outstanding_count' => $outstandingCount,
+            'overdue_count' => $overdueCount,
+            'paid_count' => $paidCount,
+            'waived_count' => $waivedCount,
+            'outstanding_amount' => $outstandingAmount,
+            'collected_this_month' => CodCommissionInvoice::where('status', 'paid')
+                ->whereMonth('paid_at', now()->month)
+                ->whereYear('paid_at', now()->year)
+                ->sum('commission_amount'),
+
+            // Legacy keys kept for older clients.
+            'outstanding' => $outstandingCount,
+            'overdue' => $overdueCount,
+            'paid' => $paidCount,
+            'waived' => $waivedCount,
+            'total_owed' => $outstandingAmount,
+            'total_paid' => $paidAmount,
         ];
 
         return response()->json([
