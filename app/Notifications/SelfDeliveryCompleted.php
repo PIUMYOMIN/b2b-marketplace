@@ -6,7 +6,7 @@ use App\Models\Delivery;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class PlatformLogisticsRequested extends Notification
+class SelfDeliveryCompleted extends Notification
 {
     public function __construct(public Delivery $delivery) {}
 
@@ -23,27 +23,27 @@ class PlatformLogisticsRequested extends Notification
 
     public function toMail($notifiable): MailMessage
     {
-        $delivery = $this->delivery->loadMissing('order.seller.sellerProfile', 'supplier');
+        $delivery = $this->delivery->loadMissing('order.buyer', 'order.seller.sellerProfile', 'supplier');
         $order = $delivery->order;
         $sellerName = $order?->seller?->sellerProfile?->store_name
             ?? $order?->seller?->name
             ?? $delivery->supplier?->name
             ?? 'Seller';
+        $buyerName = $order?->buyer?->name ?? 'Buyer';
 
         return (new MailMessage)
-            ->subject("Platform logistics requested - Order #{$order?->order_number}")
+            ->subject("Self delivery completed - Order #{$order?->order_number}")
             ->greeting("Hello {$notifiable->name},")
-            ->line("{$sellerName} selected platform logistics for order #{$order?->order_number}.")
-            ->line('Please review pickup details, assign a courier if needed, and manage the delivery from the platform logistics dashboard.')
-            ->line('Pickup address: ' . ($delivery->pickup_address ?: 'Not provided'))
-            ->line('Delivery fee: ' . number_format((float) $delivery->platform_delivery_fee) . ' MMK')
-            ->action('Open Platform Logistics', $this->dashboardUrl())
-            ->line('This delivery is awaiting platform pickup.');
+            ->line("{$sellerName} marked self delivery completed for order #{$order?->order_number}.")
+            ->line("Buyer: {$buyerName}")
+            ->line('Please review the order, payment, proof image, escrow, and payout details from the admin dashboard.')
+            ->action('Review Order', $this->dashboardUrl())
+            ->line('This notification is for admin verification before seller payout handling.');
     }
 
     public function toArray($notifiable): array
     {
-        $delivery = $this->delivery->loadMissing('order.seller.sellerProfile', 'supplier');
+        $delivery = $this->delivery->loadMissing('order.buyer', 'order.seller.sellerProfile', 'supplier');
         $order = $delivery->order;
         $sellerName = $order?->seller?->sellerProfile?->store_name
             ?? $order?->seller?->name
@@ -51,18 +51,24 @@ class PlatformLogisticsRequested extends Notification
             ?? 'Seller';
 
         return [
-            'type' => 'platform_logistics_requested',
+            'type' => 'self_delivery_completed',
             'delivery_id' => $delivery->id,
             'order_id' => $order?->id,
             'order_number' => $order?->order_number,
             'seller_id' => $order?->seller_id ?? $delivery->supplier_id,
             'seller_name' => $sellerName,
+            'buyer_id' => $order?->buyer_id,
             'delivery_status' => $delivery->status,
             'delivery_method' => $delivery->delivery_method,
-            'platform_delivery_fee' => (float) $delivery->platform_delivery_fee,
-            'pickup_address' => $delivery->pickup_address,
-            'url' => '/admin/dashboard?tab=platform-logistics',
-            'message' => "{$sellerName} requested platform logistics for order #{$order?->order_number}.",
+            'delivered_at' => $delivery->delivered_at?->toIso8601String(),
+            'proof_image' => $delivery->delivery_proof_image,
+            'payment_method' => $order?->payment_method,
+            'payment_status' => $order?->payment_status,
+            'escrow_status' => $order?->escrow_status,
+            'seller_payout' => $order ? (float) ((float) $order->subtotal_amount - (float) $order->commission_amount) : null,
+            'commission_amount' => $order ? (float) $order->commission_amount : null,
+            'url' => '/admin/dashboard?tab=orders',
+            'message' => "{$sellerName} completed self delivery for order #{$order?->order_number}. Please review before payout.",
         ];
     }
 
@@ -70,7 +76,7 @@ class PlatformLogisticsRequested extends Notification
     {
         $frontend = rtrim((string) config('app.frontend_url', config('app.url')), '/');
 
-        return $frontend . '/admin/dashboard?tab=platform-logistics';
+        return $frontend . '/admin/dashboard?tab=orders';
     }
 
     private function shouldSendMail($user): bool
@@ -83,6 +89,6 @@ class PlatformLogisticsRequested extends Notification
             $prefs = [];
         }
 
-        return $prefs['platform_logistics'] ?? $prefs['delivery_updates'] ?? true;
+        return $prefs['delivery_updates'] ?? $prefs['order_updates'] ?? true;
     }
 }

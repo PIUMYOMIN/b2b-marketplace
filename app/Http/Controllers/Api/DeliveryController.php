@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Notifications\DeliveryStatusUpdated;
 use App\Notifications\OrderDeliveredThankYou;
 use App\Notifications\PlatformLogisticsRequested;
+use App\Notifications\SelfDeliveryCompleted;
 use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -185,6 +186,31 @@ class DeliveryController extends Controller
         }
     }
 
+
+    private function notifyAdminsSelfDeliveryCompleted(Delivery $delivery): void
+    {
+        try {
+            User::query()
+                ->where(function ($query) {
+                    $query->where('type', 'admin')
+                        ->orWhereHas('roles', fn ($roleQuery) => $roleQuery->where('name', 'admin'));
+                })
+                ->whereNotNull('email')
+                ->get()
+                ->each(fn (User $admin) => $admin->notify(new SelfDeliveryCompleted($delivery)));
+        } catch (\Throwable $e) {
+            Log::warning('Self delivery completion admin notification failed: ' . $e->getMessage(), [
+                'delivery_id' => $delivery->id,
+                'order_id' => $delivery->order_id,
+            ]);
+        }
+    }
+
+    private function isSelfDelivery(Delivery $delivery): bool
+    {
+        return in_array($delivery->delivery_method, ['supplier', 'self', 'seller'], true);
+    }
+
     /**
      * Update delivery status.
      * POST /deliveries/{delivery}/status
@@ -318,6 +344,10 @@ class DeliveryController extends Controller
 
             $delivery->refresh();
             $this->notifyDeliveryStatusChanged($delivery, $previousStatus, (int) $user->id, $validated['status'] !== 'delivered');
+
+            if ($validated['status'] === 'delivered' && $previousStatus !== 'delivered' && $this->isSelfDelivery($delivery)) {
+                $this->notifyAdminsSelfDeliveryCompleted($delivery->fresh(['order.buyer', 'order.seller.sellerProfile', 'supplier']));
+            }
 
             // Send buyer thank-you email outside the transaction
             if ($order) {
@@ -472,6 +502,10 @@ class DeliveryController extends Controller
 
             $delivery->refresh();
             $this->notifyDeliveryStatusChanged($delivery, $previousStatus, (int) $user->id, false);
+
+            if ($previousStatus !== 'delivered' && $this->isSelfDelivery($delivery)) {
+                $this->notifyAdminsSelfDeliveryCompleted($delivery->fresh(['order.buyer', 'order.seller.sellerProfile', 'supplier']));
+            }
 
             // ── 3. Thank-you email — outside the transaction so a mail failure
             //       never rolls back the financial records ───────────────────
