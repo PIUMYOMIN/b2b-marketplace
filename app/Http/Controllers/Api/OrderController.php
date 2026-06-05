@@ -1244,10 +1244,23 @@ class OrderController extends Controller
             ], 403);
         }
 
-        if ($order->status !== self::STATUS_SHIPPED) {
+        $order->loadMissing('delivery');
+
+        if ($order->status === self::STATUS_DELIVERED) {
+            return response()->json([
+                'success' => true,
+                'message' => __('messages.orders.delivery_confirmed')
+            ]);
+        }
+
+        $deliveryStatus = $order->delivery?->status;
+        $canConfirmDelivery = $order->status === self::STATUS_SHIPPED
+            || in_array($deliveryStatus, ['out_for_delivery', 'delivered'], true);
+
+        if (! $canConfirmDelivery) {
             return response()->json([
                 'success' => false,
-                'message' => 'Order must be shipped before confirming delivery'
+                'message' => 'Order must be shipped or out for delivery before confirming delivery'
             ], 400);
         }
 
