@@ -8,8 +8,10 @@ use App\Models\Commission;
 use App\Models\Delivery;
 use App\Models\Order;
 use App\Models\SellerWallet;
+use App\Models\User;
 use App\Notifications\DeliveryStatusUpdated;
 use App\Notifications\OrderDeliveredThankYou;
+use App\Notifications\PlatformLogisticsRequested;
 use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -111,6 +113,7 @@ class DeliveryController extends Controller
             ]);
 
             $delivery                       = Delivery::firstOrNew(['order_id' => $order->id]);
+            $wasPlatformDelivery            = $delivery->exists && $delivery->delivery_method === 'platform';
             $delivery->order_id             = $order->id;
             $delivery->supplier_id          = $user->id;
             $delivery->delivery_method      = $validated['delivery_method'];
@@ -148,6 +151,10 @@ class DeliveryController extends Controller
                     : 'Self delivery selected. Awaiting dispatch by seller.',
             ]);
 
+            if ($validated['delivery_method'] === 'platform' && ! $wasPlatformDelivery) {
+                $this->notifyAdminsPlatformLogisticsRequested($delivery->fresh(['order.seller.sellerProfile', 'supplier']));
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => __('messages.delivery.method_set'),
@@ -156,6 +163,25 @@ class DeliveryController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to set delivery method: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    private function notifyAdminsPlatformLogisticsRequested(Delivery $delivery): void
+    {
+        try {
+            User::query()
+                ->where(function ($query) {
+                    $query->where('type', 'admin')
+                        ->orWhereHas('roles', fn ($roleQuery) => $roleQuery->where('name', 'admin'));
+                })
+                ->whereNotNull('email')
+                ->get()
+                ->each(fn (User $admin) => $admin->notify(new PlatformLogisticsRequested($delivery)));
+        } catch (\Throwable $e) {
+            Log::warning('Platform logistics admin notification failed: ' . $e->getMessage(), [
+                'delivery_id' => $delivery->id,
+                'order_id' => $delivery->order_id,
+            ]);
         }
     }
 

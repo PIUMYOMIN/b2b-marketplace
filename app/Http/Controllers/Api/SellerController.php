@@ -609,6 +609,12 @@ class SellerController extends Controller
             }
         };
 
+        $deliveredOrdersCount = Order::where('seller_id', $request->user()->id)
+            ->where('status', Order::STATUS_DELIVERED)
+            ->count();
+
+        $tierOrderCount = max((int) ($s->completed_orders_count ?? 0), $deliveredOrdersCount);
+
         $data = [
             // Identity
             'id'                          => $s->id,
@@ -697,6 +703,8 @@ class SellerController extends Controller
             'current_step'                => $s->current_step,
             'is_active'                   => (bool) $s->is_active,
             'seller_tier'                 => $s->seller_tier,
+            'completed_orders_count'      => $tierOrderCount,
+            'delivered_orders_count'      => $deliveredOrdersCount,
             'badge_type'                  => $s->badge_type,
 
             // Misc
