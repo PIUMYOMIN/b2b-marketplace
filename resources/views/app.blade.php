@@ -225,7 +225,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-
   <!-- Icons & PWA -->
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -248,7 +247,62 @@
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    @if (!empty($seoContent))
+      <main class="seo-fallback" aria-label="Server-rendered page content" style="max-width:920px;margin:0 auto;padding:32px 20px;color:#111827;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.7;">
+        @if (($seoContent['type'] ?? null) === 'blog_detail')
+          <article>
+            <p style="color:#4b5563;font-size:.95rem;margin:0 0 14px;">{{ $seoContent['category'] ?? 'Pyonea Blog' }}</p>
+            <h1 style="font-size:2rem;line-height:1.2;margin:0 0 12px;font-weight:800;">{{ $seoContent['title'] ?? $pageTitle }}</h1>
+            <p style="color:#4b5563;font-size:.95rem;margin:0 0 14px;">
+              @if (!empty($seoContent['author']))
+                By {{ $seoContent['author'] }}
+              @endif
+              @if (!empty($seoContent['published_at']))
+                - Published {{ $seoContent['published_at'] }}
+              @endif
+            </p>
+            @if (!empty($seoContent['image']))
+              <img src="{{ $seoContent['image'] }}" alt="{{ $seoContent['title'] ?? $pageTitle }}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;margin:20px 0;border-radius:8px;">
+            @endif
+            @if (!empty($seoContent['description']))
+              <p style="margin:0 0 14px;"><strong>{{ $seoContent['description'] }}</strong></p>
+            @endif
+            @if (!empty($seoContent['content']))
+              @foreach (preg_split('/\n{2,}|(?<=\.)\s+(?=[A-Z0-9])/u', $seoContent['content']) as $paragraph)
+                @if (trim($paragraph) !== '')
+                  <p style="margin:0 0 14px;">{{ $paragraph }}</p>
+                @endif
+              @endforeach
+            @endif
+            @if (!empty($seoContent['tags']))
+              <p style="color:#4b5563;font-size:.95rem;margin:0 0 14px;">Tags: {{ implode(', ', $seoContent['tags']) }}</p>
+            @endif
+          </article>
+        @elseif (($seoContent['type'] ?? null) === 'blog_index')
+          <section>
+            <h1 style="font-size:2rem;line-height:1.2;margin:0 0 12px;font-weight:800;">{{ $seoContent['title'] ?? 'Pyonea Blog' }}</h1>
+            <p style="margin:0 0 14px;">{{ $seoContent['description'] ?? $pageDescription }}</p>
+            @if (!empty($seoContent['posts']))
+              <ul style="margin:16px 0 0;padding-left:22px;">
+                @foreach ($seoContent['posts'] as $post)
+                  <li style="margin-bottom:16px;">
+                    <h2 style="font-size:1.1rem;margin:28px 0 8px;font-weight:700;"><a href="{{ $post['url'] }}" style="color:#15803d;text-decoration:underline;">{{ $post['title'] }}</a></h2>
+                    @if (!empty($post['published_at']) || !empty($post['category']))
+                      <p style="color:#4b5563;font-size:.95rem;margin:0 0 14px;">{{ $post['category'] ?? 'Blog' }} @if (!empty($post['published_at'])) - {{ $post['published_at'] }} @endif</p>
+                    @endif
+                    @if (!empty($post['excerpt']))
+                      <p style="margin:0 0 14px;">{{ $post['excerpt'] }}</p>
+                    @endif
+                  </li>
+                @endforeach
+              </ul>
+            @endif
+          </section>
+        @endif
+      </main>
+    @endif
+  </div>
 </body>
 
 </html>

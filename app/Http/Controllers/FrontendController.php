@@ -184,6 +184,7 @@ class FrontendController extends Controller
             'seller'          => null,
             'categories'      => null,
             'article'         => null,
+            'seoContent'      => null,
         ];
 
         $trimmed = ltrim($path, '/');
@@ -309,6 +310,7 @@ class FrontendController extends Controller
                 $metadata['pageImage']       = $pageImage ?? $metadata['pageImage'];
                 $metadata['pageType']        = 'article';
                 $metadata['article']         = $this->formatBlogPostForJsonLd($post, $locale);
+                $metadata['seoContent']      = $this->buildBlogDetailSeoContent($post, $locale);
                 $metadata['breadcrumbs'] = [
                     ['name' => $m['home_label'], 'url' => '/'],
                     ['name' => 'Blog',           'url' => '/blog'],
@@ -333,6 +335,7 @@ class FrontendController extends Controller
         elseif ($trimmed === 'blog') {
             $metadata['pageTitle']       = 'Pyonea Blog | Myanmar B2B Guides';
             $metadata['pageDescription'] = 'Read Myanmar business guides, wholesale tips, supplier advice, and marketplace updates from Pyonea.';
+            $metadata['seoContent']      = $this->buildBlogIndexSeoContent($locale);
             $metadata['breadcrumbs'] = [
                 ['name' => $m['home_label'], 'url' => '/'],
                 ['name' => 'Blog',           'url' => '/blog'],
@@ -608,6 +611,70 @@ class FrontendController extends Controller
             ] : null,
             'sameAs' => $seller->social_links ?? [],
         ];
+    }
+
+    protected function buildBlogIndexSeoContent(string $locale = 'en'): array
+    {
+        $posts = BlogPost::query()
+            ->visible()
+            ->with('author:id,name')
+            ->orderByDesc('is_featured')
+            ->orderByDesc('published_at')
+            ->limit(12)
+            ->get()
+            ->map(fn (BlogPost $post) => [
+                'title' => $this->localizedBlogValue($post, $locale, 'title'),
+                'url' => '/blog/' . $post->slug . '?lang=' . $locale,
+                'excerpt' => $this->localizedBlogValue($post, $locale, 'excerpt'),
+                'category' => $post->category,
+                'published_at' => $post->published_at?->toFormattedDateString(),
+                'author' => $post->author?->name,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'type' => 'blog_index',
+            'title' => 'Pyonea Blog',
+            'description' => $locale === 'my'
+                ? 'Pyonea မှ မြန်မာစီးပွားရေးလမ်းညွှန်များ၊ လက်ကားရောင်းဝယ်ရေးအကြံပြုချက်များနှင့် marketplace update များကို ဖတ်ရှုနိုင်ပါသည်။'
+                : 'Read Myanmar business guides, wholesale tips, supplier advice, and marketplace updates from Pyonea.',
+            'posts' => $posts,
+        ];
+    }
+
+    protected function buildBlogDetailSeoContent(BlogPost $post, string $locale = 'en'): array
+    {
+        return [
+            'type' => 'blog_detail',
+            'title' => $this->localizedBlogValue($post, $locale, 'title'),
+            'description' => $this->localizedBlogValue($post, $locale, 'excerpt'),
+            'content' => Str::limit($this->localizedBlogValue($post, $locale, 'content'), 5000, ''),
+            'category' => $post->category,
+            'tags' => $post->tags ?? [],
+            'published_at' => $post->published_at?->toFormattedDateString(),
+            'updated_at' => $post->updated_at?->toFormattedDateString(),
+            'author' => $post->author?->name ?? 'Pyonea',
+            'image' => $post->featured_image ? $this->resolveImageUrl($post->featured_image) : null,
+        ];
+    }
+
+    protected function localizedBlogValue(BlogPost $post, string $locale, string $field): string
+    {
+        $value = match ($field) {
+            'title' => $locale === 'my'
+                ? ($post->title_mm ?? $post->title_en)
+                : ($post->title_en ?? $post->title_mm),
+            'excerpt' => $locale === 'my'
+                ? ($post->excerpt_mm ?? $post->seo_description_mm ?? $post->excerpt_en ?? $post->seo_description_en ?? $post->content_mm ?? $post->content_en)
+                : ($post->excerpt_en ?? $post->seo_description_en ?? $post->excerpt_mm ?? $post->seo_description_mm ?? $post->content_en ?? $post->content_mm),
+            'content' => $locale === 'my'
+                ? ($post->content_mm ?? $post->content_en ?? $post->excerpt_mm ?? $post->excerpt_en)
+                : ($post->content_en ?? $post->content_mm ?? $post->excerpt_en ?? $post->excerpt_mm),
+            default => '',
+        };
+
+        return trim(preg_replace('/\s+/u', ' ', strip_tags((string) $value)));
     }
 
     protected function formatBlogPostForJsonLd(BlogPost $post, string $locale = 'en'): array
