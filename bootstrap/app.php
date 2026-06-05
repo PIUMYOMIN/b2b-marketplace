@@ -17,22 +17,28 @@ return Application::configure(basePath: dirname(__DIR__))
         // ── Global middleware (replaces Kernel.php $middleware array) ──────────
         // HandleCors MUST be global so it runs on every request, including
         // OPTIONS preflight requests that arrive before routing is resolved.
+        //
+        // SetLocale is also global so that FrontendController (web routes) reads
+        // the correct ?lang= param when server-rendering og:url meta tags.
+        // Without this, Facebook's crawler hits a web route where SetLocale never
+        // ran, app()->getLocale() falls back to 'en', and og:url is rendered as
+        // ?lang=en even when the shared URL had ?lang=my.
         $middleware->use([
             \Illuminate\Http\Middleware\TrustProxies::class,
             \Illuminate\Http\Middleware\HandleCors::class,
             \App\Http\Middleware\SecurityHeaders::class,
+            \App\Http\Middleware\SetLocale::class,
             \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
             \Illuminate\Foundation\Http\Middleware\TrimStrings::class,
             \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
         ]);
 
         // ── API middleware group ───────────────────────────────────────────────
-        // Only SetLocale is prepended. EnsureFrontendRequestsAreStateful is NOT
-        // used because Pyonea uses Bearer token auth, not cookie/session Sanctum.
-        // Adding it causes CSRF token mismatch on every API login request.
-        $middleware->api(prepend: [
-            \App\Http\Middleware\SetLocale::class,
-        ]);
+        // EnsureFrontendRequestsAreStateful is NOT used because Pyonea uses
+        // Bearer token auth, not cookie/session Sanctum. Adding it causes CSRF
+        // token mismatch on every API login request.
+        // SetLocale has been moved to global middleware above — no need to
+        // prepend it here again.
 
         // ── Middleware aliases ─────────────────────────────────────────────────
         $middleware->alias([
