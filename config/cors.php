@@ -10,6 +10,7 @@ return [
         'https://api.pyonea.com',
         'http://localhost:5173',
         'http://localhost:5174',
+        'http://localhost:8082',
         'https://pyonea.com',
         'https://www.pyonea.com',
     ],
