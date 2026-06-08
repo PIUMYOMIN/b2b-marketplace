@@ -13,8 +13,12 @@ class Recaptcha implements ValidationRule
      */
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        // Skip verification outside production so local development works without domain-bound keys
-        if (!app()->environment('production')) {
+        // Skip Google web reCAPTCHA verification for trusted native app requests.
+        // Mobile/Expo clients cannot generate domain-bound v3 web tokens.
+        if (
+            !app()->environment('production') ||
+            request()->header('X-Pyonea-Client') === 'native'
+        ) {
             return;
         }
 
