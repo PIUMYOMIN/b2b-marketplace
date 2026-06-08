@@ -68,3 +68,12 @@ Artisan::command('inspire', function () {
                 );
             }
         });
+    // Generate public SEO static HTML files without rebuilding the React app.
+    // Set SEO_STATIC_OUTPUT_PATH to the hosting public_html SEO output directory.
+    Schedule::command('seo:generate-static --type=all --delete-missing')
+        ->dailyAt('02:20')
+        ->withoutOverlapping()
+        ->runInBackground()
+        ->onFailure(function () {
+            \Illuminate\Support\Facades\Log::error('seo:generate-static scheduled job failed.');
+        });
