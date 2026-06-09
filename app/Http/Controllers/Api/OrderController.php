@@ -386,7 +386,7 @@ class OrderController extends Controller
 
         return response()->json([
             'success'    => true,
-            'message'    => "A 6-digit confirmation code has been sent to {$user->email}.",
+            'message'    => "A 6-digit verification code has been sent to {$user->email}.",
             'email_hint' => $this->maskEmail($user->email),
             'expires_in' => 600, // seconds
         ]);
@@ -785,6 +785,9 @@ class OrderController extends Controller
                 $orders[] = $order;
 
                 // ── Fire notifications ──────────────────────────────────────
+                // COD: send buyer + seller confirmation immediately.
+                // Mobile/wallet: buyer OrderPlaced email is deferred until
+                // PaymentService::markPaid() runs after gateway payment succeeds.
                 try {
                     if ($order->payment_method === Order::PAYMENT_CASH_ON_DELIVERY) {
                         $order->buyer->notify(new OrderPlaced($order));
