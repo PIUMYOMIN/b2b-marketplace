@@ -30,8 +30,12 @@ class ImageOptimizationService
     public function store(UploadedFile $file, string $directory, string $preset = 'default'): array
     {
         // Use Intervention Image if available, otherwise fall back to plain storage.
-        if (class_exists(\Intervention\Image\Laravel\Facades\Image::class)) {
-            return $this->storeOptimized($file, $directory, $preset);
+        if (class_exists(\Intervention\Image\ImageManager::class)) {
+            try {
+                return $this->storeOptimized($file, $directory, $preset);
+            } catch (\Throwable $e) {
+                \Log::warning('Image optimization failed, storing original: ' . $e->getMessage());
+            }
         }
 
         return $this->storePlain($file, $directory);
@@ -52,7 +56,8 @@ class ImageOptimizationService
         $filename    = Str::uuid() . '.webp';
         $storagePath = $directory . '/' . $filename;
 
-        $image = \Intervention\Image\Laravel\Facades\Image::read($file)
+        $image = \Intervention\Image\ImageManager::gd()
+            ->read($file)
             ->scaleDown(
                 width:  $dimensions['width'],
                 height: $dimensions['height'],
