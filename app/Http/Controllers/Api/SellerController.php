@@ -855,6 +855,61 @@ class SellerController extends Controller
     }
 
     /**
+     * GET /sellers/policies?slugs=a,b,c
+     *
+     * Lightweight batch lookup for checkout — returns only policy fields
+     * for approved/active sellers matching the given store slugs.
+     */
+    public function checkoutPolicies(Request $request)
+    {
+        $rawSlugs = $request->query('slugs', '');
+        $slugs = array_values(array_unique(array_filter(array_map(
+            static fn ($slug) => trim((string) $slug),
+            is_array($rawSlugs) ? $rawSlugs : explode(',', (string) $rawSlugs)
+        ))));
+
+        if (empty($slugs)) {
+            return response()->json([
+                'success' => true,
+                'data'    => ['policies' => []],
+            ]);
+        }
+
+        $slugs = array_slice($slugs, 0, 20);
+
+        $profiles = SellerProfile::query()
+            ->whereIn('store_slug', $slugs)
+            ->whereIn('status', ['approved', 'active'])
+            ->get([
+                'id',
+                'user_id',
+                'store_name',
+                'store_slug',
+                'return_policy',
+                'shipping_policy',
+            ]);
+
+        $policies = $profiles
+            ->filter(static fn (SellerProfile $seller) =>
+                ! empty($seller->return_policy) || ! empty($seller->shipping_policy)
+            )
+            ->map(static fn (SellerProfile $seller) => [
+                'id'              => $seller->id,
+                'user_id'         => $seller->user_id,
+                'store_name'      => $seller->store_name,
+                'store_slug'      => $seller->store_slug,
+                'return_policy'   => $seller->return_policy,
+                'shipping_policy' => $seller->shipping_policy,
+            ])
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data'    => ['policies' => $policies],
+        ]);
+    }
+
+    /**
      * Get seller details (public endpoint)
      */
     public function show(Request $request, SellerProfile $seller)

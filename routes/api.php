@@ -123,6 +123,7 @@ Route::group([
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
         Route::get('/', [SellerController::class, 'index']);
+        Route::get('/policies', [SellerController::class, 'checkoutPolicies']);
         // Delivery zones must be defined before the /{seller} wildcard
         Route::get('/{seller}/delivery-areas', [SellerController::class, 'deliveryAreasPublic']);
         Route::get('/{seller}', [SellerController::class, 'show']);
