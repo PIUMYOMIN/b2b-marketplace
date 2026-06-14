@@ -126,4 +126,11 @@ return [
     // 'frontend_url' => env('APP_FRONTEND_URL', 'http://localhost:5173'),
     'frontend_url' => env('APP_FRONTEND_URL', 'https://pyonea.com'),
 
+    'business_address' => env(
+        'APP_BUSINESS_ADDRESS',
+        'Bet 59-60, 19 Street, Aungmyaetharsan Township, Mandalay, Myanmar',
+    ),
+    'business_city' => env('APP_BUSINESS_CITY', 'Mandalay, Myanmar'),
+    'business_phone' => env('APP_BUSINESS_PHONE', '+95 9 792 115 547'),
+
 ];

@@ -77,7 +77,7 @@
     <p class="small">If you didn't create a Pyonea account, you can safely ignore this email.</p>
     </div>
     <div class="footer">
-        <p><strong>Pyonea Marketplace</strong> · Yangon, Myanmar</p>
+        <p><strong>Pyonea Marketplace</strong> · @include('emails.partials.footer-location')</p>
         <p><a href="https://pyonea.com">pyonea.com</a> · <a href="mailto:support@pyonea.com">support@pyonea.com</a></p>
     </div>
 </div>

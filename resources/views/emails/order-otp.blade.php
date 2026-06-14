@@ -75,7 +75,7 @@
                 </p>
             </div>
             <div class="footer">
-                <p><strong>Pyonea Marketplace</strong> · Yangon, Myanmar</p>
+                <p><strong>Pyonea Marketplace</strong> · @include('emails.partials.footer-location')</p>
                 <p><a href="https://pyonea.com">pyonea.com</a> · <a href="mailto:support@pyonea.com">support@pyonea.com</a></p>
                 <p style="margin-top:6px;">This confirmation code was sent to {{ $userEmail ?? '' }}</p>
             </div>

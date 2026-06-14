@@ -67,7 +67,7 @@
     </div>
   </div>
   <div class="footer">
-    Pyonea Marketplace · Internal Admin Notification<br>
+    Pyonea Marketplace · @include('emails.partials.footer-location')<br>
     This message was sent automatically. Log in to the admin panel to respond.
   </div>
 </div>

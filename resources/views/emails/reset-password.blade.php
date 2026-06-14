@@ -229,6 +229,9 @@
                             &copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.
                         </p>
                         <p style="color:#6b7280; font-size:0.875rem; margin-bottom:12px;">
+                            @include('emails.partials.footer-address')
+                        </p>
+                        <p style="color:#6b7280; font-size:0.875rem; margin-bottom:12px;">
                             <a href="{{ config('app.frontend_url') }}" style="color:#10b981; text-decoration:none; font-weight:500;">Visit our
                                 website</a>
                             •

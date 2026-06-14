@@ -235,7 +235,7 @@
             </div>
             <div class="footer">
                 <p>You're receiving this email from <strong>Pyonea Marketplace</strong></p>
-                <p>Yangon, Myanmar &nbsp;·&nbsp; <a href="https://pyonea.com">pyonea.com</a></p>
+                <p>@include('emails.partials.footer-address') &nbsp;·&nbsp; <a href="{{ config('app.frontend_url', 'https://pyonea.com') }}">pyonea.com</a></p>
                 @if(!empty(trim($__env->yieldContent('unsubscribe_url'))))
                     <p style="margin-top:10px;">
                         <a href="@yield('unsubscribe_url')">Unsubscribe</a> &nbsp;·&nbsp; 

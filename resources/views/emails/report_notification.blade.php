@@ -88,7 +88,7 @@
     </div>
   </div>
   <div class="footer">
-    Pyonea Marketplace · Myanmar B2B Platform<br>
+    Pyonea Marketplace · @include('emails.partials.footer-location')<br>
     This is an automated message. Do not reply to this email — use the portal instead.
   </div>
 </div>
