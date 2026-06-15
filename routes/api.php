@@ -275,6 +275,7 @@ Route::group([
                 Route::post('/{id}/suspend', [SellerController::class, 'suspendSeller']);
                 Route::post('/{id}/reactivate', [SellerController::class, 'reactivateSeller']);
                 // NRC verification + quick status toggle
+                Route::patch('/{id}/nrc', [SellerController::class, 'updateSellerNrc']);
                 Route::post('/{id}/verify-nrc', [SellerController::class, 'verifyNrc']);
                 Route::patch('/{id}/set-status', [SellerController::class, 'setSellerStatus']);
             });

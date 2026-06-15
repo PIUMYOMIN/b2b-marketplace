@@ -6191,6 +6191,73 @@ class SellerController extends Controller
         }
     }
     /**
+     * PATCH /admin/seller/{id}/nrc
+     * Admin updates structured NRC fields during verification review.
+     */
+    public function updateSellerNrc(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+            if ($admin->type !== 'admin' && !$admin->hasRole('admin')) {
+                return response()->json(['success' => false, 'message' => 'Admins only.'], 403);
+            }
+
+            $seller = SellerProfile::findOrFail($id);
+
+            $v = Validator::make($request->all(), [
+                'nrc_division'      => 'required|string|max:2',
+                'nrc_township_code' => 'required|string|max:20',
+                'nrc_township_mm'   => 'nullable|string|max:30',
+                'nrc_type'          => 'required|in:N,E,P,T,TH,Naing',
+                'nrc_number'        => ['required', 'string', 'max:10', 'regex:/^[0-9]{1,10}$/'],
+            ]);
+
+            if ($v->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed.',
+                    'errors' => $v->errors(),
+                ], 422);
+            }
+
+            $validated = $v->validated();
+
+            if (isset($validated['nrc_township_mm'])) {
+                $validated['nrc_township_mm'] = mb_convert_encoding(
+                    $validated['nrc_township_mm'],
+                    'UTF-8',
+                    'UTF-8'
+                );
+            }
+
+            if (in_array($seller->nrc_verification_status, [null, '', 'unverified'], true)) {
+                $validated['nrc_verification_status'] = 'pending';
+            }
+
+            $seller->update($validated);
+            $fresh = $seller->fresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'NRC details updated.',
+                'data' => [
+                    'nrc_division' => $fresh->nrc_division,
+                    'nrc_township_code' => $fresh->nrc_township_code,
+                    'nrc_township_mm' => $fresh->nrc_township_mm,
+                    'nrc_type' => $fresh->nrc_type,
+                    'nrc_number' => $fresh->nrc_number,
+                    'nrc_full' => $fresh->nrc_full,
+                    'nrc_full_mm' => $fresh->nrc_full_mm,
+                    'nrc_verification_status' => $fresh->nrc_verification_status,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('updateSellerNrc failed: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * POST /admin/seller/{id}/verify-nrc
      * Admin verifies seller NRC against uploaded identity document.
      * Updates nrc_verification_status and can also change store status.
