@@ -5690,8 +5690,8 @@ class SellerController extends Controller
             // Get shipping settings
             $shippingSettings = ShippingSetting::where('seller_profile_id', $sellerProfile->id)->first();
 
-            // Get user preferences
-            $userSettings = $user->settings ?? [];
+            // Get user preferences (stored on users.notification_preferences JSON)
+            $userSettings = $this->sellerNotificationPreferences($user);
 
             $settings = [
                 // Store Policies
@@ -5820,50 +5820,34 @@ class SellerController extends Controller
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'errors' => $validator->errors()
+                    'message' => 'Validation failed.',
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
             $validated = $validator->validated();
 
-            // Update seller profile
-            $sellerProfile->update($validated);
+            $profileData = array_intersect_key(
+                $validated,
+                array_flip($this->sellerProfileSettingKeys())
+            );
+            $userPreferenceData = array_intersect_key(
+                $validated,
+                array_flip($this->sellerUserPreferenceKeys())
+            );
 
-            // Update user settings
-            $userSettings = $user->settings ?? [];
-
-            // Update notification settings
-            if (isset($validated['email_notifications'])) {
-                $userSettings['email_notifications'] = $validated['email_notifications'];
-            }
-            if (isset($validated['order_notifications'])) {
-                $userSettings['order_notifications'] = $validated['order_notifications'];
-            }
-            if (isset($validated['inventory_alerts'])) {
-                $userSettings['inventory_alerts'] = $validated['inventory_alerts'];
-            }
-            if (isset($validated['review_notifications'])) {
-                $userSettings['review_notifications'] = $validated['review_notifications'];
-            }
-            if (isset($validated['two_factor_auth'])) {
-                $userSettings['two_factor_auth'] = $validated['two_factor_auth'];
-            }
-            if (isset($validated['login_notifications'])) {
-                $userSettings['login_notifications'] = $validated['login_notifications'];
-            }
-            if (isset($validated['show_sold_out'])) {
-                $userSettings['show_sold_out'] = $validated['show_sold_out'];
-            }
-            if (isset($validated['show_reviews'])) {
-                $userSettings['show_reviews'] = $validated['show_reviews'];
-            }
-            if (isset($validated['show_inventory_count'])) {
-                $userSettings['show_inventory_count'] = $validated['show_inventory_count'];
+            if (!empty($profileData)) {
+                $sellerProfile->update($profileData);
             }
 
-            // Save user settings
-            $user->settings = $userSettings;
-            $user->save();
+            if (!empty($userPreferenceData)) {
+                $user->update([
+                    'notification_preferences' => array_merge(
+                        $this->sellerNotificationPreferences($user),
+                        $userPreferenceData
+                    ),
+                ]);
+            }
 
             Log::info('Seller settings updated', [
                 'user_id' => $user->id,
@@ -5874,15 +5858,71 @@ class SellerController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => __('messages.settings.updated'),
-                'data' => $sellerProfile->fresh()
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to update seller settings: ' . $e->getMessage());
+            Log::error('Failed to update seller settings: ' . $e->getMessage(), [
+                'user_id' => $request->user()?->id,
+            ]);
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update settings'
+                'message' => config('app.debug')
+                    ? $e->getMessage()
+                    : 'Failed to update settings',
             ], 500);
         }
+    }
+
+    /**
+     * Read seller dashboard toggles from users.notification_preferences.
+     */
+    private function sellerNotificationPreferences($user): array
+    {
+        $prefs = $user->notification_preferences ?? [];
+
+        if (is_string($prefs)) {
+            $decoded = json_decode($prefs, true);
+            $prefs = is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($prefs) ? $prefs : [];
+    }
+
+    private function sellerProfileSettingKeys(): array
+    {
+        return [
+            'return_policy',
+            'shipping_policy',
+            'warranty_policy',
+            'privacy_policy',
+            'terms_of_service',
+            'commission_rate',
+            'auto_withdrawal',
+            'withdrawal_threshold',
+            'preferred_payment_method',
+            'is_active',
+            'vacation_mode',
+            'vacation_message',
+            'vacation_start_date',
+            'vacation_end_date',
+            'currency',
+            'business_hours_enabled',
+            'business_hours',
+        ];
+    }
+
+    private function sellerUserPreferenceKeys(): array
+    {
+        return [
+            'email_notifications',
+            'order_notifications',
+            'inventory_alerts',
+            'review_notifications',
+            'two_factor_auth',
+            'login_notifications',
+            'show_sold_out',
+            'show_reviews',
+            'show_inventory_count',
+        ];
     }
 
     /**
