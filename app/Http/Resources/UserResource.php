@@ -31,6 +31,9 @@ class UserResource extends JsonResource
                     : url('storage/' . ltrim($this->profile_photo, '/')))
                 : null,
             'email_verified_at' => $this->email_verified_at,
+            'deletion_requested_at' => $this->deletion_requested_at,
+            'deletion_scheduled_at' => $this->deletionScheduledAt(),
+            'account_pending_deletion' => $this->canRecoverFromPendingDeletion(),
             'roles' => $this->whenLoaded('roles', fn() => $this->roles->pluck('name'), []),
             'created_at' => $this->created_at,
             'notification_preferences' => $this->notification_preferences ?? [],

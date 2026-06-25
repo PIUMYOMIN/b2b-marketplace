@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 
 use Illuminate\Auth\Events\Registered;
+use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\UserAccountDeletionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use App\Models\SellerProfile;
@@ -23,6 +25,10 @@ use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    public function __construct(
+        private readonly UserAccountDeletionService $accountDeletion,
+    ) {
+    }
 
     /**
      * Register a new user
@@ -215,9 +221,18 @@ class AuthController extends Controller
             ], 401);
         }
 
+        if ($user->hasPendingDeletion() && $user->isDeletionGraceExpired()) {
+            $this->accountDeletion->purgeAccount($user);
+
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.users.account_permanently_deleted'),
+            ], 401);
+        }
+
         // Note: use 401 (not 403) to avoid revealing whether the account
         // exists. Only show 'inactive' detail after a valid captcha pass.
-        if (!$user->is_active || $user->status !== 'active') {
+        if (!$user->canAuthenticate()) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.auth.invalid_credentials')
@@ -234,10 +249,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => __('messages.auth.login_success'),
-            'data' => [
-                'user' => $user->load('roles'),
-                'token' => $token->plainTextToken
-            ]
+            'data' => $this->buildAuthPayload($user, $token->plainTextToken),
         ]);
     }
 
@@ -260,7 +272,7 @@ class AuthController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data' => $request->user()->load('roles')
+            'data' => new UserResource($request->user()->load('roles')),
         ]);
     }
 
@@ -699,7 +711,16 @@ class AuthController extends Controller
     /** Issue a full-session token and return an "authenticated" response. */
     private function issueSocialToken(User $user, string $status): JsonResponse
     {
-        if (!$user->is_active || $user->status !== 'active') {
+        if ($user->hasPendingDeletion() && $user->isDeletionGraceExpired()) {
+            $this->accountDeletion->purgeAccount($user);
+
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.users.account_permanently_deleted'),
+            ], 401);
+        }
+
+        if (!$user->canAuthenticate()) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.auth.invalid_credentials'),
@@ -715,12 +736,31 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'status'  => $status,
-            'data'    => [
-                'token'                       => $token,
-                'user'                        => $user,
-                'email_verification_required' => (bool) $user->email && !$user->hasVerifiedEmail(),
-            ],
+            'data'    => array_merge(
+                $this->buildAuthPayload($user, $token),
+                [
+                    'email_verification_required' => (bool) $user->email && !$user->hasVerifiedEmail(),
+                ]
+            ),
         ]);
+    }
+
+    private function buildAuthPayload(User $user, string $token): array
+    {
+        $user->load('roles');
+
+        $payload = [
+            'user' => new UserResource($user),
+            'token' => $token,
+        ];
+
+        if ($user->canRecoverFromPendingDeletion()) {
+            $payload['account_pending_deletion'] = true;
+            $payload['deletion_requested_at'] = $user->deletion_requested_at;
+            $payload['deletion_scheduled_at'] = $user->deletionScheduledAt();
+        }
+
+        return $payload;
     }
 
     private function nextUserId(): string

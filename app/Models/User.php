@@ -24,6 +24,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'type',
         'user_id',
         'is_active',
+        'deletion_requested_at',
         'status',
         'address',
         'city',
@@ -60,6 +61,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'deletion_requested_at' => 'datetime',
             'date_of_birth' => 'date',
             'password' => 'hashed',
             'notification_preferences' => 'array',
@@ -190,6 +192,47 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isSuspended()
     {
         return $this->status === 'suspended';
+    }
+
+    public function hasPendingDeletion(): bool
+    {
+        return $this->deletion_requested_at !== null;
+    }
+
+    public function deletionScheduledAt(): ?\Illuminate\Support\Carbon
+    {
+        if (!$this->deletion_requested_at) {
+            return null;
+        }
+
+        $graceDays = (int) config('app.account_deletion_grace_days', 30);
+
+        return $this->deletion_requested_at->copy()->addDays($graceDays);
+    }
+
+    public function isDeletionGraceExpired(): bool
+    {
+        $scheduledAt = $this->deletionScheduledAt();
+
+        return $scheduledAt !== null && $scheduledAt->isPast();
+    }
+
+    public function canRecoverFromPendingDeletion(): bool
+    {
+        return $this->hasPendingDeletion() && !$this->isDeletionGraceExpired();
+    }
+
+    public function canAuthenticate(): bool
+    {
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        if ($this->canRecoverFromPendingDeletion()) {
+            return true;
+        }
+
+        return $this->is_active === true;
     }
 
     // COD commission invoice relationship (for enforcement logic)

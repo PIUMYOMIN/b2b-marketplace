@@ -63,6 +63,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Subscription plan limits
             'plan.product_limit' => \App\Http\Middleware\CheckPlanProductLimit::class,
             'plan.feature' => \App\Http\Middleware\CheckPlanFeature::class,
+            'account.not_pending_deletion' => \App\Http\Middleware\EnsureAccountNotPendingDeletion::class,
         ]);
     })
     ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {

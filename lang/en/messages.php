@@ -217,10 +217,20 @@ return [
 
     // ── Users (admin) ─────────────────────────────────────────────────────────
     'users' => [
-        'created'           => 'User created successfully',
-        'updated'           => 'User updated successfully',
-        'deleted'           => 'User deleted successfully',
-        'roles_assigned'    => 'Roles assigned successfully',
+        'created'                       => 'User created successfully',
+        'updated'                       => 'User updated successfully',
+        'deleted'                       => 'User deleted successfully',
+        'account_deleted'               => 'Your account has been deleted successfully.',
+        'deletion_scheduled'            => 'Your account is scheduled for deletion in :days days. You can recover it by signing in before then.',
+        'deletion_already_scheduled'    => 'Your account is already scheduled for deletion.',
+        'deletion_cancelled'            => 'Your account has been recovered successfully.',
+        'deletion_cannot_be_cancelled'  => 'This account can no longer be recovered.',
+        'deletion_recovery_required'    => 'Recover your account to continue using Pyonea.',
+        'account_permanently_deleted'   => 'This account has been permanently deleted.',
+        'roles_assigned'                => 'Roles assigned successfully',
+        'admin_cannot_self_delete'      => 'Administrator accounts cannot be deleted through this action.',
+        'pending_orders_block_delete'     => 'Your account cannot be deleted while you have pending or active orders. Please wait until they are delivered or cancelled.',
+        'active_disputes_block_delete'    => 'Your account cannot be deleted while you have open support tickets or disputes.',
     ],
 
     // ── Commission rules ──────────────────────────────────────────────────────

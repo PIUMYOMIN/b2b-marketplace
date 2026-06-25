@@ -77,3 +77,12 @@ Artisan::command('inspire', function () {
         ->onFailure(function () {
             \Illuminate\Support\Facades\Log::error('seo:generate-static scheduled job failed.');
         });
+
+    // Permanently delete accounts whose 30-day pending deletion grace period has expired.
+    Schedule::command('users:purge-pending-deletions')
+        ->dailyAt('01:00')
+        ->withoutOverlapping()
+        ->runInBackground()
+        ->onFailure(function () {
+            \Illuminate\Support\Facades\Log::error('users:purge-pending-deletions scheduled job failed.');
+        });

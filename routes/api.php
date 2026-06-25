@@ -170,7 +170,7 @@ Route::group([
     // --------------------
     // Authenticated Routes
     // --------------------
-    Route::middleware(['auth:sanctum'])->group(function () {
+    Route::middleware(['auth:sanctum', 'account.not_pending_deletion'])->group(function () {
 
         // Dashboard — all admin routes require the admin role
         Route::prefix('admin')->middleware('role:admin')->group(function () {
@@ -679,6 +679,8 @@ Route::group([
                 Route::get('/', [UserController::class, 'showProfile']);
                 Route::put('/', [UserController::class, 'updateProfile']);
                 Route::put('/password', [UserController::class, 'changePassword']);
+                Route::delete('/', [UserController::class, 'destroyProfile']);
+                Route::post('/cancel-deletion', [UserController::class, 'cancelAccountDeletion']);
                 Route::post('/photo', [UserController::class, 'uploadProfilePhoto']);
                 Route::delete('/photo', [UserController::class, 'deleteProfilePhoto']);
                 Route::post('/identity', [UserController::class, 'uploadIdentityDocument']);

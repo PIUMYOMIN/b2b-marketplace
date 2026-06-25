@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\UserAccountDeletionService;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Hash;
@@ -16,6 +17,11 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 class UserController extends Controller
 {
     use AuthorizesRequests;
+
+    public function __construct(
+        private readonly UserAccountDeletionService $accountDeletion,
+    ) {
+    }
     /**
      * Display a paginated list of users.
      */
@@ -381,6 +387,82 @@ class UserController extends Controller
             'success' => true,
             'message' => 'Notification preferences updated successfully',
             'data' => $user->notification_preferences
+        ]);
+    }
+
+    /**
+     * Schedule the authenticated user's account for deletion after the grace period.
+     */
+    public function destroyProfile(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->hasRole('admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.users.admin_cannot_self_delete'),
+            ], 422);
+        }
+
+        if ($user->hasPendingDeletion()) {
+            return response()->json([
+                'success' => true,
+                'message' => __('messages.users.deletion_already_scheduled'),
+                'data' => [
+                    'deletion_requested_at' => $user->deletion_requested_at,
+                    'deletion_scheduled_at' => $user->deletionScheduledAt(),
+                ],
+            ]);
+        }
+
+        if ($this->accountDeletion->hasBlockingActiveOrders($user)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.users.pending_orders_block_delete'),
+            ], 422);
+        }
+
+        if ($this->accountDeletion->hasBlockingOpenReports($user)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.users.active_disputes_block_delete'),
+            ], 422);
+        }
+
+        $user = $this->accountDeletion->scheduleDeletion($user);
+
+        return response()->json([
+            'success' => true,
+            'message' => __('messages.users.deletion_scheduled', [
+                'days' => $this->accountDeletion->graceDays(),
+            ]),
+            'data' => [
+                'deletion_requested_at' => $user->deletion_requested_at,
+                'deletion_scheduled_at' => $user->deletionScheduledAt(),
+            ],
+        ]);
+    }
+
+    /**
+     * Cancel a pending account deletion and restore access.
+     */
+    public function cancelAccountDeletion(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user->canRecoverFromPendingDeletion()) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.users.deletion_cannot_be_cancelled'),
+            ], 422);
+        }
+
+        $user = $this->accountDeletion->cancelDeletion($user);
+
+        return response()->json([
+            'success' => true,
+            'message' => __('messages.users.deletion_cancelled'),
+            'data' => new UserResource($user->load('roles')),
         ]);
     }
 }
