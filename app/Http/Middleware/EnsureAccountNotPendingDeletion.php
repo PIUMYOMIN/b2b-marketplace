@@ -17,10 +17,7 @@ class EnsureAccountNotPendingDeletion
         $user = $request->user();
 
         if ($user && $user->canRecoverFromPendingDeletion()) {
-            if (
-                $request->is('api/auth/logout', 'api/auth/me')
-                || $request->is('api/users/profile/cancel-deletion')
-            ) {
+            if ($request->is('*users/profile/cancel-deletion')) {
                 return $next($request);
             }
 
