@@ -224,15 +224,65 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function canAuthenticate(): bool
     {
-        if ($this->status !== 'active') {
+        if ($this->status === 'suspended') {
             return false;
         }
 
+        // Allow sign-in during the deletion grace period so the user can recover.
         if ($this->canRecoverFromPendingDeletion()) {
             return true;
         }
 
+        if ($this->status !== 'active') {
+            return false;
+        }
+
         return $this->is_active === true;
+    }
+
+    /**
+     * Human-readable login denial when credentials are valid but sign-in is blocked.
+     *
+     * @return array{code: string, message: string}|null
+     */
+    public function authenticationDenial(): ?array
+    {
+        if ($this->canAuthenticate()) {
+            return null;
+        }
+
+        if ($this->status === 'suspended') {
+            return [
+                'code' => 'account_suspended',
+                'message' => __('messages.auth.account_suspended'),
+            ];
+        }
+
+        if ($this->hasPendingDeletion() && $this->isDeletionGraceExpired()) {
+            return [
+                'code' => 'account_permanently_deleted',
+                'message' => __('messages.users.account_permanently_deleted'),
+            ];
+        }
+
+        if ($this->status !== 'active') {
+            return [
+                'code' => 'account_status_inactive',
+                'message' => __('messages.auth.account_status_inactive'),
+            ];
+        }
+
+        if (!$this->is_active) {
+            return [
+                'code' => 'account_deactivated',
+                'message' => __('messages.auth.account_deactivated'),
+            ];
+        }
+
+        return [
+            'code' => 'login_not_allowed',
+            'message' => __('messages.auth.login_not_allowed'),
+        ];
     }
 
     // COD commission invoice relationship (for enforcement logic)

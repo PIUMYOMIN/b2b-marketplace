@@ -213,31 +213,38 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user = User::where('phone', $phone)->first();
+        $user = User::withTrashed()->where('phone', $phone)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.auth.invalid_credentials')
-            ], 401);
+            return $this->authFailureResponse(
+                __('messages.auth.invalid_credentials'),
+                'invalid_credentials',
+            );
+        }
+
+        if ($user->trashed()) {
+            return $this->authFailureResponse(
+                __('messages.users.account_permanently_deleted'),
+                'account_permanently_deleted',
+            );
         }
 
         if ($user->hasPendingDeletion() && $user->isDeletionGraceExpired()) {
             $this->accountDeletion->purgeAccount($user);
 
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.users.account_permanently_deleted'),
-            ], 401);
+            return $this->authFailureResponse(
+                __('messages.users.account_permanently_deleted'),
+                'account_permanently_deleted',
+            );
         }
 
-        // Note: use 401 (not 403) to avoid revealing whether the account
-        // exists. Only show 'inactive' detail after a valid captcha pass.
-        if (!$user->canAuthenticate()) {
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.auth.invalid_credentials')
-            ], 401);
+        if ($denial = $user->authenticationDenial()) {
+            return $this->authFailureResponse(
+                $denial['message'],
+                $denial['code'],
+                401,
+                $this->authFailureContext($user),
+            );
         }
 
         // Set token expiration based on remember me
@@ -716,17 +723,19 @@ class AuthController extends Controller
         if ($user->hasPendingDeletion() && $user->isDeletionGraceExpired()) {
             $this->accountDeletion->purgeAccount($user);
 
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.users.account_permanently_deleted'),
-            ], 401);
+            return $this->authFailureResponse(
+                __('messages.users.account_permanently_deleted'),
+                'account_permanently_deleted',
+            );
         }
 
-        if (!$user->canAuthenticate()) {
-            return response()->json([
-                'success' => false,
-                'message' => __('messages.auth.invalid_credentials'),
-            ], 401);
+        if ($denial = $user->authenticationDenial()) {
+            return $this->authFailureResponse(
+                $denial['message'],
+                $denial['code'],
+                401,
+                $this->authFailureContext($user),
+            );
         }
 
         $token = $user->createToken(
@@ -745,6 +754,42 @@ class AuthController extends Controller
                 ]
             ),
         ]);
+    }
+
+    private function authFailureResponse(
+        string $message,
+        string $errorCode,
+        int $status = 401,
+        array $context = [],
+    ): JsonResponse {
+        $payload = [
+            'success' => false,
+            'message' => $message,
+            'error_code' => $errorCode,
+        ];
+
+        if ($context !== []) {
+            $payload['data'] = $context;
+        }
+
+        return response()->json($payload, $status);
+    }
+
+    /** @return array<string, mixed> */
+    private function authFailureContext(User $user): array
+    {
+        $context = [
+            'status' => $user->status,
+            'is_active' => (bool) $user->is_active,
+        ];
+
+        if ($user->hasPendingDeletion()) {
+            $context['account_pending_deletion'] = $user->canRecoverFromPendingDeletion();
+            $context['deletion_requested_at'] = $user->deletion_requested_at;
+            $context['deletion_scheduled_at'] = $user->deletionScheduledAt();
+        }
+
+        return $context;
     }
 
     private function buildAuthPayload(User $user, string $token): array

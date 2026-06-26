@@ -6,8 +6,12 @@ return [
     'auth' => [
         'login_success'           => 'Login successful',
         'logout_success'          => 'Logged out successfully',
-        'invalid_credentials'     => 'Invalid credentials',
+        'invalid_credentials'     => 'Invalid phone number or password.',
         'account_inactive'        => 'Your account is not active',
+        'account_deactivated'     => 'Your account has been deactivated. Contact support if you need help.',
+        'account_suspended'       => 'Your account has been suspended. Contact support for assistance.',
+        'account_status_inactive' => 'Your account status is inactive. Contact support to restore access.',
+        'login_not_allowed'       => 'Sign-in is not allowed for this account. Contact support for assistance.',
         'invalid_phone'           => 'Invalid Myanmar phone number format',
         'register_success'        => 'User registered successfully. Please verify your email.',
         'user_not_found'          => 'User not found',
