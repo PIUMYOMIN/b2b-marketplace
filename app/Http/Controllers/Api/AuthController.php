@@ -780,7 +780,7 @@ class AuthController extends Controller
     {
         $context = [
             'status' => $user->status,
-            'is_active' => (bool) $user->is_active,
+            'is_active' => $user->isActive(),
         ];
 
         if ($user->hasPendingDeletion()) {

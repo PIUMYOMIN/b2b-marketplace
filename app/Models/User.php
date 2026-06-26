@@ -63,6 +63,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'deletion_requested_at' => 'datetime',
             'date_of_birth' => 'date',
+            'is_active' => 'boolean',
             'password' => 'hashed',
             'notification_preferences' => 'array',
         ];
@@ -179,12 +180,12 @@ class User extends Authenticatable implements MustVerifyEmail
         return $query->where('status', 'suspended');
     }
 
-    public function isActive()
+    public function isActive(): bool
     {
         return $this->is_active === true;
     }
 
-    public function isInactive()
+    public function isInactive(): bool
     {
         return $this->is_active === false;
     }
@@ -237,7 +238,7 @@ class User extends Authenticatable implements MustVerifyEmail
             return false;
         }
 
-        return $this->is_active === true;
+        return $this->isActive();
     }
 
     /**
@@ -272,7 +273,7 @@ class User extends Authenticatable implements MustVerifyEmail
             ];
         }
 
-        if (!$this->is_active) {
+        if (!$this->isActive()) {
             return [
                 'code' => 'account_deactivated',
                 'message' => __('messages.auth.account_deactivated'),
