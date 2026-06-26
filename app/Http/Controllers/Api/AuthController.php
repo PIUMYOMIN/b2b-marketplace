@@ -191,13 +191,13 @@ class AuthController extends Controller
     private function isValidMyanmarPhone($phone)
     {
         // Should start with +959 and have 7-9 digits after
-        return preg_match('/^\+959\d{7,9}$/', $phone);
+        return preg_match('/^\+95\d{8,10}$/', $phone);
     }
 
     public function login(Request $request)
     {
         $request->validate([
-            'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
+            'phone' => ['required', 'regex:/^(\+?95[0-9]|09|9)\d{6,9}$/'],
             'password' => 'required',
             'remember' => 'nullable|boolean',
             'recaptcha_token' => $this->recaptchaRules($request),
