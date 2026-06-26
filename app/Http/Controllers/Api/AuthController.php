@@ -44,7 +44,7 @@ class AuthController extends Controller
             'address' => 'nullable|string',
             'city' => 'nullable|string',
             'state' => 'nullable|string',
-            'recaptcha_token' => ['required', new Recaptcha],
+            'recaptcha_token' => $this->recaptchaRules($request),
             'ref_code' => 'nullable|string|max:12',
         ]);
 
@@ -149,12 +149,13 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => __('messages.auth.register_success'),
-                'data' => [
-                    'user' => $user,
-                    'token' => $token,
+                'data' => array_merge(
+                    $this->buildAuthPayload($user, $token),
+                    [
                     'requires_onboarding' => $validated['type'] === 'seller',
                     'email_verification_required' => true
-                ]
+                    ]
+                )
             ], 201);
         });
     }
@@ -199,7 +200,7 @@ class AuthController extends Controller
             'phone' => ['required', 'regex:/^(\+?959|09|9)\d{7,9}$/'],
             'password' => 'required',
             'remember' => 'nullable|boolean',
-            'recaptcha_token' => ['required', new Recaptcha],
+            'recaptcha_token' => $this->recaptchaRules($request),
             'ref_code' => 'nullable|string|max:12',
         ]);
 
@@ -597,12 +598,13 @@ class AuthController extends Controller
             return response()->json([
                 'success' => true,
                 'status'  => 'registered',
-                'data'    => [
-                    'token'                       => $token,
-                    'user'                        => $user,
+                'data'    => array_merge(
+                    $this->buildAuthPayload($user, $token),
+                    [
                     'requires_onboarding'         => $role === 'seller',
                     'email_verification_required' => (bool) $user->email && !$user->hasVerifiedEmail(),
-                ],
+                    ]
+                ),
             ], 201);
         });
     }
@@ -761,6 +763,15 @@ class AuthController extends Controller
         }
 
         return $payload;
+    }
+
+    private function recaptchaRules(Request $request): array
+    {
+        if ($request->header('X-Pyonea-Client') === 'native') {
+            return ['nullable', 'string'];
+        }
+
+        return ['required', new Recaptcha];
     }
 
     private function nextUserId(): string
