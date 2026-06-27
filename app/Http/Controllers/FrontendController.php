@@ -198,8 +198,8 @@ class FrontendController extends Controller
         // ── Product detail: /products/some-slug ─────────────────────────────
         elseif (preg_match('#^products/([^/]+)$#', $trimmed, $matches)) {
             $slug = $matches[1];
-            $product = Product::where('slug_en', $slug)
-                ->orWhere('slug_mm', $slug)
+            $product = Product::approved()
+                ->where(fn ($q) => $q->where('slug_en', $slug)->orWhere('slug_mm', $slug))
                 ->with(['seller', 'reviews.user'])
                 ->first();
 

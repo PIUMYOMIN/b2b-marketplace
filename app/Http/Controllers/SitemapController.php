@@ -56,7 +56,7 @@ class SitemapController extends Controller
             ->get();
 
         $categories = Category::where('is_active', true)
-            ->select('id', 'updated_at')
+            ->select('id', 'slug_en', 'slug_mm', 'updated_at')
             ->get();
 
         $blogPosts = BlogPost::published()
@@ -82,8 +82,15 @@ class SitemapController extends Controller
 
         // Category-filtered product listing pages
         foreach ($categories as $cat) {
-            $baseLoc = $baseUrl . '/products?category=' . $cat->id;
-            $xml .= $this->urlEntry($baseLoc, $cat->updated_at, 'weekly', '0.7');
+            // Category detail page (has its own full SSR meta)
+            if ($cat->slug_en) {
+                $xml .= $this->urlEntry($baseUrl . '/categories/' . $cat->slug_en, $cat->updated_at, 'weekly', '0.7');
+            }
+            if ($cat->slug_mm && $cat->slug_mm !== $cat->slug_en) {
+                $xml .= $this->urlEntry($baseUrl . '/categories/' . $cat->slug_mm, $cat->updated_at, 'weekly', '0.7');
+            }
+            // Category-filtered product listing
+            $xml .= $this->urlEntry($baseUrl . '/products?category=' . $cat->id, $cat->updated_at, 'weekly', '0.6');
         }
 
         // Product pages — use slug_en as canonical path; also emit slug_mm if different
@@ -121,7 +128,7 @@ class SitemapController extends Controller
 
         return response($xml, 200)
             ->header('Content-Type', 'application/xml')
-            ->header('Cache-Control', 'public, max-age=3600');
+            ->header('Cache-Control', 'public, max-age=300');
     }
 
     /**

@@ -1,4 +1,15 @@
 User-agent: *
-Disallow:
+Disallow: /admin/
+Disallow: /buyer/
+Disallow: /cart/
+Disallow: /checkout/
+Disallow: /wishlist/
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /payment-success
+Disallow: /my-reports
+Disallow: /track-order
+Disallow: /unsubscribe
+Disallow: /newsletter/
 
 Sitemap: https://pyonea.com/sitemap.xml

@@ -56,7 +56,7 @@
   <!-- hreflang — distinct URLs per language so Google indexes both separately -->
   <link rel="alternate" hreflang="en"        href="{{ $enUrl }}" />
   <link rel="alternate" hreflang="my"        href="{{ $myUrl }}" />
-  <link rel="alternate" hreflang="x-default" href="{{ $enUrl }}" />
+  <link rel="alternate" hreflang="x-default" href="{{ $myUrl }}" />
 
   <!-- Open Graph -->
   <meta property="og:type"             content="{{ $pageType ?? 'website' }}" />

@@ -18,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -236,6 +237,10 @@ class ProductController extends Controller
         ]);
         $this->flushPublicCatalogCaches();
 
+        // Regenerate the static SEO HTML for this product immediately after
+        // approval so crawlers don't have to wait until the nightly 02:20 run.
+        $this->dispatchSeoRegenForProduct($product);
+
         $product->load(['category', 'seller'])->loadSum('activeVariants', 'quantity');
 
         return response()->json([
@@ -273,6 +278,10 @@ class ProductController extends Controller
             'rejection_reason' => $request->reason ?: null,
         ]);
         $this->flushPublicCatalogCaches();
+
+        // Remove the stale static SEO file so a rejected product is no longer
+        // served to crawlers until it is re-approved.
+        $this->purgeSeoStaticForProduct($product);
 
         $product->load(['category', 'seller'])->loadSum('activeVariants', 'quantity');
 
@@ -708,8 +717,15 @@ class ProductController extends Controller
         }
 
         try {
+            // Capture slugs before deletion so we can purge the static SEO files.
+            $slugEn = $product->slug_en;
+            $slugMm = $product->slug_mm;
+
             $product->delete();
             $this->flushPublicCatalogCaches();
+
+            // Remove static SEO HTML so deleted products aren't served to crawlers.
+            $this->purgeSeoStaticForProduct((object) ['slug_en' => $slugEn, 'slug_mm' => $slugMm]);
 
             return response()->json([
                 'success' => true,
@@ -1650,6 +1666,54 @@ class ProductController extends Controller
             'success' => true,
             'data' => $discounts
         ]);
+    }
+
+    /**
+     * Dispatch an after-response job to regenerate the static SEO HTML for a
+     * single product in both languages. Runs via seo:generate-static so the
+     * logic stays in one place and the HTTP response is not delayed.
+     */
+    private function dispatchSeoRegenForProduct($product): void
+    {
+        $slug = $product->slug_en ?? $product->slug_mm;
+        if (! $slug) {
+            return;
+        }
+
+        dispatch(function () use ($slug) {
+            \Artisan::call('seo:generate-static', [
+                '--type' => 'products',
+                '--slug' => $slug,
+            ]);
+        })->afterResponse();
+    }
+
+    /**
+     * Delete the static SEO HTML files for a product so rejected or deleted
+     * products are no longer served to crawlers.
+     */
+    private function purgeSeoStaticForProduct($product): void
+    {
+        $output = rtrim(
+            env('SEO_STATIC_OUTPUT_PATH', public_path('seo-static')),
+            DIRECTORY_SEPARATOR
+        );
+
+        $slugs = array_filter([$product->slug_en ?? null, $product->slug_mm ?? null]);
+
+        foreach ($slugs as $slug) {
+            foreach (['en', 'my'] as $locale) {
+                $path = $output
+                    . DIRECTORY_SEPARATOR . $locale
+                    . DIRECTORY_SEPARATOR . 'products'
+                    . DIRECTORY_SEPARATOR . $slug
+                    . DIRECTORY_SEPARATOR . 'index.html';
+
+                if (\Illuminate\Support\Facades\File::exists($path)) {
+                    \Illuminate\Support\Facades\File::delete($path);
+                }
+            }
+        }
     }
 
     /**
