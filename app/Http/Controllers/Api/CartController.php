@@ -71,7 +71,13 @@ class CartController extends Controller
                     // ── Availability ──────────────────────────────────────────
                     $isAvailable = !$productGone
                         && $product->is_active
+                        && in_array($product->status, ['approved', 'pending'], true)
                         && ($product->product_type !== 'physical' || ($stock !== null && $stock > 0));
+
+                    $canCheckout = ! $productGone && $product->canCheckout();
+                    $checkoutBlockedReason = $productGone
+                        ? 'unavailable'
+                        : $product->checkoutBlockedReason();
 
                     // ── Names / images ────────────────────────────────────────
                     $productName = $productGone
@@ -217,6 +223,8 @@ class CartController extends Controller
                         'applied_tier'         => $appliedTier,
                         'selected_options'     => $item->selected_options,
                         'is_available'         => $isAvailable,
+                        'can_checkout'         => $canCheckout,
+                        'checkout_blocked_reason' => $checkoutBlockedReason,
                         'is_quantity_valid'    => $isAvailable
                             && ($stock === null || $item->quantity <= $stock)
                             && $item->isQuantityValid(),
@@ -285,13 +293,18 @@ class CartController extends Controller
                 'selected_options' => 'nullable|array',
             ]);
 
-            $product = Product::findOrFail($request->product_id);
+            $product = Product::with('seller.sellerProfile')->findOrFail($request->product_id);
 
             if ($product->trashed()) {
                 return response()->json(['success' => false, 'message' => 'Product is no longer available'], 400);
             }
 
-            if (!$product->is_active) {
+            if (! $product->is_active || ! in_array($product->status, ['approved', 'pending'], true)) {
+                return response()->json(['success' => false, 'message' => 'Product is not available'], 400);
+            }
+
+            $sellerProfile = $product->seller?->sellerProfile;
+            if (! $sellerProfile || ! $sellerProfile->isPubliclyVisible()) {
                 return response()->json(['success' => false, 'message' => 'Product is not available'], 400);
             }
 

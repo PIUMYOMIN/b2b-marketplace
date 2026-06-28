@@ -6,6 +6,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 use App\Http\Resources\ReviewResource;
+use App\Http\Resources\Concerns\FormatsMarketplaceTrust;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Storage;
  */
 class ProductResource extends JsonResource
 {
+    use FormatsMarketplaceTrust;
     /**
      * Normalise an images array so every URL is absolute.
      * ProductListResource does the same for its primary-image helper.
@@ -172,18 +174,23 @@ class ProductResource extends JsonResource
             'views'            => $this->views,
             'is_featured'      => $this->is_featured,
             'is_new'           => $this->is_new,
+            ...$this->productTrustFields($this->resource),
             // Optional: included by ProductController@showPublic for product detail page
             'reviews'          => ReviewResource::collection($this->whenLoaded('reviews')),
 
             // ── Relations ─────────────────────────────────────────────────────
-            'seller'           => $this->whenLoaded('seller', fn() => [
-                'id'             => $this->seller->id,
-                'name'           => $this->seller->name,
-                'store_name'     => $this->seller->sellerProfile?->store_name,
-                'store_slug'     => $this->seller->sellerProfile?->store_slug,
-                'logo'           => $this->seller->sellerProfile?->logo,
-                'average_rating' => $this->seller->sellerProfile?->average_rating,
-            ]),
+            'seller'           => $this->whenLoaded('seller', function () {
+                $profile = $this->seller->sellerProfile;
+
+                return array_merge([
+                    'id'             => $this->seller->id,
+                    'name'           => $this->seller->name,
+                    'store_name'     => $profile?->store_name,
+                    'store_slug'     => $profile?->store_slug,
+                    'logo'           => $profile?->logo,
+                    'average_rating' => $profile?->average_rating,
+                ], $this->sellerTrustFields($profile));
+            }),
             'category'         => $this->whenLoaded('category', fn() => [
                 'id'   => $this->category->id,
                 'name' => $this->category->name,

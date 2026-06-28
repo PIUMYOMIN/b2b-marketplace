@@ -61,13 +61,14 @@ class ProductController extends Controller
             return response()->json($payload);
         }
 
-        $query = Product::approved()
+        $query = Product::publiclyVisible()
             ->with([
                 'seller.sellerProfile',
                 'category',
                 'wholesaleTiers' => fn($q) => $q->where('is_active', true)->orderBy('min_qty'),
             ])
-            ->withCount('reviews');
+            ->withCount('reviews')
+            ->orderByApprovalPriority();
  
         // ── Filters ──────────────────────────────────────────────────────────
         // Accept both 'category_id' (legacy) and 'category' (frontend param)
@@ -297,7 +298,7 @@ class ProductController extends Controller
      */
     public function showPublic(string $slugOrId): JsonResponse
     {
-        $product = Product::approved()
+        $product = Product::publiclyVisible()
             ->with([
                 'seller.sellerProfile',
                 'category',
@@ -417,7 +418,7 @@ class ProductController extends Controller
  
         return response()->json([
             'success' => true,
-            'message' => __('messages.products.created'),
+            'message' => __('messages.products.published_pending_review'),
             'data'    => new ProductResource($product),
         ], 201);
     }
@@ -921,9 +922,9 @@ class ProductController extends Controller
                     $query->where('status', 'approved');
                 }
             ], 'rating')
-            // FIX: public search must never return inactive or unapproved products
-            ->where('is_active', true)
-            ->where('status', 'approved');
+            // Public search: active listings awaiting or past admin approval.
+            ->publiclyVisible()
+            ->orderByApprovalPriority();
 
         if ($request->has('query')) {
             $searchTerm = $this->normalizeSearchTerm($request->input('query'));

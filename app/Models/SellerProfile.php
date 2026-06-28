@@ -749,6 +749,67 @@ class SellerProfile extends Model
         return $query->where('status', 'approved');
     }
 
+    /**
+     * Seller stores that may appear on the public site (includes pending review).
+     */
+    public function scopePubliclyVisible($query)
+    {
+        return $query->whereNotIn('status', ['suspended', 'closed', 'rejected'])
+            ->whereNotNull('store_name')
+            ->where('store_name', '!=', '');
+    }
+
+    public function canAcceptOrders(): bool
+    {
+        return in_array($this->status, ['approved', 'active'], true);
+    }
+
+    public function isPubliclyVisible(): bool
+    {
+        return ! in_array($this->status, ['suspended', 'closed', 'rejected'], true)
+            && ! empty(trim((string) $this->store_name));
+    }
+
+    public function isVerifiedForDisplay(): bool
+    {
+        return (bool) $this->is_verified || $this->verification_status === 'verified';
+    }
+
+    public function trustBadgeKey(): string
+    {
+        if ($this->isVerifiedForDisplay()) {
+            return 'verified';
+        }
+
+        if ($this->canAcceptOrders()) {
+            return 'registered';
+        }
+
+        if (! $this->isOnboardingComplete()) {
+            return 'new_seller';
+        }
+
+        return 'under_review';
+    }
+
+    /**
+     * @return array{key: string, label: string}
+     */
+    public function trustBadge(): array
+    {
+        $key = $this->trustBadgeKey();
+
+        return [
+            'key'   => $key,
+            'label' => match ($key) {
+                'verified'     => 'Verified Seller',
+                'registered'   => 'Registered Seller',
+                'under_review' => 'Under Review',
+                default        => 'New Seller',
+            },
+        ];
+    }
+
     public function scopePending($query)
     {
         return $query->where('status', 'pending');

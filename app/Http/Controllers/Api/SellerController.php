@@ -914,8 +914,7 @@ class SellerController extends Controller
      */
     public function show(Request $request, SellerProfile $seller)
     {
-        // Check if seller is approved/active (optional)
-        if (!in_array($seller->status, ['approved', 'active'])) {
+        if (! $seller->isPubliclyVisible()) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.seller.profile_not_found')
@@ -933,14 +932,19 @@ class SellerController extends Controller
         $perPage = min(max((int) $request->input('per_page', 24), 1), 48);
 
         $products = Product::where('seller_id', $seller->user_id)
-            ->where('is_active', true)
-            ->with(['category'])
+            ->publiclyVisible()
+            ->with(['category', 'seller.sellerProfile'])
             ->withAvg('reviews', 'rating')
             ->withCount('reviews')
+            ->orderByApprovalPriority()
+            ->orderByDesc('listed_at')
             ->paginate($perPage);
 
         // Convert seller logo and banner to full URLs
         $sellerData = $seller->toArray();
+        $sellerData['is_verified'] = $seller->isVerifiedForDisplay();
+        $sellerData['trust_badge'] = $seller->trustBadge();
+        $sellerData['can_accept_orders'] = $seller->canAcceptOrders();
         $sellerData['store_logo'] = !empty($sellerData['store_logo'])
             ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
             : null;
@@ -948,20 +952,26 @@ class SellerController extends Controller
             ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
             : null;
 
-        // Convert product images to full URLs
+        // Convert product images to full URLs and expose trust fields for the storefront.
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
-                if (isset($product['images'])) {
-                    $images = is_string($product['images']) ? json_decode($product['images'], true) : $product['images'];
+                if (isset($product->images)) {
+                    $images = is_string($product->images) ? json_decode($product->images, true) : $product->images;
                     if (is_array($images)) {
                         foreach ($images as &$image) {
                             if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
                                 $image['url'] = url('storage/' . ltrim($image['url'], '/'));
                             }
                         }
-                        $product['images'] = $images;
+                        $product->images = $images;
                     }
                 }
+
+                $product->setAttribute('approval_status', $product->status);
+                $product->setAttribute('is_pending_review', $product->isPendingReview());
+                $product->setAttribute('can_checkout', $product->canCheckout());
+                $product->setAttribute('checkout_blocked_reason', $product->checkoutBlockedReason());
+
                 return $product;
             });
         }

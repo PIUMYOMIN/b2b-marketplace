@@ -3,6 +3,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\FormatsMarketplaceTrust;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
 
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
  */
 class ProductListResource extends JsonResource
 {
+    use FormatsMarketplaceTrust;
     private function formatPrimaryImage(): ?array
     {
         $img = collect($this->images)->firstWhere('is_primary', true)
@@ -72,6 +74,7 @@ class ProductListResource extends JsonResource
             'is_new'         => $this->is_new,
             'in_stock'       => $this->isInStock(),
             'has_variants'   => $this->hasVariants(),
+            ...$this->productTrustFields($this->resource),
             'wholesale_tiers' => $this->whenLoaded('wholesaleTiers', fn() =>
                 $this->wholesaleTiers->map(fn($t) => [
                     'min_qty'        => $t->min_qty,
@@ -82,11 +85,15 @@ class ProductListResource extends JsonResource
             ),
             // Primary image only — with full storage URL
             'image'          => $this->formatPrimaryImage(),
-            'seller'         => $this->whenLoaded('seller', fn() => [
-                'id'         => $this->seller->id,
-                'store_name' => $this->seller->sellerProfile?->store_name,
-                'store_slug' => $this->seller->sellerProfile?->store_slug,
-            ]),
+            'seller'         => $this->whenLoaded('seller', function () {
+                $profile = $this->seller->sellerProfile;
+
+                return array_merge([
+                    'id'         => $this->seller->id,
+                    'store_name' => $profile?->store_name,
+                    'store_slug' => $profile?->store_slug,
+                ], $this->sellerTrustFields($profile));
+            }),
             // BUG FIX: was returning only 'name', but seller dashboard reads name_en/name_mm.
             // Added category_id at top level for the category filter comparison.
             'category_id'    => $this->category_id,

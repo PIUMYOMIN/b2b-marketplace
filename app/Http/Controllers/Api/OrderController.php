@@ -582,7 +582,10 @@ class OrderController extends Controller
             $subtotal = 0;
 
             foreach ($cartItems as $item) {
-                $product = Product::whereKey($item['product_id'])->lockForUpdate()->first();
+                $product = Product::with('seller.sellerProfile')
+                    ->whereKey($item['product_id'])
+                    ->lockForUpdate()
+                    ->first();
 
                 if (!$product) {
                     throw new \Exception("Product not found: " . $item['product_id']);
@@ -590,6 +593,10 @@ class OrderController extends Controller
 
                 if (!$product->is_active) {
                     throw new \Exception("Product is not available: " . $product->name_en);
+                }
+
+                if (! $product->canCheckout()) {
+                    throw new \Exception($product->checkoutBlockedMessage());
                 }
 
                 // Variant-aware stock check

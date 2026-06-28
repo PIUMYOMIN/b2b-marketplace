@@ -297,6 +297,73 @@ class Product extends Model
         return $query->where('status', 'approved')->where('is_active', true);
     }
 
+    /**
+     * Products buyers can browse on the public site (pending review or fully approved).
+     */
+    public function scopePubliclyVisible($query)
+    {
+        return $query->where('is_active', true)
+            ->whereIn('status', ['approved', 'pending'])
+            ->whereHas('seller.sellerProfile', fn ($q) => $q->publiclyVisible());
+    }
+
+    /**
+     * Deprioritise listings that are still awaiting admin approval.
+     */
+    public function scopeOrderByApprovalPriority($query)
+    {
+        return $query->orderByRaw("CASE WHEN products.status = 'approved' THEN 0 ELSE 1 END");
+    }
+
+    public function isPendingReview(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function canCheckout(): bool
+    {
+        if ($this->status !== 'approved' || ! $this->is_active) {
+            return false;
+        }
+
+        $profile = $this->seller?->sellerProfile;
+
+        return $profile && $profile->canAcceptOrders();
+    }
+
+    public function checkoutBlockedReason(): ?string
+    {
+        if ($this->canCheckout()) {
+            return null;
+        }
+
+        if ($this->status === 'pending') {
+            return 'product_pending_review';
+        }
+
+        $profile = $this->seller?->sellerProfile;
+
+        if (! $profile || ! $profile->canAcceptOrders()) {
+            return 'seller_not_approved';
+        }
+
+        if (! $this->is_active) {
+            return 'product_inactive';
+        }
+
+        return 'unavailable';
+    }
+
+    public function checkoutBlockedMessage(): string
+    {
+        return match ($this->checkoutBlockedReason()) {
+            'product_pending_review' => __('messages.products.checkout_blocked_pending'),
+            'seller_not_approved'    => __('messages.products.checkout_blocked_seller'),
+            'product_inactive'       => __('messages.products.not_available'),
+            default                  => __('messages.products.checkout_blocked'),
+        };
+    }
+
     public function scopeForSeller($query, int $sellerId)
     {
         return $query->where('seller_id', $sellerId);

@@ -67,6 +67,11 @@ return [
  
         // Approval
         'approved'                       => 'Product approved successfully.',
+        'published_pending_review'       => 'Your product is live with a Pending Review badge. Checkout opens after admin approval.',
+        'checkout_blocked'               => 'This product cannot be purchased right now.',
+        'checkout_blocked_pending'       => 'This listing is under admin review. Checkout will open once it is approved.',
+        'checkout_blocked_seller'        => 'This seller is still under review. Checkout will open once the store is approved.',
+        'not_available'                  => 'Product is not available.',
         'rejected'                       => 'Product rejected.',
     ],
 
