@@ -49,6 +49,32 @@ class OrderController extends Controller
     const PAYMENT_STATUS_FAILED = 'failed';
     const PAYMENT_STATUS_REFUNDED = 'refunded';
 
+    private function isAdmin(?UserModel $user): bool
+    {
+        return (bool) ($user?->hasRole('admin') || $user?->type === 'admin');
+    }
+
+    private function canViewOrder(?UserModel $user, Order $order): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+
+        if ($user->hasRole('seller') || $user->type === 'seller') {
+            return (int) $order->seller_id === (int) $user->id;
+        }
+
+        if ($user->hasRole('buyer') || $user->type === 'buyer') {
+            return (int) $order->buyer_id === (int) $user->id;
+        }
+
+        return false;
+    }
+
     public function index()
     {
         $user = Auth::user();
@@ -1532,4 +1558,3 @@ class OrderController extends Controller
         }
     }
 }
-
