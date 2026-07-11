@@ -19,7 +19,7 @@ class OrderOtpMail extends Mailable
     public function build(): static
     {
         return $this
-            ->subject("Your Pyonea checkout verification code: {$this->otp}")
+            ->subject('Your Pyonea checkout verification code')
             ->view('emails.order-otp', [
                 'otp'        => $this->otp,
                 'userName'   => $this->userName,

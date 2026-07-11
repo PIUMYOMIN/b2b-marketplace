@@ -38,7 +38,7 @@ class RfqQuoteAccepted extends Notification
         $orderNumber = $this->order->order_number;
 
         return (new MailMessage)
-            ->subject("🎉 Your Quote Was Accepted — {$this->rfq->rfq_number} | Order {$orderNumber}")
+            ->subject("Your Quote Was Accepted — {$this->rfq->rfq_number} | Order {$orderNumber}")
             ->greeting("Congratulations {$notifiable->name}!")
             ->line("{$buyerName} has accepted your quote and an order has been created automatically.")
             ->line("**RFQ:** {$this->rfq->rfq_number} — {$this->rfq->product_name}")

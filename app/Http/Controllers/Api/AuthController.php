@@ -664,15 +664,35 @@ class AuthController extends Controller
                         return null;
                     }
                     if (($payload['exp'] ?? 0) < time()) return null;
-                    return $payload;
+                    return $this->normalizeGoogleUserinfo($payload);
                 }
             }
 
-            return $response->successful() ? $response->json() : null;
+            return $response->successful() ? $this->normalizeGoogleUserinfo($response->json()) : null;
         } catch (\Exception $e) {
             Log::error('Google token verification error: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /** Normalize Google userinfo/tokeninfo payloads to a common shape. */
+    private function normalizeGoogleUserinfo(array $payload): ?array
+    {
+        $emailVerified = filter_var($payload['email_verified'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $email = $payload['email'] ?? null;
+
+        if ($email && !$emailVerified) {
+            Log::warning('Google account email is not verified', ['email' => $email]);
+            return null;
+        }
+
+        return [
+            'sub'             => $payload['sub'] ?? $payload['id'] ?? null,
+            'email'           => $email,
+            'email_verified'  => $emailVerified,
+            'name'            => $payload['name'] ?? null,
+            'picture'         => $payload['picture'] ?? null,
+        ];
     }
 
     /**

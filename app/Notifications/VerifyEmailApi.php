@@ -42,7 +42,7 @@ class VerifyEmailApi extends Notification
         $code = $notifiable->generateVerificationCode();
 
         return (new MailMessage)
-            ->subject('Verify Your Email — ' . $code . ' is your code')
+            ->subject('Verify your Pyonea email address')
             ->view('emails.verify-email', [
                 'url' => $verificationUrl,
                 'user' => $notifiable,

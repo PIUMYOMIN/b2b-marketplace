@@ -19,7 +19,7 @@ class CodInvoiceSuspension extends Notification
     public function toMail($notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject("🚫 Your Listings Have Been Suspended — Pyonea")
+            ->subject('Your Listings Have Been Suspended — Pyonea')
             ->greeting("Hi {$notifiable->name},")
             ->line("Due to the overdue COD commission invoice **{$this->invoice->invoice_number}**, your product listings have been temporarily suspended.")
             ->line("Amount due: **" . number_format($this->invoice->commission_amount) . " MMK**")

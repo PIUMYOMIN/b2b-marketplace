@@ -18,11 +18,24 @@ class CampaignMail extends Mailable
 
     public function build(): static
     {
-        return $this
+        $mail = $this
             ->subject($this->campaign->subject)
             ->view('emails.newsletter', [
                 'campaign' => $this->campaign,
                 'token'    => $this->token,
             ]);
+
+        if ($this->token) {
+            $unsubscribeUrl = config('app.frontend_url') . '/unsubscribe?token=' . urlencode($this->token);
+
+            $mail->withSymfonyMessage(function ($message) use ($unsubscribeUrl): void {
+                $headers = $message->getHeaders();
+                $headers->addTextHeader('List-Unsubscribe', '<' . $unsubscribeUrl . '>');
+                $headers->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
+                $headers->addTextHeader('Precedence', 'bulk');
+            });
+        }
+
+        return $mail;
     }
 }

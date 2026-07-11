@@ -16,7 +16,7 @@ class SellerApproved extends Notification {
     }
     public function toMail($n) {
         return (new MailMessage)
-            ->subject('🎉 Your Pyonea Seller Account is Approved!')
+            ->subject('Your Pyonea Seller Account is Approved!')
             ->view('emails.seller-approved', ['seller'=>$this->profile]);
     }
     public function toArray($n): array {

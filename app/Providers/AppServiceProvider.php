@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Support\Facades\Event;
 use App\Models\ProductReview;
 use App\Observers\ProductReviewObserver;
 
@@ -47,6 +49,24 @@ class AppServiceProvider extends ServiceProvider
         ProductReview::observe(ProductReviewObserver::class);
 
         $this->configureRateLimiters();
+        $this->configureTransactionalMailHeaders();
+    }
+
+    protected function configureTransactionalMailHeaders(): void
+    {
+        Event::listen(MessageSending::class, function (MessageSending $event): void {
+            $replyTo = config('mail.reply_to.address');
+            $replyName = config('mail.reply_to.name');
+
+            if ($replyTo) {
+                $event->message->replyTo($replyTo, $replyName);
+            }
+
+            $headers = $event->message->getHeaders();
+            if (!$headers->has('X-Mailer')) {
+                $headers->addTextHeader('X-Mailer', config('app.name') . ' Mailer');
+            }
+        });
     }
 
     protected function configureRateLimiters(): void

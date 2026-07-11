@@ -140,7 +140,7 @@ class ExpireSubscriptions extends Command
                 "  php artisan subscriptions:expire",
                 function ($message) use ($adminEmail, $failed) {
                     $message->to($adminEmail)
-                        ->subject("[Pyonea] ⚠️ {$failed} subscription expiry failure(s) — " . now()->toDateString());
+                        ->subject("[Pyonea] {$failed} subscription expiry failure(s) — " . now()->toDateString());
                 }
             );
 

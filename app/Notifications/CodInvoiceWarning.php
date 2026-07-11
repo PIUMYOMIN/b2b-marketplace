@@ -20,7 +20,7 @@ class CodInvoiceWarning extends Notification
     {
         $daysOver = $this->invoice->days_overdue;
         return (new MailMessage)
-            ->subject("⚠ COD Commission Overdue — {$this->invoice->invoice_number}")
+            ->subject("COD Commission Overdue — {$this->invoice->invoice_number}")
             ->greeting("Hi {$notifiable->name},")
             ->line("Your COD commission invoice **{$this->invoice->invoice_number}** is {$daysOver} days overdue.")
             ->line("Amount due: **" . number_format($this->invoice->commission_amount) . " MMK**")
