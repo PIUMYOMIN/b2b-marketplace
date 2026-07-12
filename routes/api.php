@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\CouponController;
 use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PushTokenController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\BulkImportController;
 use App\Http\Controllers\Api\LocalDealController;
@@ -625,6 +626,17 @@ Route::group([
 
         // Notification preferences (all auth users)
         Route::put('/notification-preferences', [UserController::class, 'updateNotificationPreferences']);
+
+        // ── Mobile push tokens (Expo) ───────────────────────────────────────
+        Route::post('/push-tokens', [PushTokenController::class, 'store']);
+        Route::delete('/push-tokens/{token}', [PushTokenController::class, 'destroy'])
+            ->where('token', '.*');
+        Route::post('/device-tokens', [PushTokenController::class, 'store']);
+        Route::delete('/device-tokens/{token}', [PushTokenController::class, 'destroy'])
+            ->where('token', '.*');
+        Route::post('/notifications/push-tokens', [PushTokenController::class, 'store']);
+        Route::delete('/notifications/push-tokens/{token}', [PushTokenController::class, 'destroy'])
+            ->where('token', '.*');
 
         // ── In-app notifications (Laravel DB notifications) ───────────────
         Route::prefix('notifications')->group(function () {

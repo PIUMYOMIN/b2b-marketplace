@@ -368,4 +368,9 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsTo(User::class, 'referred_by');
     }
 
+    public function pushTokens()
+    {
+        return $this->hasMany(PushToken::class);
+    }
+
 }

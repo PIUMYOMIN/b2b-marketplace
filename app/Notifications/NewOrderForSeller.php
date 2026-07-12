@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Order;
+use App\Notifications\Channels\ExpoPushChannel;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -14,11 +15,16 @@ class NewOrderForSeller extends Notification
 
     public function via($notifiable): array
     {
-        // Only send mail if the seller has an email address
         $channels = ['database'];
+
         if (!empty($notifiable->email) && $this->shouldSendMail($notifiable)) {
             $channels[] = 'mail';
         }
+
+        if ($this->shouldSendPush($notifiable)) {
+            $channels[] = ExpoPushChannel::class;
+        }
+
         return $channels;
     }
 
@@ -42,7 +48,24 @@ class NewOrderForSeller extends Notification
         ];
     }
 
-    private function shouldSendMail($user): bool
+    public function toExpoPush($notifiable): array
+    {
+        return [
+            'title' => 'New Order Received',
+            'body' => "You have received a new order #{$this->order->order_number}.",
+            'channelId' => 'orders',
+            'sound' => 'default',
+            'priority' => 'high',
+            'data' => [
+                'type' => 'new_order',
+                'order_id' => (string) $this->order->id,
+                'order_number' => $this->order->order_number,
+                'message' => "You have received a new order #{$this->order->order_number}.",
+            ],
+        ];
+    }
+
+    private function notificationPreferences($user): array
     {
         $prefs = $user->notification_preferences;
         if (is_string($prefs)) {
@@ -50,7 +73,26 @@ class NewOrderForSeller extends Notification
         } elseif (!is_array($prefs)) {
             $prefs = [];
         }
-        // Check both possible keys for backward compatibility
+
+        return $prefs;
+    }
+
+    private function shouldSendMail($user): bool
+    {
+        $prefs = $this->notificationPreferences($user);
+
         return ($prefs['new_order'] ?? $prefs['order_updates'] ?? true);
+    }
+
+    private function shouldSendPush($user): bool
+    {
+        $prefs = $this->notificationPreferences($user);
+        $orderNotificationsEnabled = $prefs['order_notifications'] ?? true;
+        $newOrderEnabled = $prefs['new_order']
+            ?? $prefs['new_orders']
+            ?? $prefs['order_updates']
+            ?? true;
+
+        return $orderNotificationsEnabled && $newOrderEnabled;
     }
 }
