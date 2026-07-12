@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\VerificationController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ContactMessageController;
+use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\RealtimeController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PaymentController;
@@ -778,6 +780,25 @@ Route::group([
             Route::get('/{ticket_id}',         [ReportController::class, 'show']);
             Route::post('/{ticket_id}/comments', [ReportController::class, 'addComment']);
         });
+
+        // ── Platform messaging (buyer ↔ seller, contextual threads) ───────────
+        Route::prefix('conversations')->middleware('role:buyer|seller')->group(function () {
+            Route::get('/', [ConversationController::class, 'index']);
+            Route::post('/', [ConversationController::class, 'store'])->middleware('throttle:30,1');
+            Route::get('/{id}', [ConversationController::class, 'show'])->whereNumber('id');
+            Route::get('/{id}/messages', [ConversationController::class, 'messages'])->whereNumber('id');
+            Route::post('/{id}/messages', [ConversationController::class, 'sendMessage'])
+                ->whereNumber('id')
+                ->middleware('throttle:60,1');
+            Route::post('/{id}/typing', [ConversationController::class, 'typing'])
+                ->whereNumber('id')
+                ->middleware('throttle:120,1');
+            Route::patch('/{id}/read', [ConversationController::class, 'markRead'])->whereNumber('id');
+            Route::patch('/{id}/close', [ConversationController::class, 'close'])->whereNumber('id');
+        });
+
+        Route::get('/realtime/config', [RealtimeController::class, 'config'])
+            ->middleware('role:buyer|seller');
 
         // ── RFQ (Request For Quotation) ────────────────────────────────────────
         Route::prefix('rfq')->group(function () {

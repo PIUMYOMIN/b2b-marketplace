@@ -39,17 +39,19 @@
     35 => 'LaravelLang\\Routes\\ServiceProvider',
     36 => 'LaravelLang\\StarterKits\\ServiceProvider',
     37 => 'Laravel\\Pail\\PailServiceProvider',
-    38 => 'Laravel\\Sail\\SailServiceProvider',
-    39 => 'Laravel\\Sanctum\\SanctumServiceProvider',
-    40 => 'Laravel\\Socialite\\SocialiteServiceProvider',
-    41 => 'Laravel\\Tinker\\TinkerServiceProvider',
-    42 => 'Carbon\\Laravel\\ServiceProvider',
-    43 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    44 => 'Spatie\\Permission\\PermissionServiceProvider',
-    45 => 'Tymon\\JWTAuth\\Providers\\LaravelServiceProvider',
-    46 => 'App\\Providers\\AppServiceProvider',
-    47 => 'App\\Providers\\AuthServiceProvider',
-    48 => 'App\\Providers\\RouteServiceProvider',
+    38 => 'Laravel\\Reverb\\ApplicationManagerServiceProvider',
+    39 => 'Laravel\\Reverb\\ReverbServiceProvider',
+    40 => 'Laravel\\Sail\\SailServiceProvider',
+    41 => 'Laravel\\Sanctum\\SanctumServiceProvider',
+    42 => 'Laravel\\Socialite\\SocialiteServiceProvider',
+    43 => 'Laravel\\Tinker\\TinkerServiceProvider',
+    44 => 'Carbon\\Laravel\\ServiceProvider',
+    45 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    46 => 'Spatie\\Permission\\PermissionServiceProvider',
+    47 => 'Tymon\\JWTAuth\\Providers\\LaravelServiceProvider',
+    48 => 'App\\Providers\\AppServiceProvider',
+    49 => 'App\\Providers\\AuthServiceProvider',
+    50 => 'App\\Providers\\RouteServiceProvider',
   ),
   'eager' => 
   array (
@@ -78,14 +80,15 @@
     22 => 'LaravelLang\\Routes\\ServiceProvider',
     23 => 'LaravelLang\\StarterKits\\ServiceProvider',
     24 => 'Laravel\\Pail\\PailServiceProvider',
-    25 => 'Laravel\\Sanctum\\SanctumServiceProvider',
-    26 => 'Carbon\\Laravel\\ServiceProvider',
-    27 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    28 => 'Spatie\\Permission\\PermissionServiceProvider',
-    29 => 'Tymon\\JWTAuth\\Providers\\LaravelServiceProvider',
-    30 => 'App\\Providers\\AppServiceProvider',
-    31 => 'App\\Providers\\AuthServiceProvider',
-    32 => 'App\\Providers\\RouteServiceProvider',
+    25 => 'Laravel\\Reverb\\ReverbServiceProvider',
+    26 => 'Laravel\\Sanctum\\SanctumServiceProvider',
+    27 => 'Carbon\\Laravel\\ServiceProvider',
+    28 => 'Termwind\\Laravel\\TermwindServiceProvider',
+    29 => 'Spatie\\Permission\\PermissionServiceProvider',
+    30 => 'Tymon\\JWTAuth\\Providers\\LaravelServiceProvider',
+    31 => 'App\\Providers\\AppServiceProvider',
+    32 => 'App\\Providers\\AuthServiceProvider',
+    33 => 'App\\Providers\\RouteServiceProvider',
   ),
   'deferred' => 
   array (
@@ -239,6 +242,8 @@
     'validator' => 'Illuminate\\Validation\\ValidationServiceProvider',
     'validation.presence' => 'Illuminate\\Validation\\ValidationServiceProvider',
     'Illuminate\\Contracts\\Validation\\UncompromisedVerifier' => 'Illuminate\\Validation\\ValidationServiceProvider',
+    'Laravel\\Reverb\\ApplicationManager' => 'Laravel\\Reverb\\ApplicationManagerServiceProvider',
+    'Laravel\\Reverb\\Contracts\\ApplicationProvider' => 'Laravel\\Reverb\\ApplicationManagerServiceProvider',
     'Laravel\\Sail\\Console\\InstallCommand' => 'Laravel\\Sail\\SailServiceProvider',
     'Laravel\\Sail\\Console\\PublishCommand' => 'Laravel\\Sail\\SailServiceProvider',
     'Laravel\\Socialite\\Contracts\\Factory' => 'Laravel\\Socialite\\SocialiteServiceProvider',
@@ -283,6 +288,9 @@
     array (
     ),
     'Illuminate\\Validation\\ValidationServiceProvider' => 
+    array (
+    ),
+    'Laravel\\Reverb\\ApplicationManagerServiceProvider' => 
     array (
     ),
     'Laravel\\Sail\\SailServiceProvider' => 
