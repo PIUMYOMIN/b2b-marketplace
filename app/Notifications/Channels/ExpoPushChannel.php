@@ -25,6 +25,7 @@ class ExpoPushChannel
         $tokens = PushToken::query()
             ->where('user_id', $notifiable->id)
             ->where('provider', 'expo')
+            ->where('token', 'like', 'ExponentPushToken[%')
             ->get();
 
         $this->expoPush->sendToTokens($tokens, $message);

@@ -1,35 +1,87 @@
 <?php
+
 namespace App\Notifications;
+
 use App\Models\ProductReview;
+use App\Notifications\Channels\ExpoPushChannel;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class NewProductReview extends Notification
 {
-    public function __construct(public ProductReview $review)
-    {
-    }
+    use SendsExpoPush;
+
+    public function __construct(public ProductReview $review) {}
+
     public function via($notifiable): array
     {
         $channels = ['database'];
+
         if (!empty($notifiable->email) && $this->shouldSend($notifiable)) {
             $channels[] = 'mail';
         }
+
+        if ($this->shouldSendReviewPush($notifiable)) {
+            $channels[] = ExpoPushChannel::class;
+        }
+
         return $channels;
     }
-    public function toMail($n)
+
+    public function toMail($notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject("New " . str_repeat('★', $this->review->rating) . " Review on \"{$this->review->product?->name_en}\"")
-            ->view('emails.product-review', ['review' => $this->review->load('product', 'user'), 'seller' => $n]);
+            ->subject('New ' . str_repeat('★', $this->review->rating) . ' Review on "' . ($this->review->product?->name_en ?? 'your product') . '"')
+            ->view('emails.product-review', [
+                'review' => $this->review->load('product', 'user'),
+                'seller' => $notifiable,
+            ]);
     }
-    public function toArray($n): array
+
+    public function toArray($notifiable): array
     {
-        return ['type' => 'product_review', 'review_id' => $this->review->id, 'rating' => $this->review->rating, 'product_name' => $this->review->product?->name_en, 'message' => "New {$this->review->rating}-star review on \"{$this->review->product?->name_en}\"."];
+        $productName = $this->review->product?->name_en ?? 'your product';
+        $message = "New {$this->review->rating}-star review on \"{$productName}\".";
+
+        return [
+            'type' => 'product_review',
+            'product_id' => $this->review->product_id,
+            'review_id' => $this->review->id,
+            'rating' => $this->review->rating,
+            'product_name' => $productName,
+            'message' => $message,
+        ];
     }
+
+    public function toExpoPush($notifiable): array
+    {
+        $productName = $this->review->product?->name_en ?? 'your product';
+        $body = "New {$this->review->rating}-star review on \"{$productName}\".";
+
+        return $this->expoPushPayload(
+            'New product review',
+            $body,
+            'reviews',
+            [
+                'type' => 'product_review',
+                'product_id' => (string) $this->review->product_id,
+                'review_id' => (string) $this->review->id,
+                'rating' => (string) $this->review->rating,
+                'product_name' => $productName,
+                'message' => $body,
+            ],
+        );
+    }
+
     public function shouldSend($user): bool
     {
         $prefs = $user->notification_preferences ?? [];
-        return $prefs['review_notifications'] ?? true;
+
+        if (is_string($prefs)) {
+            $prefs = json_decode($prefs, true) ?: [];
+        }
+
+        return (bool) ($prefs['review_notifications'] ?? true);
     }
 }

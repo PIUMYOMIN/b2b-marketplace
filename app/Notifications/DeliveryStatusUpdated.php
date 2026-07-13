@@ -3,22 +3,31 @@
 namespace App\Notifications;
 
 use App\Models\Delivery;
+use App\Notifications\Channels\ExpoPushChannel;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class DeliveryStatusUpdated extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(
         public Delivery $delivery,
         public ?string $previousStatus = null,
-        public bool $sendMail = true
+        public bool $sendMail = true,
     ) {}
 
     public function via($notifiable): array
     {
         $channels = ['database'];
+
         if ($this->sendMail && !empty($notifiable->email) && $this->shouldSendMail($notifiable)) {
             $channels[] = 'mail';
+        }
+
+        if ($this->shouldSendDeliveryPush($notifiable)) {
+            $channels[] = ExpoPushChannel::class;
         }
 
         return $channels;
@@ -57,16 +66,35 @@ class DeliveryStatusUpdated extends Notification
         ];
     }
 
+    public function toExpoPush($notifiable): array
+    {
+        $delivery = $this->delivery->loadMissing('order');
+        $order = $delivery->order;
+        $orderNumber = (string) ($order?->order_number ?? '');
+        $statusLabel = $this->label($delivery->status);
+        $body = $orderNumber !== ''
+            ? "Delivery for order #{$orderNumber} is now {$statusLabel}."
+            : "Your delivery is now {$statusLabel}.";
+
+        return $this->expoPushPayload(
+            'Delivery Update',
+            $body,
+            'delivery',
+            [
+                'type' => 'delivery_status_changed',
+                'delivery_id' => (string) $delivery->id,
+                'order_id' => $order?->id ? (string) $order->id : '',
+                'order_number' => $orderNumber,
+                'delivery_status' => $delivery->status,
+                'tracking_number' => $delivery->tracking_number,
+                'message' => $body,
+            ],
+        );
+    }
+
     private function shouldSendMail($user): bool
     {
-        $prefs = $user->notification_preferences;
-        if (is_string($prefs)) {
-            $prefs = json_decode($prefs, true) ?: [];
-        } elseif (!is_array($prefs)) {
-            $prefs = [];
-        }
-
-        return $prefs['delivery_updates'] ?? $prefs['order_updates'] ?? true;
+        return $this->shouldSendDeliveryPush($user);
     }
 
     private function label(?string $status): string

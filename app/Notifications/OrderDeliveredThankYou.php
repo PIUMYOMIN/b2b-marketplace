@@ -3,6 +3,8 @@
 namespace App\Notifications;
 
 use App\Models\Order;
+use App\Notifications\Channels\ExpoPushChannel;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -12,14 +14,22 @@ use Illuminate\Notifications\Notification;
  */
 class OrderDeliveredThankYou extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(public Order $order) {}
 
     public function via($notifiable): array
     {
         $channels = ['database'];
+
         if (!empty($notifiable->email) && $this->shouldSendMail($notifiable)) {
             $channels[] = 'mail';
         }
+
+        if ($this->shouldSendOrderPush($notifiable)) {
+            $channels[] = ExpoPushChannel::class;
+        }
+
         return $channels;
     }
 
@@ -42,14 +52,25 @@ class OrderDeliveredThankYou extends Notification
         ];
     }
 
+    public function toExpoPush($notifiable): array
+    {
+        $body = "Thank you! Your order #{$this->order->order_number} has been delivered.";
+
+        return $this->expoPushPayload(
+            'Order Delivered',
+            $body,
+            'orders',
+            [
+                'type' => 'order_delivered_thank_you',
+                'order_id' => (string) $this->order->id,
+                'order_number' => $this->order->order_number,
+                'message' => $body,
+            ],
+        );
+    }
+
     private function shouldSendMail($user): bool
     {
-        $prefs = $user->notification_preferences;
-        if (is_string($prefs)) {
-            $prefs = json_decode($prefs, true) ?: [];
-        } elseif (!is_array($prefs)) {
-            $prefs = [];
-        }
-        return $prefs['order_updates'] ?? true;
+        return $this->shouldSendOrderPush($user);
     }
 }

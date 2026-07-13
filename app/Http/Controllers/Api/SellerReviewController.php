@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SellerReview;
 use App\Models\SellerProfile;
+use App\Notifications\NewSellerReview;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -70,6 +71,15 @@ class SellerReviewController extends Controller
             'comment' => $request->comment,
             'status' => 'approved'
         ]);
+
+        try {
+            $sellerProfile->loadMissing('user');
+            if ($sellerProfile->user) {
+                $sellerProfile->user->notify(new NewSellerReview($review->load('user', 'seller')));
+            }
+        } catch (\Exception $e) {
+            \Log::warning('SellerReview notification failed: ' . $e->getMessage());
+        }
 
         return response()->json([
             'success' => true,

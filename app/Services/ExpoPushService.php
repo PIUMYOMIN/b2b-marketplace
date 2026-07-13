@@ -110,7 +110,15 @@ class ExpoPushService
 
                 $details = is_array($result['details'] ?? null) ? $result['details'] : [];
                 $error = $details['error'] ?? null;
-                if (!in_array($error, ['DeviceNotRegistered', 'InvalidCredentials'], true)) {
+                if ($error === 'InvalidCredentials') {
+                    Log::error('Expo push FCM credentials missing or invalid. Upload FCM V1 service account to Expo project credentials.', [
+                        'message' => $result['message'] ?? 'Unknown error',
+                        'details' => $details,
+                    ]);
+                    continue;
+                }
+
+                if ($error !== 'DeviceNotRegistered') {
                     Log::warning('Expo push delivery error', [
                         'message' => $result['message'] ?? 'Unknown error',
                         'details' => $details,

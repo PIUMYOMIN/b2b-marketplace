@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
+use App\Services\AnnouncementPushService;
 use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Validator;
 
 class AnnouncementController extends Controller
 {
+    public function __construct(private readonly AnnouncementPushService $announcementPush) {}
+
     /** GET /announcements — public, returns active announcements for current visitor */
     public function index(Request $request)
     {
@@ -70,6 +73,7 @@ class AnnouncementController extends Controller
             'starts_at'       => 'nullable|date',
             'ends_at'         => 'nullable|date|after_or_equal:starts_at',
             'sort_order'      => 'nullable|integer|min:0',
+            'send_push'       => 'sometimes|boolean',
         ]);
 
         if ($v->fails()) {
@@ -77,6 +81,8 @@ class AnnouncementController extends Controller
         }
 
         $data = $v->validated();
+        $sendPush = (bool) ($data['send_push'] ?? false);
+        unset($data['send_push']);
 
         if ($request->hasFile('image')) {
             $result = app(ImageOptimizationService::class)->store(
@@ -89,10 +95,16 @@ class AnnouncementController extends Controller
 
         $announcement = Announcement::create($data);
 
+        $pushResult = null;
+        if ($sendPush && $announcement->is_active) {
+            $pushResult = $this->announcementPush->broadcast($announcement);
+        }
+
         return response()->json([
             'success' => true,
             'data'    => $this->format($announcement),
             'message' => 'Announcement created.',
+            'push'    => $pushResult,
         ], 201);
     }
 
@@ -121,6 +133,7 @@ class AnnouncementController extends Controller
             'starts_at'       => 'nullable|date',
             'ends_at'         => 'nullable|date',
             'sort_order'      => 'nullable|integer|min:0',
+            'send_push'       => 'sometimes|boolean',
         ]);
 
         if ($v->fails()) {
@@ -128,6 +141,8 @@ class AnnouncementController extends Controller
         }
 
         $data = $v->validated();
+        $sendPush = (bool) ($data['send_push'] ?? false);
+        unset($data['send_push']);
 
         if ($request->hasFile('image')) {
             if ($announcement->image) Storage::disk('public')->delete($announcement->image);
@@ -144,10 +159,16 @@ class AnnouncementController extends Controller
 
         $announcement->update($data);
 
+        $pushResult = null;
+        if ($sendPush && $announcement->is_active) {
+            $pushResult = $this->announcementPush->broadcast($announcement->fresh());
+        }
+
         return response()->json([
             'success' => true,
             'data'    => $this->format($announcement->fresh()),
             'message' => 'Announcement updated.',
+            'push'    => $pushResult,
         ]);
     }
 
@@ -162,14 +183,21 @@ class AnnouncementController extends Controller
     }
 
     /** PATCH /admin/announcements/{id}/toggle */
-    public function toggle(int $id)
+    public function toggle(Request $request, int $id)
     {
         $announcement = Announcement::findOrFail($id);
+        $wasActive = (bool) $announcement->is_active;
         $announcement->update(['is_active' => !$announcement->is_active]);
+
+        $pushResult = null;
+        if (!$wasActive && $announcement->is_active && $request->boolean('send_push')) {
+            $pushResult = $this->announcementPush->broadcast($announcement->fresh());
+        }
 
         return response()->json([
             'success'   => true,
             'is_active' => $announcement->is_active,
+            'push'      => $pushResult,
         ]);
     }
 

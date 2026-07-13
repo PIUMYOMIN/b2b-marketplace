@@ -183,9 +183,9 @@ class ConversationService
             'channelId' => 'messages',
             'data' => [
                 'type' => 'message_received',
-                'conversation_id' => $conversation->id,
+                'conversation_id' => (string) $conversation->id,
                 'context_type' => $conversation->context_type,
-                'context_id' => $conversation->context_id,
+                'context_id' => (string) $conversation->context_id,
                 'context_label' => $label,
             ],
         ]);
