@@ -12,7 +12,7 @@ class PushTokenController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'token' => 'required|string|max:255',
+            'token' => 'required|string|max:512',
             'provider' => 'required|string|in:expo',
             'platform' => 'nullable|string|in:ios,android,web',
             'device_name' => 'nullable|string|max:255',

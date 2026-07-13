@@ -172,9 +172,14 @@ class ConversationService
         $context = $conversation->contextSummary();
         $label = $context['label'] ?? $conversation->subject ?? 'New message';
 
+        $body = Str::limit(trim(strip_tags((string) $message->body)), 120);
+        if ($body === '') {
+            $body = $message->type === Message::TYPE_ATTACHMENT ? 'Sent an attachment' : 'Sent you a message';
+        }
+
         $this->pushService->sendToUser($recipient->user_id, [
             'title' => $sender->name,
-            'body' => Str::limit($message->body, 120),
+            'body' => $body,
             'channelId' => 'messages',
             'data' => [
                 'type' => 'message_received',
