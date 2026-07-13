@@ -24,11 +24,17 @@ class ExpoPushService
 
         $payloads = $tokenModels
             ->pluck('token')
-            ->filter()
+            ->filter(fn (string $token) => str_starts_with($token, 'ExponentPushToken['))
             ->unique()
             ->values()
             ->map(fn (string $token) => $this->buildPayload($token, $message))
             ->all();
+
+        if ($payloads === []) {
+            Log::info('Expo push skipped: no valid Expo push tokens in selection.');
+
+            return;
+        }
 
         foreach (array_chunk($payloads, 100) as $chunk) {
             $this->dispatchChunk($chunk, $tokenModels);
@@ -41,6 +47,21 @@ class ExpoPushService
             ->where('user_id', $userId)
             ->where('provider', 'expo')
             ->get();
+
+        if ($tokens->isEmpty()) {
+            Log::info('Expo push skipped: no registered tokens for user.', [
+                'user_id' => $userId,
+                'type' => $message['data']['type'] ?? null,
+            ]);
+
+            return;
+        }
+
+        Log::info('Expo push dispatching.', [
+            'user_id' => $userId,
+            'token_count' => $tokens->count(),
+            'type' => $message['data']['type'] ?? null,
+        ]);
 
         $this->sendToTokens($tokens, $message);
     }
@@ -66,8 +87,16 @@ class ExpoPushService
 
             $results = $response->json('data');
             if (!is_array($results)) {
+                Log::warning('Expo push response missing data array', [
+                    'body' => $response->body(),
+                ]);
+
                 return;
             }
+
+            Log::info('Expo push response received.', [
+                'results' => $results,
+            ]);
 
             foreach ($results as $index => $result) {
                 if (!is_array($result)) {
