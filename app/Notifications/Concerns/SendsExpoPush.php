@@ -83,6 +83,13 @@ trait SendsExpoPush
         string $channelId,
         array $data,
     ): array {
+        if (!isset($data['url'])) {
+            $derivedUrl = $this->derivePushDeepLink($data);
+            if ($derivedUrl !== null) {
+                $data['url'] = $derivedUrl;
+            }
+        }
+
         return [
             'title' => $title,
             'body' => $body,
@@ -91,5 +98,59 @@ trait SendsExpoPush
             'priority' => 'high',
             'data' => $data,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function derivePushDeepLink(array $data): ?string
+    {
+        $base = rtrim((string) config('app.frontend_url', 'https://pyonea.com'), '/');
+        $type = (string) ($data['type'] ?? '');
+
+        if ($type === 'message_received' && !empty($data['conversation_id'])) {
+            return "{$base}/messages/{$data['conversation_id']}";
+        }
+
+        if (!empty($data['order_number'])) {
+            if ($type === 'new_order') {
+                return "{$base}/seller/dashboard?tab=orders";
+            }
+
+            if (in_array($type, [
+                'order_placed',
+                'order_status_changed',
+                'order_payment_confirmed',
+                'order_delivered_thank_you',
+            ], true)) {
+                return "{$base}/buyer/dashboard?tab=orders";
+            }
+
+            if (
+                str_contains($type, 'delivery')
+                || $type === 'self_delivery_completed'
+                || $type === 'delivery_status_changed'
+            ) {
+                return "{$base}/track-order?order=" . rawurlencode((string) $data['order_number']);
+            }
+        }
+
+        if (str_starts_with($type, 'rfq_')) {
+            return "{$base}/seller/dashboard?tab=rfq";
+        }
+
+        if ($type === 'product_review') {
+            return "{$base}/seller/dashboard?tab=reviews";
+        }
+
+        if (in_array($type, ['seller_approved', 'seller_rejected', 'seller_review'], true)) {
+            return "{$base}/seller/dashboard?tab=settings";
+        }
+
+        if (str_starts_with($type, 'subscription_')) {
+            return "{$base}/seller/dashboard?tab=subscription";
+        }
+
+        return null;
     }
 }

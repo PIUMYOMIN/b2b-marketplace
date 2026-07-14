@@ -179,6 +179,7 @@ class ConversationService
             $body = $message->type === Message::TYPE_ATTACHMENT ? 'Sent an attachment' : 'Sent you a message';
         }
 
+        $frontendBase = rtrim((string) config('app.frontend_url', 'https://pyonea.com'), '/');
         $message = [
             'title' => $sender->name,
             'body' => $body,
@@ -189,6 +190,7 @@ class ConversationService
                 'context_type' => $conversation->context_type,
                 'context_id' => (string) $conversation->context_id,
                 'context_label' => $label,
+                'url' => "{$frontendBase}/messages/{$conversation->id}",
             ],
         ];
 
