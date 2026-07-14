@@ -10,6 +10,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use App\Models\ProductReview;
 use App\Observers\ProductReviewObserver;
@@ -58,8 +59,8 @@ class AppServiceProvider extends ServiceProvider
             $replyTo = config('mail.reply_to.address');
             $replyName = config('mail.reply_to.name');
 
-            if ($replyTo) {
-                $event->message->replyTo($replyTo, $replyName);
+            if (is_string($replyTo) && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
+                $event->message->replyTo($replyTo, is_string($replyName) ? $replyName : null);
             }
 
             $headers = $event->message->getHeaders();
