@@ -602,7 +602,8 @@ class OrderController extends Controller
                 // Variant-aware stock check
                 $variant = null;
                 if (!empty($item['variant_id'])) {
-                    $variant = ProductVariant::whereKey($item['variant_id'])
+                    $variant = ProductVariant::with(['optionValues.option'])
+                        ->whereKey($item['variant_id'])
                         ->where('product_id', $product->id)
                         ->where('is_active', true)
                         ->lockForUpdate()
@@ -770,9 +771,12 @@ class OrderController extends Controller
                         'product_sku'      => $item['product']->sku,
                         'variant_sku'      => $item['variant']?->sku,
                         'selected_options' => $item['variant']
-                            ? $item['variant']->optionValues->mapWithKeys(
-                                fn($v) => [$v->option->name => $v->label]
-                              )->toArray()
+                            ? $item['variant']->optionValues
+                                ->mapWithKeys(function ($value) {
+                                    $optionName = $value->option?->name ?? 'Option';
+                                    return [$optionName => $value->label ?? ''];
+                                })
+                                ->toArray()
                             : null,
                         'quantity_unit'    => $item['variant']
                             ? $item['variant']->effectiveUnit()
@@ -888,13 +892,15 @@ class OrderController extends Controller
                     'total_orders' => count($orders)
                 ]
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Order creation failed: ' . $e->getMessage());
+            Log::error('Order creation failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create order: ' . $e->getMessage()
+                'message' => 'Failed to create order: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -1476,6 +1482,23 @@ class OrderController extends Controller
         // This should fetch the supplier's address from their profile
         // For now, return a default address
         return "Supplier Warehouse Address";
+    }
+
+    /**
+     * @param  array<string, mixed>  $address
+     */
+    private function formatShippingAddress(array $address): string
+    {
+        return implode(', ', array_filter([
+            $address['full_name'] ?? '',
+            $address['phone'] ?? '',
+            $address['address'] ?? '',
+            $address['township'] ?? '',
+            $address['city'] ?? '',
+            $address['state'] ?? '',
+            $address['postal_code'] ?? '',
+            $address['country'] ?? '',
+        ]));
     }
 
     private function calculateOrderWeight($items)

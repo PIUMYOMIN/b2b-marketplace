@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7a1eae9e241a509a5053e7257833f3fa",
+    "content-hash": "802670c31901de2e8de260826b88700d",
     "packages": [
         {
             "name": "archtechx/enums",
@@ -7021,6 +7021,48 @@
                 "source": "https://github.com/pusher/pusher-http-php/tree/7.2.8"
             },
             "time": "2026-05-18T13:11:36+00:00"
+        },
+        {
+            "name": "pusher/pusher-push-notifications",
+            "version": "2.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/pusher/push-notifications-php.git",
+                "reference": "b71748b72a1bc7d6a5ca15fafa976b829377c193"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/pusher/push-notifications-php/zipball/b71748b72a1bc7d6a5ca15fafa976b829377c193",
+                "reference": "b71748b72a1bc7d6a5ca15fafa976b829377c193",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "firebase/php-jwt": "^7.0",
+                "guzzlehttp/guzzle": "^7.0",
+                "php": ">=8.0"
+            },
+            "require-dev": {
+                "doctrine/instantiator": "^1.5.0",
+                "overtrue/phplint": "^4.5 || ^5.5",
+                "phpunit/phpunit": "^9.0",
+                "symfony/yaml": "^5.0 || ^6.0"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Pusher\\PushNotifications\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "support": {
+                "issues": "https://github.com/pusher/push-notifications-php/issues",
+                "source": "https://github.com/pusher/push-notifications-php/tree/2.0.1"
+            },
+            "time": "2026-03-02T14:46:05+00:00"
         },
         {
             "name": "ralouphie/getallheaders",

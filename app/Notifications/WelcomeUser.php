@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Notifications\Channels\ExpoPushChannel;
 use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,9 +16,7 @@ class WelcomeUser extends Notification
     {
         $channels = ['mail', 'database'];
 
-        if ($this->shouldSendWelcomePush($notifiable)) {
-            $channels[] = ExpoPushChannel::class;
-        }
+        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendWelcomePush($notifiable)));
 
         return $channels;
     }

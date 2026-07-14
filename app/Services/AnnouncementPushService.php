@@ -11,7 +11,10 @@ use Illuminate\Support\Str;
 
 class AnnouncementPushService
 {
-    public function __construct(private readonly ExpoPushService $expoPush) {}
+    public function __construct(
+        private readonly ExpoPushService $expoPush,
+        private readonly BeamsPushService $beamsPush,
+    ) {}
 
     /**
      * @return array{sent: int, skipped: bool, reason?: string}
@@ -27,8 +30,14 @@ class AnnouncementPushService
             return ['sent' => 0, 'skipped' => true, 'reason' => 'guests_audience'];
         }
 
-        $tokens = $this->resolveTokens($audience);
-        if ($tokens->isEmpty()) {
+        $userIds = $this->resolveAudienceUserIds($audience);
+        $tokens = $this->resolveTokens($userIds);
+
+        if ($tokens->isEmpty() && !config('services.beams.enabled', false)) {
+            return ['sent' => 0, 'skipped' => true, 'reason' => 'no_tokens'];
+        }
+
+        if ($tokens->isEmpty() && $userIds->isEmpty()) {
             return ['sent' => 0, 'skipped' => true, 'reason' => 'no_tokens'];
         }
 
@@ -52,17 +61,30 @@ class AnnouncementPushService
 
         $this->expoPush->sendToTokens($tokens, $message);
 
+        if (config('services.beams.enabled', false) && $this->beamsPush->isConfigured() && $userIds->isNotEmpty()) {
+            foreach (array_chunk($userIds->all(), 1000) as $chunk) {
+                $this->beamsPush->publishToUsers(
+                    $chunk,
+                    $this->beamsPush->buildFcmPayload(
+                        (string) $message['title'],
+                        (string) $message['body'],
+                        is_array($message['data'] ?? null) ? $message['data'] : [],
+                    ),
+                );
+            }
+        }
+
         Log::info('Announcement push broadcast dispatched.', [
             'announcement_id' => $announcement->id,
             'audience' => $audience,
             'token_count' => $tokens->count(),
         ]);
 
-        return ['sent' => $tokens->count(), 'skipped' => false];
+        return ['sent' => max($tokens->count(), $userIds->count()), 'skipped' => false];
     }
 
-    /** @return Collection<int, PushToken> */
-    private function resolveTokens(string $audience): Collection
+    /** @return Collection<int, int> */
+    private function resolveAudienceUserIds(string $audience): Collection
     {
         $userQuery = User::query()->select('id', 'notification_preferences', 'type');
 
@@ -72,11 +94,15 @@ class AnnouncementPushService
             $userQuery->where('type', 'seller');
         }
 
-        $allowedUserIds = $userQuery
+        return $userQuery
             ->get()
             ->filter(fn (User $user) => $this->announcementPushEnabled($user))
             ->pluck('id');
+    }
 
+    /** @return Collection<int, PushToken> */
+    private function resolveTokens(Collection $allowedUserIds): Collection
+    {
         if ($allowedUserIds->isEmpty()) {
             return collect();
         }

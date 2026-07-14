@@ -2,8 +2,28 @@
 
 namespace App\Notifications\Concerns;
 
+use App\Notifications\Channels\BeamsPushChannel;
+use App\Notifications\Channels\ExpoPushChannel;
+use App\Services\BeamsPushService;
+
 trait SendsExpoPush
 {
+    /** @return array<int, class-string> */
+    protected function mobilePushChannels(bool $shouldSend): array
+    {
+        if (!$shouldSend) {
+            return [];
+        }
+
+        $channels = [ExpoPushChannel::class];
+
+        if (config('services.beams.enabled', false) && app(BeamsPushService::class)->isConfigured()) {
+            $channels[] = BeamsPushChannel::class;
+        }
+
+        return $channels;
+    }
+
     /** @return array<string, mixed> */
     protected function notificationPreferences(object $user): array
     {

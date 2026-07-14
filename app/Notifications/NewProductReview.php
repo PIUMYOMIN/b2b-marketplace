@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\ProductReview;
-use App\Notifications\Channels\ExpoPushChannel;
 use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -22,9 +21,7 @@ class NewProductReview extends Notification
             $channels[] = 'mail';
         }
 
-        if ($this->shouldSendReviewPush($notifiable)) {
-            $channels[] = ExpoPushChannel::class;
-        }
+        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendReviewPush($notifiable)));
 
         return $channels;
     }

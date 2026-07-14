@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\Delivery;
-use App\Notifications\Channels\ExpoPushChannel;
 use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -26,9 +25,7 @@ class DeliveryStatusUpdated extends Notification
             $channels[] = 'mail';
         }
 
-        if ($this->shouldSendDeliveryPush($notifiable)) {
-            $channels[] = ExpoPushChannel::class;
-        }
+        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendDeliveryPush($notifiable)));
 
         return $channels;
     }

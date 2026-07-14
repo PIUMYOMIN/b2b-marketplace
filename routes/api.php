@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\CouponController;
 use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\BeamsAuthController;
 use App\Http\Controllers\Api\PushTokenController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\BulkImportController;
@@ -639,6 +640,9 @@ Route::group([
         Route::post('/notifications/push-tokens', [PushTokenController::class, 'store']);
         Route::delete('/notifications/push-tokens/{token}', [PushTokenController::class, 'destroy'])
             ->where('token', '.*');
+
+        // ── Pusher Beams (authenticated users) ─────────────────────────────
+        Route::post('/beams/auth', [BeamsAuthController::class, 'store']);
 
         // ── In-app notifications (Laravel DB notifications) ───────────────
         Route::prefix('notifications')->group(function () {

@@ -8,6 +8,7 @@ use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\User;
+use App\Services\BeamsPushService;
 use App\Services\ExpoPushService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,7 @@ class ConversationService
         private readonly ConversationContextService $contextService,
         private readonly MessageSanitizer $sanitizer,
         private readonly ExpoPushService $pushService,
+        private readonly BeamsPushService $beamsPush,
     ) {}
 
     /**
@@ -177,7 +179,7 @@ class ConversationService
             $body = $message->type === Message::TYPE_ATTACHMENT ? 'Sent an attachment' : 'Sent you a message';
         }
 
-        $this->pushService->sendToUser($recipient->user_id, [
+        $message = [
             'title' => $sender->name,
             'body' => $body,
             'channelId' => 'messages',
@@ -188,6 +190,12 @@ class ConversationService
                 'context_id' => (string) $conversation->context_id,
                 'context_label' => $label,
             ],
-        ]);
+        ];
+
+        $this->pushService->sendToUser($recipient->user_id, $message);
+
+        if (config('services.beams.enabled', false)) {
+            $this->beamsPush->sendToUser($recipient->user_id, $message);
+        }
     }
 }

@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\SellerReview;
-use App\Notifications\Channels\ExpoPushChannel;
 use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Notification;
 
@@ -17,9 +16,7 @@ class NewSellerReview extends Notification
     {
         $channels = ['database'];
 
-        if ($this->shouldSendReviewPush($notifiable)) {
-            $channels[] = ExpoPushChannel::class;
-        }
+        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendReviewPush($notifiable)));
 
         return $channels;
     }

@@ -70,4 +70,10 @@ return [
         'redirect' => env('FACEBOOK_REDIRECT_URI'),
     ],
 
+    'beams' => [
+        'instance_id' => env('BEAMS_INSTANCE_ID'),
+        'secret_key' => env('BEAMS_SECRET_KEY'),
+        'enabled' => env('BEAMS_PUSH_ENABLED', false),
+    ],
+
 ];

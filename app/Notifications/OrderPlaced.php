@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\Order;
-use App\Notifications\Channels\ExpoPushChannel;
 use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -22,9 +21,7 @@ class OrderPlaced extends Notification
             $channels[] = 'mail';
         }
 
-        if ($this->shouldSendOrderPush($notifiable)) {
-            $channels[] = ExpoPushChannel::class;
-        }
+        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendOrderPush($notifiable)));
 
         return $channels;
     }
