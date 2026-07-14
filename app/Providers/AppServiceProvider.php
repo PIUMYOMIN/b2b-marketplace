@@ -69,12 +69,9 @@ class AppServiceProvider extends ServiceProvider
     protected function configureTransactionalMailHeaders(): void
     {
         Event::listen(MessageSending::class, function (MessageSending $event): void {
-            $replyTo = config('mail.reply_to.address');
-            $replyName = config('mail.reply_to.name');
-
-            if (is_string($replyTo) && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
-                $event->message->replyTo($replyTo, is_string($replyName) ? $replyName : null);
-            }
+            // Laravel already applies config('mail.reply_to') globally via MailManager.
+            // MessageSending exposes Symfony Email where replyTo() is variadic (address only),
+            // so never call replyTo($email, $name) here — the second arg is parsed as another email.
 
             $headers = $event->message->getHeaders();
             if (!$headers->has('X-Mailer')) {
