@@ -1,5 +1,25 @@
 <?php
 
+$mailFromAddress = env('MAIL_FROM_ADDRESS', 'hello@example.com');
+$mailFromName = env('MAIL_FROM_NAME', 'Example');
+$mailReplyAddress = env('MAIL_REPLY_TO_ADDRESS') ?: $mailFromAddress;
+$mailReplyName = env('MAIL_REPLY_TO_NAME') ?: $mailFromName;
+
+$validEmail = static function ($address, $fallback) {
+    if (is_string($address) && filter_var($address, FILTER_VALIDATE_EMAIL)) {
+        return $address;
+    }
+
+    if (is_string($fallback) && filter_var($fallback, FILTER_VALIDATE_EMAIL)) {
+        return $fallback;
+    }
+
+    return 'hello@example.com';
+};
+
+$mailFromAddress = $validEmail($mailFromAddress, null);
+$mailReplyAddress = $validEmail($mailReplyAddress, $mailFromAddress);
+
 return [
 
     /*
@@ -114,15 +134,15 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', 'Example'),
+        'address' => $mailFromAddress,
+        'name' => $mailFromName,
     ],
 
     'reply_to' => [
-        'address' => env('MAIL_REPLY_TO_ADDRESS', env('MAIL_FROM_ADDRESS', 'hello@example.com')),
-        'name' => env('MAIL_REPLY_TO_NAME', env('MAIL_FROM_NAME', 'Example')),
+        'address' => $mailReplyAddress,
+        'name' => $mailReplyName,
     ],
 
-    'admin_report_email' => env('ADMIN_REPORT_EMAIL', env('MAIL_FROM_ADDRESS', 'hello@example.com')),
+    'admin_report_email' => $validEmail(env('ADMIN_REPORT_EMAIL'), $mailFromAddress),
 
 ];

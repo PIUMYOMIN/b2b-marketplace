@@ -50,7 +50,20 @@ class AppServiceProvider extends ServiceProvider
         ProductReview::observe(ProductReviewObserver::class);
 
         $this->configureRateLimiters();
+        $this->normalizeMailReplyToConfig();
         $this->configureTransactionalMailHeaders();
+    }
+
+    protected function normalizeMailReplyToConfig(): void
+    {
+        $fromAddress = config('mail.from.address');
+        $replyAddress = config('mail.reply_to.address');
+
+        if (!is_string($replyAddress) || !filter_var($replyAddress, FILTER_VALIDATE_EMAIL)) {
+            if (is_string($fromAddress) && filter_var($fromAddress, FILTER_VALIDATE_EMAIL)) {
+                Config::set('mail.reply_to.address', $fromAddress);
+            }
+        }
     }
 
     protected function configureTransactionalMailHeaders(): void
