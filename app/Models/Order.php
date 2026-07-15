@@ -471,7 +471,8 @@ class Order extends Model
     }
 
     /**
-     * Check if order can be cancelled.
+     * Check if order can be cancelled by the buyer.
+     * Paid wallet orders cannot be buyer-cancelled; COD/unpaid may cancel while pending/confirmed.
      */
     public function getCanBeCancelledAttribute()
     {
@@ -482,8 +483,7 @@ class Order extends Model
         return in_array($this->status, [
             self::STATUS_PENDING,
             self::STATUS_CONFIRMED,
-            self::STATUS_PROCESSING,
-        ]);
+        ], true);
     }
 
     /**

@@ -75,6 +75,49 @@ class OrderController extends Controller
         return false;
     }
 
+    /**
+     * Buyer (own order), seller (own store order), or admin may cancel.
+     */
+    private function canManageOrder(?UserModel $user, Order $order): bool
+    {
+        return $this->canViewOrder($user, $order);
+    }
+
+    /**
+     * Seller (own store order) or admin may run seller fulfillment actions.
+     */
+    private function canSellerManageOrder(?UserModel $user, Order $order): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($this->isAdmin($user)) {
+            return true;
+        }
+
+        if ($user->hasRole('seller') || $user->type === 'seller') {
+            return (int) $order->seller_id === (int) $user->id;
+        }
+
+        return false;
+    }
+
+    /**
+     * Buyer cancel rules:
+     * - COD (unpaid until delivery): may cancel while pending/confirmed
+     * - Mobile wallet unpaid: may cancel while pending/confirmed
+     * - Mobile wallet already paid: buyer cannot cancel (refund via support/admin)
+     */
+    private function buyerCanCancelOrder(Order $order): bool
+    {
+        if ($order->payment_status === self::PAYMENT_STATUS_PAID) {
+            return false;
+        }
+
+        return in_array($order->status, [self::STATUS_PENDING, self::STATUS_CONFIRMED], true);
+    }
+
     public function index()
     {
         $user = Auth::user();
@@ -169,6 +212,7 @@ class OrderController extends Controller
             'created_at' => $order->created_at?->toIso8601String(),
             'updated_at' => $order->updated_at?->toIso8601String(),
             'store_name' => $this->jsonSafeString($storeName),
+            'can_be_cancelled' => $this->buyerCanCancelOrder($order),
             'buyer' => $this->formatOrderUser($order->buyer),
             'seller' => $this->formatOrderUser($order->seller, true),
             'items' => $order->items->map(fn (OrderItem $item) => $this->formatOrderItemForList($item, $baseUrl))->values(),
@@ -1044,15 +1088,28 @@ class OrderController extends Controller
             return response()->json(['success' => false, 'message' => __('messages.orders.cancel_unauthorized')], 403);
         }
 
-        if (!in_array($order->status, [self::STATUS_PENDING, self::STATUS_CONFIRMED])) {
-            return response()->json(['success' => false, 'message' => 'Order cannot be cancelled at this stage'], 400);
-        }
+        $isBuyerCancelling = $user
+            && (int) $order->buyer_id === (int) $user->id
+            && ! $this->isAdmin($user);
 
-        if (! $this->isAdmin($user) && $order->payment_status === self::PAYMENT_STATUS_PAID) {
+        // Buyers: COD or unpaid wallet only (pending/confirmed). Paid wallet → support/admin.
+        // Admin/seller may cancel early-stage orders (escrow reverse below if held).
+        if ($isBuyerCancelling && ! $this->buyerCanCancelOrder($order)) {
+            if ($order->payment_status === self::PAYMENT_STATUS_PAID) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Paid orders cannot be cancelled by the buyer. Please contact support for refund assistance.',
+                ], 400);
+            }
+
             return response()->json([
                 'success' => false,
-                'message' => 'Paid orders cannot be cancelled by the buyer. Please contact support for refund assistance.',
+                'message' => 'Order cannot be cancelled at this stage',
             ], 400);
+        }
+
+        if (! $isBuyerCancelling && ! in_array($order->status, [self::STATUS_PENDING, self::STATUS_CONFIRMED], true)) {
+            return response()->json(['success' => false, 'message' => 'Order cannot be cancelled at this stage'], 400);
         }
 
         DB::beginTransaction();
