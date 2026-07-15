@@ -150,9 +150,14 @@ class Product extends Model
 
     /**
      * Whether this product uses the variant system (has defined options).
+     * Uses list aggregates from withExists('options') when present to avoid N+1.
      */
     public function hasVariants(): bool
     {
+        if (array_key_exists('options_exists', $this->attributes)) {
+            return (bool) $this->attributes['options_exists'];
+        }
+
         return $this->options()->exists();
     }
 
@@ -176,6 +181,7 @@ class Product extends Model
 
     /**
      * Whether the product has any stock available.
+     * Uses list aggregates from withExists(...) when present to avoid N+1.
      */
     public function isInStock(): bool
     {
@@ -183,11 +189,34 @@ class Product extends Model
             return true; // Digital/service always available
         }
 
+        if (
+            array_key_exists('has_active_variants', $this->attributes)
+            || array_key_exists('has_stocked_active_variants', $this->attributes)
+        ) {
+            if ((bool) $this->getAttribute('has_active_variants')) {
+                return (bool) $this->getAttribute('has_stocked_active_variants');
+            }
+
+            return (float) ($this->quantity ?? 0) > 0;
+        }
+
         if ($this->activeVariants()->exists()) {
             return $this->activeVariants()->where('quantity', '>', 0)->exists();
         }
 
         return (float) ($this->quantity ?? 0) > 0;
+    }
+
+    /**
+     * Eager existence flags for public product grids (avoids per-row EXISTS queries).
+     */
+    public function scopeWithListAggregates($query)
+    {
+        return $query->withExists([
+            'options',
+            'activeVariants as has_active_variants',
+            'activeVariants as has_stocked_active_variants' => fn ($q) => $q->where('quantity', '>', 0),
+        ]);
     }
 
     /**

@@ -192,9 +192,13 @@ class ProductResource extends JsonResource
                 ], $this->sellerTrustFields($profile));
             }),
             'category'         => $this->whenLoaded('category', fn() => [
-                'id'   => $this->category->id,
-                'name' => $this->category->name,
-                'slug' => $this->category->slug ?? null,
+                'id'      => $this->category->id,
+                'name_en' => $this->category->name_en,
+                'name_mm' => $this->category->name_mm,
+                'name'    => $this->category->name_en ?? $this->category->name_mm,
+                'slug_en' => $this->category->slug_en,
+                'slug_mm' => $this->category->slug_mm,
+                'slug'    => $this->category->slug_en ?? $this->category->slug_mm,
             ]),
 
             // ── Timestamps ────────────────────────────────────────────────────

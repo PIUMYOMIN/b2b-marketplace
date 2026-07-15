@@ -41,7 +41,7 @@ class ProductController extends Controller
                         'category',
                         'wholesaleTiers' => fn($q) => $q->where('is_active', true)->orderBy('min_qty'),
                     ])
-                    ->withCount('reviews')
+                    ->withListAggregates()
                     ->where('is_featured', true)
                     ->orderByDesc('listed_at')
                     ->paginate(20);
@@ -67,7 +67,7 @@ class ProductController extends Controller
                 'category',
                 'wholesaleTiers' => fn($q) => $q->where('is_active', true)->orderBy('min_qty'),
             ])
-            ->withCount('reviews')
+            ->withListAggregates()
             ->orderByApprovalPriority();
  
         // ── Filters ──────────────────────────────────────────────────────────
