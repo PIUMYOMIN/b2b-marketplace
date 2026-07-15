@@ -6,7 +6,7 @@
 
 @if($user->type === 'buyer')
 <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0;">
-  @foreach([['🛍️','Browse Products','Discover products from verified sellers','products'],['❤️','Save to Wishlist','Save items you love','wishlist'],['📦','Track Orders','Real-time order tracking','order-tracking'],['💬','Contact Sellers','Message sellers directly','sellers']] as $f)
+  @foreach([['🛍️','Browse Products','Discover products from verified sellers','products'],['❤️','Save to Wishlist','Save items you love','wishlist'],['📦','Track Orders','Real-time order tracking','track-order'],['💬','Contact Sellers','Message sellers directly','sellers']] as $f)
   <div style="background:#f9fafb; border-radius:10px; padding:14px; text-align:center;">
     <div style="font-size:24px; margin-bottom:6px;">{{ $f[0] }}</div>
     <div style="font-size:13px; font-weight:600; color:#111827;">{{ $f[1] }}</div>

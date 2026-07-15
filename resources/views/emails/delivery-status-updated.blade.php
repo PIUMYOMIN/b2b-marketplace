@@ -61,7 +61,7 @@
 </table>
 
 <div style="text-align:center; margin-top:24px;">
-    <a href="{{ config('app.frontend_url') }}/order-tracking?order={{ $order?->order_number }}" class="btn">
+    <a href="{{ config('app.frontend_url') }}/track-order?order={{ $order?->order_number }}" class="btn">
         Track Delivery
     </a>
 </div>
