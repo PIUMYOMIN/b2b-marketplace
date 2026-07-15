@@ -147,8 +147,12 @@ trait SendsExpoPush
             return "{$base}/seller/dashboard?tab=settings";
         }
 
-        if (str_starts_with($type, 'subscription_')) {
+        if (str_starts_with($type, 'subscription_') || $type === 'subscription_request') {
             return "{$base}/seller/dashboard?tab=subscription";
+        }
+
+        if ($type === 'new_user_registered') {
+            return "{$base}/admin/dashboard?tab=overview";
         }
 
         return null;

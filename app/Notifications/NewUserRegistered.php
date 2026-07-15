@@ -3,16 +3,28 @@
 namespace App\Notifications;
 
 use App\Models\User;
-use Illuminate\Notifications\Notification;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Notifications\Notification;
 
 class NewUserRegistered extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(public User $newUser) {}
 
     public function via($notifiable): array
     {
-        return ['mail', 'database'];
+        $channels = ['database'];
+
+        if (! empty($notifiable->email)) {
+            $channels[] = 'mail';
+        }
+
+        // Native push (Expo + Beams when configured) for admins logged into the app
+        $channels = array_merge($channels, $this->mobilePushChannels(true));
+
+        return $channels;
     }
 
     public function toMail($notifiable): MailMessage
@@ -33,12 +45,36 @@ class NewUserRegistered extends Notification
 
     public function toArray($notifiable): array
     {
+        $userType = $this->newUser->type ?? 'user';
+        $message = "New {$userType} registered: {$this->newUser->name}";
+
         return [
             'type'      => 'new_user_registered',
             'user_id'   => $this->newUser->id,
             'user_name' => $this->newUser->name,
-            'user_type' => $this->newUser->type,
-            'message'   => "New {$this->newUser->type} registered: {$this->newUser->name}",
+            'user_type' => $userType,
+            'url'       => '/admin/dashboard?tab=overview',
+            'message'   => $message,
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $userType = ucfirst($this->newUser->type ?? 'User');
+        $body = "{$this->newUser->name} registered as a {$userType}.";
+
+        return $this->expoPushPayload(
+            "New {$userType} Registered",
+            $body,
+            'admin',
+            [
+                'type' => 'new_user_registered',
+                'user_id' => (string) $this->newUser->id,
+                'user_name' => $this->newUser->name,
+                'user_type' => $this->newUser->type,
+                'url' => '/admin/dashboard?tab=overview',
+                'message' => $body,
+            ],
+        );
     }
 }
