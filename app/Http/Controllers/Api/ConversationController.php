@@ -11,8 +11,10 @@ use App\Events\ConversationTyping;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Throwable;
 
 class ConversationController extends Controller
 {
@@ -183,12 +185,19 @@ class ConversationController extends Controller
         }
 
         $user = $request->user();
-        broadcast(new ConversationTyping(
-            $conversation->id,
-            $user->id,
-            $user->name,
-            (bool) $validated['is_typing'],
-        ))->toOthers();
+        try {
+            broadcast(new ConversationTyping(
+                $conversation->id,
+                $user->id,
+                $user->name,
+                (bool) $validated['is_typing'],
+            ))->toOthers();
+        } catch (Throwable $e) {
+            Log::warning('Typing broadcast failed.', [
+                'conversation_id' => $conversation->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return response()->json(['success' => true]);
     }

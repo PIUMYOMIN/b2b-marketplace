@@ -12,7 +12,9 @@ use App\Services\BeamsPushService;
 use App\Services\ExpoPushService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class ConversationService
 {
@@ -100,7 +102,7 @@ class ConversationService
             abort(422, 'Messages must stay on Pyonea. Remove phone numbers, emails, and third-party app links.');
         }
 
-        return DB::transaction(function () use ($conversation, $sender, $clean, $uploadedFiles) {
+        $message = DB::transaction(function () use ($conversation, $sender, $clean, $uploadedFiles) {
             $type = empty($uploadedFiles) ? Message::TYPE_TEXT : Message::TYPE_ATTACHMENT;
 
             $message = Message::create([
@@ -122,16 +124,36 @@ class ConversationService
                 'last_message_sender_id' => $sender->id,
             ]);
 
-            $recipient = $conversation->otherParticipant($sender->id);
-            if ($recipient) {
-                $this->notifyRecipient($conversation, $message, $sender, $recipient);
-            }
-
-            $message->load(['sender:id,name,email', 'attachments']);
-            broadcast(new MessageSent($message))->toOthers();
-
             return $message;
         });
+
+        $message->load(['sender:id,name,email', 'attachments']);
+
+        // Push + realtime must not roll back a successfully saved message.
+        $recipient = $conversation->otherParticipant($sender->id);
+        if ($recipient) {
+            try {
+                $this->notifyRecipient($conversation, $message, $sender, $recipient);
+            } catch (Throwable $e) {
+                Log::warning('Message push notify failed.', [
+                    'conversation_id' => $conversation->id,
+                    'message_id' => $message->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            broadcast(new MessageSent($message))->toOthers();
+        } catch (Throwable $e) {
+            Log::warning('Message broadcast failed.', [
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $message;
     }
 
     public function markRead(Conversation $conversation, User $user): void
