@@ -91,9 +91,11 @@ class RfqController extends Controller
 
         $rfq = Rfq::with([
             'buyer:id,name,email',
-            'quotes.seller.sellerProfile:user_id,store_name,store_logo',
-            'acceptedQuote.seller.sellerProfile:user_id,store_name',
-            'order:id,order_number,status',   // ← include order reference
+            'quotes.seller:id,name,email',
+            'quotes.seller.sellerProfile:id,user_id,store_name,store_logo',
+            'acceptedQuote.seller:id,name,email',
+            'acceptedQuote.seller.sellerProfile:id,user_id,store_name',
+            'order:id,order_number,status',
         ])->findOrFail($id);
 
         // Authorization: must be buyer, OR (seller AND has access)
