@@ -113,6 +113,12 @@ class ConversationController extends Controller
 
         $messages = Message::query()
             ->where('conversation_id', $conversation->id)
+            ->whereHas('conversation', function ($query) use ($request) {
+                $query->whereHas(
+                    'participants',
+                    fn ($participant) => $participant->where('user_id', $request->user()->id)
+                );
+            })
             ->with(['sender:id,name,email', 'attachments'])
             ->orderByDesc('created_at')
             ->paginate(min(50, max(1, (int) $request->query('per_page', 30))));
