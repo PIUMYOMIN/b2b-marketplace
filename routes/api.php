@@ -866,4 +866,8 @@ Route::group([
             'message' => 'API endpoint not found'
         ], 404);
     });
+
+    Route::get('/sentry-test', function () {
+        throw new Exception('Pyonea Production Test');
+    });
 });
