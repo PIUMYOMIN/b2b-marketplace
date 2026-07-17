@@ -21,6 +21,7 @@
         "myanmyanpay/mmpay-php-sdk": "^1.0",
         "phpoffice/phpspreadsheet": "*",
         "pusher/pusher-push-notifications": "^2.0",
+        "sentry/sentry-laravel": "^4.27",
         "spatie/laravel-permission": "^6.21",
         "tymon/jwt-auth": "^2.2"
     },
