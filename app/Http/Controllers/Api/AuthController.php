@@ -658,11 +658,20 @@ class AuthController extends Controller
 
                 if ($response->successful()) {
                     $payload  = $response->json();
-                    $clientId = config('services.google.client_id');
-                    if ($clientId && ($payload['aud'] ?? '') !== $clientId) {
-                        Log::warning('Google token audience mismatch', ['aud' => $payload['aud'] ?? null]);
+
+                    // Accept id_tokens issued to any configured client IDs (web, android prod, android debug)
+                    $allowedAudiences = array_filter([
+                        config('services.google.client_id'),
+                        config('services.google.android_client_id'),
+                        config('services.google.android_client_id_debug'),
+                    ]);
+
+                    $aud = $payload['aud'] ?? $payload['audience'] ?? null;
+                    if (!empty($allowedAudiences) && $aud && !in_array($aud, $allowedAudiences, true)) {
+                        Log::warning('Google token audience mismatch', ['aud' => $aud, 'allowed' => $allowedAudiences]);
                         return null;
                     }
+
                     if (($payload['exp'] ?? 0) < time()) return null;
                     return $this->normalizeGoogleUserinfo($payload);
                 }

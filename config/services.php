@@ -62,6 +62,9 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env('GOOGLE_REDIRECT_URI'),
+        // Optional Android OAuth client IDs (production and debug) — used when validating id_tokens
+        'android_client_id' => env('GOOGLE_ANDROID_CLIENT_ID'),
+        'android_client_id_debug' => env('GOOGLE_ANDROID_CLIENT_ID_DEBUG'),
     ],
 
     'facebook' => [
