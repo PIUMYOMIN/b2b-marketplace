@@ -20,6 +20,13 @@ class Authenticate extends Middleware
      */
     public function handle($request, Closure $next, ...$guards)
     {
+        // Laravel decides whether to render AuthenticationException as JSON
+        // before it evaluates redirectTo(). Expo requests can omit Accept, so
+        // mark API and bearer-token requests as JSON up front.
+        if ($request->is('api/*') || $request->bearerToken()) {
+            $request->headers->set('Accept', 'application/json');
+        }
+
         $this->authenticate($request, $guards);
 
         return $next($request);
@@ -30,6 +37,14 @@ class Authenticate extends Middleware
      */
     protected function redirectTo(Request $request): ?string
     {
-        return $request->expectsJson() ? null : route('login');
+        // Mobile clients do not always send an Accept: application/json header.
+        // Returning the web login route for an API request makes Laravel try to
+        // generate a route that does not exist, turning an authentication failure
+        // into a 500 response instead of the expected 401 JSON response.
+        if ($request->expectsJson() || $request->is('api/*') || $request->bearerToken()) {
+            return null;
+        }
+
+        return route('login');
     }
 }

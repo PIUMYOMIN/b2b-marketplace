@@ -46,6 +46,10 @@ class SellerSubscription extends Model
     {
         return $query->where('status', 'active')
                      ->where(function ($q) {
+                         $q->whereNull('starts_at')
+                           ->orWhere('starts_at', '<=', Carbon::today());
+                     })
+                     ->where(function ($q) {
                          $q->whereNull('ends_at')
                            ->orWhere('ends_at', '>=', Carbon::today());
                      });

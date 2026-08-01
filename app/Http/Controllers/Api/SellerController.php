@@ -4651,6 +4651,11 @@ class SellerController extends Controller
     public function salesSummary(Request $request)
     {
         try {
+            $request->validate([
+                'start_date' => ['nullable', 'date'],
+                'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            ]);
+
             $user = $request->user();
 
             if (!isset($user->type) || $user->type !== 'seller') {
@@ -4689,6 +4694,8 @@ class SellerController extends Controller
             // Sales data
             $salesData = DB::table('orders')
                 ->where('seller_id', $user->id)
+                ->whereNull('deleted_at')
+                ->whereNotIn('status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
                 ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     DB::raw('COUNT(*) as total_orders'),
@@ -4701,12 +4708,15 @@ class SellerController extends Controller
             $totalItemsSold = DB::table('order_items')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->where('orders.seller_id', $user->id)
+                ->whereNull('orders.deleted_at')
+                ->whereNotIn('orders.status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
                 ->whereBetween('orders.created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->sum('order_items.quantity') ?? 0;
 
             // Order status counts
             $orderStatusCounts = DB::table('orders')
                 ->where('seller_id', $user->id)
+                ->whereNull('deleted_at')
                 ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     'status',
@@ -4738,6 +4748,8 @@ class SellerController extends Controller
             // Recent sales trend (last 7 days)
             $recentSalesTrend = DB::table('orders')
                 ->where('seller_id', $user->id)
+                ->whereNull('deleted_at')
+                ->whereNotIn('status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
                 ->where('created_at', '>=', Carbon::now()->subDays(7))
                 ->select(
                     DB::raw('DATE(created_at) as date'),
@@ -4753,6 +4765,8 @@ class SellerController extends Controller
             // Customer statistics - FIXED: Use correct approach for repeat customers
             $totalCustomers = DB::table('orders')
                 ->where('seller_id', $user->id)
+                ->whereNull('deleted_at')
+                ->whereNotIn('status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
                 ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->distinct()
                 ->count('buyer_id');
@@ -4762,6 +4776,8 @@ class SellerController extends Controller
                 // Get all buyers with their order counts
                 $buyerOrders = DB::table('orders')
                     ->where('seller_id', $user->id)
+                    ->whereNull('deleted_at')
+                    ->whereNotIn('status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
                     ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                     ->select('buyer_id')
                     ->get();
@@ -4802,6 +4818,8 @@ class SellerController extends Controller
                     ->join('orders', 'order_items.order_id', '=', 'orders.id')
                     ->join('products', 'order_items.product_id', '=', 'products.id')
                     ->where('orders.seller_id', $user->id)
+                    ->whereNull('orders.deleted_at')
+                    ->whereNotIn('orders.status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
                     ->whereBetween('orders.created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                     ->select(
                         'products.id',

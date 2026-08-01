@@ -38,20 +38,29 @@ class CheckPlanFeature
             ], 500);
         }
 
-        $plan  = $this->resolvePlan($request->user()->id);
-        $label = self::FEATURE_LABELS[$feature];
-
-        if (! $plan->{$feature}) {
+        $user = $request->user();
+        if (! $user) {
             return response()->json([
                 'success' => false,
-                'message' => "{$label} is not available on your current {$plan->name} plan. "
-                    . 'Please upgrade to access this feature.',
-                'error'   => 'plan_feature_unavailable',
+                'message' => 'Unauthenticated.',
+            ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $plan  = $this->resolvePlan($user->id);
+        $label = self::FEATURE_LABELS[$feature];
+
+        if (! $plan || ! (bool) $plan->{$feature}) {
+            return response()->json([
+                'success' => false,
+                'message' => $plan
+                    ? "{$label} is not available on your current {$plan->name} plan. Please upgrade to access this feature."
+                    : 'No active subscription plan is available. Please choose an active plan before accessing this feature.',
+                'error'   => $plan ? 'plan_feature_unavailable' : 'subscription_plan_unavailable',
                 'data'    => [
                     'feature'     => $feature,
                     'feature_label' => $label,
-                    'plan'        => $plan->slug,
-                    'plan_name'   => $plan->name,
+                    'plan'        => $plan?->slug,
+                    'plan_name'   => $plan?->name,
                     'upgrade_url' => '/seller/subscription/plans',
                 ],
             ], 403);
@@ -64,17 +73,22 @@ class CheckPlanFeature
      * Resolve the seller's active subscription plan.
      * Falls back to the Basic plan when no subscription record exists.
      */
-    private function resolvePlan(int $userId): SubscriptionPlan
+    private function resolvePlan(int $userId): ?SubscriptionPlan
     {
         $subscription = SellerSubscription::with('plan')
             ->where('user_id', $userId)
             ->active()
+            ->whereHas('plan', fn ($query) => $query->where('is_active', true))
+            ->orderByDesc('starts_at')
+            ->orderByDesc('id')
             ->first();
 
         if ($subscription && $subscription->plan) {
             return $subscription->plan;
         }
 
-        return SubscriptionPlan::where('slug', 'basic')->firstOrFail();
+        return SubscriptionPlan::where('slug', 'basic')
+            ->where('is_active', true)
+            ->first();
     }
 }

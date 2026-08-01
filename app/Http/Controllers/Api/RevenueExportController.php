@@ -170,7 +170,14 @@ class RevenueExportController extends Controller
         $pending      = count(array_filter($rows, fn($r) => $r['order_status'] === 'pending'));
         $cancelled    = count(array_filter($rows, fn($r) => $r['order_status'] === 'cancelled'));
 
-        $sum = fn($key) => array_sum(array_column($rows, $key));
+        // Keep cancelled/refunded orders visible and counted in the report, but
+        // never treat them as completed sales or platform/seller revenue.
+        $revenueRows = array_filter($rows, fn($row) => ! in_array(
+            $row['order_status'],
+            [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED],
+            true,
+        ));
+        $sum = fn($key) => array_sum(array_column($revenueRows, $key));
 
         return [
             'period'             => $period,
@@ -302,6 +309,10 @@ class RevenueExportController extends Controller
         // Bucket each order into a period key
         $buckets = [];
         foreach ($rows as $row) {
+            if (in_array($row['order_status'], [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED], true)) {
+                continue;
+            }
+
             $dt  = Carbon::parse($row['order_date']);
             $key = match($groupBy) {
                 'week'  => $dt->format('Y-\WW'),
