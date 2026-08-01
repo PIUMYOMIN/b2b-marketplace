@@ -450,6 +450,8 @@ Route::group([
             Route::get('/my-store', [SellerController::class, 'myStore']);
             Route::get('/dashboard', [SellerController::class, 'dashboard']);
             Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
+            // Customer management is available on every seller plan.
+            Route::get('/customers', [SellerController::class, 'customers']);
 
             // Analytics — Pro & Enterprise only
             Route::middleware('plan.feature:analytics_enabled')->group(function () {
@@ -457,7 +459,6 @@ Route::group([
                 Route::get('/top-products',        [SellerController::class, 'topProducts']);
                 Route::get('/performance-metrics', [SellerController::class, 'performanceMetrics']);
                 Route::get('/delivery-stats',      [SellerController::class, 'deliveryStats']);
-                Route::get('/customers',           [SellerController::class, 'customers']);
                 Route::get('/revenue/seller-export', [RevenueExportController::class, 'sellerExport']);
                 Route::get('/financial-report',      [RevenueExportController::class, 'sellerExport']);
             });
