@@ -682,6 +682,9 @@ class SubscriptionController extends Controller
         return SellerSubscription::with('plan')
             ->where('user_id', $userId)
             ->active()
+            ->whereHas('plan', fn ($query) => $query->where('is_active', true))
+            ->orderByDesc('starts_at')
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -721,7 +724,10 @@ class SubscriptionController extends Controller
             // Re-check inside the transaction — another request may have
             // already created the Basic plan between the outer check and now.
             $existing = SellerSubscription::where('user_id', $userId)
-                ->where('status', 'active')
+                ->active()
+                ->whereHas('plan', fn ($query) => $query->where('is_active', true))
+                ->orderByDesc('starts_at')
+                ->orderByDesc('id')
                 ->lockForUpdate()
                 ->first();
 
