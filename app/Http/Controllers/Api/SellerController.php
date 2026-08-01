@@ -368,9 +368,9 @@ class SellerController extends Controller
         // Response time (average time to confirm orders)
         $avgResponseTime = DB::table('orders')
             ->where('seller_id', $sellerId)
-            ->whereNotNull('confirmed_at')
+            ->whereNotNull('payment_confirmed_at')
             ->where('created_at', '>=', $thirtyDaysAgo)
-            ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, confirmed_at)) as    avg_minutes')
+            ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, payment_confirmed_at)) as avg_minutes')
             ->first();
 
         return [
