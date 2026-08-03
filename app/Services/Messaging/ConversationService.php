@@ -216,10 +216,29 @@ class ConversationService
             ],
         ];
 
+        $recipientUser = User::query()->find($recipient->user_id);
+        if ($recipientUser === null || !$this->messagePushEnabled($recipientUser)) {
+            return;
+        }
+
         $this->pushService->sendToUser($recipient->user_id, $message);
 
         if (config('services.beams.enabled', false)) {
             $this->beamsPush->sendToUser($recipient->user_id, $message);
         }
+    }
+
+    private function messagePushEnabled(User $user): bool
+    {
+        $prefs = $user->notification_preferences ?? [];
+        if (is_string($prefs)) {
+            $prefs = json_decode($prefs, true) ?: [];
+        }
+
+        if (!is_array($prefs) || ($prefs['push_notifications'] ?? true) === false) {
+            return false;
+        }
+
+        return (bool) ($prefs['message_notifications'] ?? true);
     }
 }

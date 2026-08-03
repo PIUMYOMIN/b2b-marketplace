@@ -5731,9 +5731,12 @@ class SellerController extends Controller
 
                 // Notification Settings
                 'email_notifications' => $userSettings['email_notifications'] ?? true,
+                'push_notifications' => $userSettings['push_notifications'] ?? true,
                 'order_notifications' => $userSettings['order_notifications'] ?? true,
                 'inventory_alerts' => $userSettings['inventory_alerts'] ?? true,
                 'review_notifications' => $userSettings['review_notifications'] ?? true,
+                'message_notifications' => $userSettings['message_notifications'] ?? true,
+                'announcement_notifications' => $userSettings['announcement_notifications'] ?? true,
 
                 // Payment Settings
                 'commission_rate' => $sellerProfile->commission_rate ?? 10,
@@ -5813,9 +5816,12 @@ class SellerController extends Controller
 
                 // Notification Settings
                 'email_notifications' => 'sometimes|boolean',
+                'push_notifications' => 'sometimes|boolean',
                 'order_notifications' => 'sometimes|boolean',
                 'inventory_alerts' => 'sometimes|boolean',
                 'review_notifications' => 'sometimes|boolean',
+                'message_notifications' => 'sometimes|boolean',
+                'announcement_notifications' => 'sometimes|boolean',
 
                 // Payment Settings
                 'commission_rate' => 'sometimes|numeric|min:0|max:30',
@@ -5942,9 +5948,12 @@ class SellerController extends Controller
     {
         return [
             'email_notifications',
+            'push_notifications',
             'order_notifications',
             'inventory_alerts',
             'review_notifications',
+            'message_notifications',
+            'announcement_notifications',
             'two_factor_auth',
             'login_notifications',
             'show_sold_out',

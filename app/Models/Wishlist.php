@@ -12,7 +12,12 @@ class Wishlist extends Model
 
     protected $fillable = [
         'user_id',
-        'product_id'
+        'product_id',
+        'last_reminded_at',
+    ];
+
+    protected $casts = [
+        'last_reminded_at' => 'datetime',
     ];
 
     /**

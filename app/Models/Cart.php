@@ -16,6 +16,7 @@ class Cart extends Model
         'quantity_unit',
         'price',
         'product_data',
+        'last_reminded_at',
     ];
 
     protected $casts = [
@@ -23,6 +24,7 @@ class Cart extends Model
         'price'            => 'decimal:2',
         'selected_options' => 'array',
         'product_data'     => 'array',
+        'last_reminded_at' => 'datetime',
     ];
 
     // -------------------------------------------------------------------------

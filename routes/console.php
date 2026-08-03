@@ -86,3 +86,21 @@ Artisan::command('inspire', function () {
         ->onFailure(function () {
             \Illuminate\Support\Facades\Log::error('users:purge-pending-deletions scheduled job failed.');
         });
+
+    // Wishlist buy-later reminders — daily at 10:00 Myanmar time (UTC+6:30 = 03:30 UTC)
+    Schedule::command('wishlist:send-reminders')
+        ->dailyAt('03:30')
+        ->withoutOverlapping()
+        ->runInBackground()
+        ->onFailure(function () {
+            \Illuminate\Support\Facades\Log::error('wishlist:send-reminders scheduled job failed.');
+        });
+
+    // Abandoned cart reminders — daily at 10:30 Myanmar time (UTC+6:30 = 04:00 UTC)
+    Schedule::command('cart:send-reminders')
+        ->dailyAt('04:00')
+        ->withoutOverlapping()
+        ->runInBackground()
+        ->onFailure(function () {
+            \Illuminate\Support\Facades\Log::error('cart:send-reminders scheduled job failed.');
+        });

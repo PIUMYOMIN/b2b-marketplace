@@ -21,7 +21,7 @@ class NewOrderForSeller extends Notification
             $channels[] = 'mail';
         }
 
-        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendPush($notifiable)));
+        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendNewOrderPush($notifiable)));
 
         return $channels;
     }
@@ -70,8 +70,12 @@ class NewOrderForSeller extends Notification
         return (bool) ($prefs['new_order'] ?? $prefs['order_updates'] ?? true);
     }
 
-    private function shouldSendPush($user): bool
+    private function shouldSendNewOrderPush($user): bool
     {
+        if (!$this->pushNotificationsEnabled($user)) {
+            return false;
+        }
+
         $prefs = $this->notificationPreferences($user);
 
         if (($prefs['order_notifications'] ?? true) === false) {

@@ -36,8 +36,19 @@ trait SendsExpoPush
         return is_array($prefs) ? $prefs : [];
     }
 
+    protected function pushNotificationsEnabled(object $user): bool
+    {
+        $prefs = $this->notificationPreferences($user);
+
+        return (bool) ($prefs['push_notifications'] ?? true);
+    }
+
     protected function shouldSendOrderPush(object $user, ?string $specificPreferenceKey = null): bool
     {
+        if (!$this->pushNotificationsEnabled($user)) {
+            return false;
+        }
+
         $prefs = $this->notificationPreferences($user);
 
         if (($prefs['order_notifications'] ?? true) === false) {
@@ -57,6 +68,10 @@ trait SendsExpoPush
 
     protected function shouldSendDeliveryPush(object $user): bool
     {
+        if (!$this->pushNotificationsEnabled($user)) {
+            return false;
+        }
+
         $prefs = $this->notificationPreferences($user);
 
         if (($prefs['order_notifications'] ?? true) === false) {
@@ -68,9 +83,24 @@ trait SendsExpoPush
 
     protected function shouldSendReviewPush(object $user): bool
     {
+        if (!$this->pushNotificationsEnabled($user)) {
+            return false;
+        }
+
         $prefs = $this->notificationPreferences($user);
 
         return (bool) ($prefs['review_notifications'] ?? true);
+    }
+
+    protected function shouldSendMessagePush(object $user): bool
+    {
+        if (!$this->pushNotificationsEnabled($user)) {
+            return false;
+        }
+
+        $prefs = $this->notificationPreferences($user);
+
+        return (bool) ($prefs['message_notifications'] ?? true);
     }
 
     /**

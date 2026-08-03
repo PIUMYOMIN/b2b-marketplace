@@ -375,6 +375,13 @@ class UserController extends Controller
             'new_orders' => 'sometimes|boolean',
             'review_notifications' => 'sometimes|boolean',
             'seller_updates' => 'sometimes|boolean',
+            'push_notifications' => 'sometimes|boolean',
+            'order_notifications' => 'sometimes|boolean',
+            'delivery_updates' => 'sometimes|boolean',
+            'message_notifications' => 'sometimes|boolean',
+            'announcement_notifications' => 'sometimes|boolean',
+            'wishlist_reminders' => 'sometimes|boolean',
+            'cart_reminders' => 'sometimes|boolean',
         ]);
 
         $existing = $user->notification_preferences ?? [];
