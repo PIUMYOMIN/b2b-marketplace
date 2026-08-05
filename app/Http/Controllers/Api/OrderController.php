@@ -1600,25 +1600,75 @@ class OrderController extends Controller
         try {
             $user = $request->user();
 
+            $country  = $request->query('country', 'Myanmar');
+            $state    = $request->query('state');
+            $city     = $request->query('city');
+            $township = $request->query('township');
+            $hasLocation = filled($state) && filled($city);
+
             $platformFeeRate = 0.05;
             $ruleType        = 'default';
 
-            // Try to load buyer's cart for a seller-specific rate lookup
-            $cartItems = Cart::where('user_id', $user->id)
-                ->with('product:id,seller_id,category_id')
+            $cartRows = Cart::where('user_id', $user->id)
+                ->with([
+                    'product.wholesaleTiers',
+                    'product.seller.sellerProfile',
+                    'variant',
+                ])
                 ->get();
 
-            if ($cartItems->isNotEmpty()) {
-                $sellerIds = $cartItems->pluck('product.seller_id')->filter()->unique();
+            $itemsBySeller = [];
+            $subtotal      = 0.0;
 
-                if ($sellerIds->count() === 1) {
-                    $sellerId    = $sellerIds->first();
-                    $sellerItems = $cartItems->map(fn($c) => ['product' => $c->product])->values()->toArray();
+            foreach ($cartRows as $row) {
+                $product = $row->product;
+                if (! $product) {
+                    continue;
+                }
+
+                $variant  = $row->variant_id ? $row->variant : null;
+                $quantity = (float) $row->quantity;
+
+                $baseItemPrice = $variant ? (float) $variant->price : (float) $product->price;
+                $isOnSale      = ! $variant && $product->isCurrentlyOnSale();
+
+                $resolved  = $variant
+                    ? $variant->resolveWholesalePrice($quantity)
+                    : $product->resolveWholesalePrice($quantity);
+                $tierPrice = $resolved['price'] !== $baseItemPrice ? $resolved['price'] : null;
+
+                if ($tierPrice !== null) {
+                    $itemPrice = $tierPrice;
+                } elseif ($isOnSale) {
+                    $itemPrice = (float) $product->discount_price;
+                } else {
+                    $itemPrice = $baseItemPrice;
+                }
+
+                $itemTotal = $itemPrice * $quantity;
+                $subtotal += $itemTotal;
+                $sellerId = $product->seller_id;
+
+                if (! isset($itemsBySeller[$sellerId])) {
+                    $itemsBySeller[$sellerId] = [
+                        'subtotal'    => 0.0,
+                        'seller_name' => $product->seller?->sellerProfile?->store_name ?? 'Seller',
+                    ];
+                }
+
+                $itemsBySeller[$sellerId]['subtotal'] += $itemTotal;
+            }
+
+            if (! empty($itemsBySeller)) {
+                $sellerIds = array_keys($itemsBySeller);
+
+                if (count($sellerIds) === 1) {
+                    $sellerId    = $sellerIds[0];
+                    $sellerItems = $cartRows->map(fn ($c) => ['product' => $c->product])->values()->toArray();
                     $resolved    = app(CommissionRateResolver::class)->resolveForSeller($sellerId, $sellerItems);
                     $platformFeeRate = $resolved['rate'];
                     $ruleType        = $resolved['rule_type'];
                 } else {
-                    // Multi-seller cart — use default rule as conservative estimate
                     $rule = CommissionRule::active()->where('type', 'default')->first();
                     if ($rule) {
                         $platformFeeRate = (float) $rule->rate;
@@ -1631,13 +1681,57 @@ class OrderController extends Controller
                 }
             }
 
+            $sellers               = [];
+            $totalShipping         = 0.0;
+            $defaultShippingPerSeller = 8000.0;
+
+            foreach ($itemsBySeller as $sellerId => $info) {
+                $sellerSubtotal = $info['subtotal'];
+                $shippingFee    = $defaultShippingPerSeller;
+
+                if ($hasLocation) {
+                    $sellerProfile = SellerProfile::where('user_id', $sellerId)->first();
+                    $matchedZone   = $sellerProfile?->activeDeliveryAreas()
+                        ->byLocation($country, $state, $city, $township)
+                        ->orderByDesc('sort_order')
+                        ->first();
+
+                    $shippingFee = $matchedZone
+                        ? (float) $matchedZone->getShippingFeeForOrder($sellerSubtotal)
+                        : $defaultShippingPerSeller;
+                }
+
+                $totalShipping += $shippingFee;
+                $sellers[] = [
+                    'seller_id'    => $sellerId,
+                    'seller_name'  => $info['seller_name'],
+                    'shipping_fee' => round($shippingFee, 2),
+                    'subtotal'     => round($sellerSubtotal, 2),
+                ];
+            }
+
+            // Buyer-facing tax is 0% — matches order creation.
+            $taxRate = 0.0;
+            $tax     = round($subtotal * $taxRate, 2);
+            $total   = round($subtotal + $totalShipping + $tax, 2);
+
+            $locationSummary = collect([$township, $city, $state, $country])
+                ->filter(fn ($part) => filled($part))
+                ->implode(', ');
+
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'platform_fee_rate' => $platformFeeRate,
-                    'platform_fee_pct'  => round($platformFeeRate * 100, 2),
-                    'shipping_fee'      => 5000,
-                    'rule_type'         => $ruleType,
+                    'subtotal'                  => round($subtotal, 2),
+                    'shipping_fee'              => round($totalShipping, 2),
+                    'tax_rate'                  => $taxRate,
+                    'tax'                       => $tax,
+                    'total'                     => $total,
+                    'platform_fee_rate'         => $platformFeeRate,
+                    'platform_fee_pct'          => round($platformFeeRate * 100, 2),
+                    'rule_type'                 => $ruleType,
+                    'sellers'                   => $sellers,
+                    'shipping_location_summary' => $locationSummary,
                 ],
             ]);
         } catch (\Exception $e) {
@@ -1647,10 +1741,16 @@ class OrderController extends Controller
             return response()->json([
                 'success' => true,
                 'data'    => [
-                    'platform_fee_rate' => 0.05,
-                    'platform_fee_pct'  => 5.0,
-                    'shipping_fee'      => 5000,
-                    'rule_type'         => 'fallback',
+                    'subtotal'                  => 0,
+                    'shipping_fee'              => 8000,
+                    'tax_rate'                  => 0,
+                    'tax'                       => 0,
+                    'total'                     => 8000,
+                    'platform_fee_rate'         => 0.05,
+                    'platform_fee_pct'          => 5.0,
+                    'rule_type'                 => 'fallback',
+                    'sellers'                   => [],
+                    'shipping_location_summary' => '',
                 ],
             ]);
         }

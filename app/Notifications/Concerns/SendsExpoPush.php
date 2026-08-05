@@ -194,6 +194,10 @@ trait SendsExpoPush
             return "{$base}/admin/dashboard?tab=overview";
         }
 
+        if (in_array($type, ['new_report', 'report_reporter_replied'], true) && !empty($data['ticket_id'])) {
+            return "{$base}/admin/dashboard?tab=reports&ticket=" . rawurlencode((string) $data['ticket_id']);
+        }
+
         return null;
     }
 }

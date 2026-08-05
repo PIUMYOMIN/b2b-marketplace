@@ -6,6 +6,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Report;
 use App\Models\ReportComment;
+use App\Models\User;
+use App\Notifications\NewReportSubmitted;
+use App\Notifications\ReportReporterReplied;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
@@ -94,8 +97,9 @@ class ReportController extends Controller
             'is_internal' => true,
         ]);
 
-        // Notify reporter and admin by email
+        // Notify reporter and admin
         $this->notifyReporter($report, 'created');
+        $this->notifyAdmins(new NewReportSubmitted($report));
         $this->notifyAdmin($report, 'new_report');
 
         return response()->json([
@@ -177,6 +181,7 @@ class ReportController extends Controller
         }
 
         // Notify admin that the reporter replied
+        $this->notifyAdmins(new ReportReporterReplied($report, $comment->body));
         $this->notifyAdmin($report, 'reporter_replied', $comment->body);
 
         return response()->json(['success' => true, 'data' => $comment]);
@@ -434,7 +439,7 @@ class ReportController extends Controller
                 'reporter_email' => $reporterEmail,
                 'event'         => $event,
                 'extra'         => $extra,
-                'url'           => config('app.frontend_url') . "/admin/reports/{$report->ticket_id}",
+                'url'           => config('app.frontend_url') . "/admin/dashboard?tab=reports&ticket={$report->ticket_id}",
             ], function ($m) use ($adminEmail, $subject) {
                 $m->to($adminEmail)->subject($subject);
             });
@@ -470,6 +475,22 @@ class ReportController extends Controller
             });
         } catch (\Exception $e) {
             Log::error("Report notification failed: " . $e->getMessage());
+        }
+    }
+
+    private function notifyAdmins($notification): void
+    {
+        $admins = User::where('type', 'admin')
+            ->orWhereHas('roles', fn ($query) => $query->where('name', 'admin'))
+            ->get()
+            ->unique('id');
+
+        foreach ($admins as $admin) {
+            try {
+                $admin->notify($notification);
+            } catch (\Throwable $e) {
+                Log::warning('Admin report notification failed: ' . $e->getMessage(), ['admin_id' => $admin->id]);
+            }
         }
     }
 }
