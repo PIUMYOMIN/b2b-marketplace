@@ -14,7 +14,7 @@ class PlatformLogisticsRequested extends Notification
     {
         $channels = ['database'];
 
-        if (! empty($notifiable->email) && $this->shouldSendMail($notifiable)) {
+        if (! empty($notifiable->email)) {
             $channels[] = 'mail';
         }
 
@@ -71,18 +71,5 @@ class PlatformLogisticsRequested extends Notification
         $frontend = rtrim((string) config('app.frontend_url', config('app.url')), '/');
 
         return $frontend . '/admin/dashboard?tab=platform-logistics';
-    }
-
-    private function shouldSendMail($user): bool
-    {
-        $prefs = $user->notification_preferences;
-
-        if (is_string($prefs)) {
-            $prefs = json_decode($prefs, true) ?: [];
-        } elseif (! is_array($prefs)) {
-            $prefs = [];
-        }
-
-        return $prefs['platform_logistics'] ?? $prefs['delivery_updates'] ?? true;
     }
 }

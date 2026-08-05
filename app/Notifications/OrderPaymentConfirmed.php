@@ -37,7 +37,7 @@ class OrderPaymentConfirmed extends Notification
             ->line('The order is now confirmed and ready for processing.')
             ->line('Payment method: ' . str_replace('_', ' ', strtoupper($order->payment_method)))
             ->line('Amount: ' . number_format((float) $order->total_amount) . ' MMK')
-            ->action('View Orders', url('/seller/orders'))
+            ->action('View Orders', rtrim((string) config('app.frontend_url', 'https://pyonea.com'), '/') . '/seller/dashboard?tab=orders')
             ->line('Please prepare the order and keep your buyer updated.');
     }
 

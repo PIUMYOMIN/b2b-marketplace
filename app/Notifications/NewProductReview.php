@@ -17,7 +17,7 @@ class NewProductReview extends Notification
     {
         $channels = ['database'];
 
-        if (!empty($notifiable->email) && $this->shouldSend($notifiable)) {
+        if (!empty($notifiable->email) && $this->shouldSendReviewEmail($notifiable)) {
             $channels[] = 'mail';
         }
 
@@ -71,13 +71,9 @@ class NewProductReview extends Notification
         );
     }
 
-    public function shouldSend($user): bool
+    private function shouldSendReviewEmail($user): bool
     {
-        $prefs = $user->notification_preferences ?? [];
-
-        if (is_string($prefs)) {
-            $prefs = json_decode($prefs, true) ?: [];
-        }
+        $prefs = $this->notificationPreferences($user);
 
         return (bool) ($prefs['review_notifications'] ?? true);
     }

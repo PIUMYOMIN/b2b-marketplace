@@ -43,6 +43,15 @@ trait SendsExpoPush
         return (bool) ($prefs['push_notifications'] ?? true);
     }
 
+    /**
+     * Transactional emails (order confirmations, status updates, OTP, etc.)
+     * must not be suppressed by push notification preferences.
+     */
+    protected function shouldSendTransactionalMail(object $user): bool
+    {
+        return true;
+    }
+
     protected function shouldSendOrderPush(object $user, ?string $specificPreferenceKey = null): bool
     {
         if (!$this->pushNotificationsEnabled($user)) {

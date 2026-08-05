@@ -58,6 +58,13 @@ class PasswordResetController extends Controller
             ], 404);
         }
 
+        if (empty($user->email)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('messages.auth.email_required_for_reset')
+            ], 422);
+        }
+
         // Generate password reset token
         $token = Password::createToken($user);
 

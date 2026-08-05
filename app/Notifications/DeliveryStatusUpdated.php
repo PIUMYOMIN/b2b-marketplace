@@ -21,7 +21,7 @@ class DeliveryStatusUpdated extends Notification
     {
         $channels = ['database'];
 
-        if ($this->sendMail && !empty($notifiable->email) && $this->shouldSendMail($notifiable)) {
+        if ($this->sendMail && !empty($notifiable->email) && $this->shouldSendTransactionalMail($notifiable)) {
             $channels[] = 'mail';
         }
 
@@ -87,11 +87,6 @@ class DeliveryStatusUpdated extends Notification
                 'message' => $body,
             ],
         );
-    }
-
-    private function shouldSendMail($user): bool
-    {
-        return $this->shouldSendDeliveryPush($user);
     }
 
     private function label(?string $status): string

@@ -450,6 +450,13 @@ class OrderController extends Controller
         Cache::put("order_otp_{$user->id}",          $otp,                 $ttl);
         Cache::put("order_otp_expires_{$user->id}",  $ttl->toISOString(),  $ttl);
 
+        if (empty($user->email)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'An email address is required to verify online payments. Please add an email to your account profile.',
+            ], 422);
+        }
+
         // Send synchronously — OTP is time-sensitive, the user is waiting.
         Mail::to($user->email)
             ->send(new OrderOtpMail($otp, $user->name, $formattedTotal));
@@ -1311,7 +1318,11 @@ class OrderController extends Controller
 
             $this->notifyBuyerOrderStatusChanged($order, $previousStatus);
             if ($delivery ?? null) {
-                $this->notifyDeliveryStatusChanged($delivery->fresh(['order.buyer', 'order.seller']), $previousDeliveryStatus ?? null);
+                $this->notifyDeliveryStatusChanged(
+                    $delivery->fresh(['order.buyer', 'order.seller']),
+                    $previousDeliveryStatus ?? null,
+                    (int) $user->id
+                );
             }
         } catch (\Exception $e) {
             DB::rollBack();
@@ -1641,6 +1652,52 @@ class OrderController extends Controller
                     'shipping_fee'      => 5000,
                     'rule_type'         => 'fallback',
                 ],
+            ]);
+        }
+    }
+
+    private function notifyBuyerOrderStatusChanged(Order $order, string $previousStatus): void
+    {
+        if ($previousStatus === $order->status) {
+            return;
+        }
+
+        try {
+            $order->loadMissing('buyer');
+            if ($order->buyer) {
+                $order->buyer->notify(new OrderStatusChanged($order, $previousStatus));
+            }
+        } catch (\Exception $notifEx) {
+            Log::warning('OrderStatusChanged notification failed: ' . $notifEx->getMessage(), [
+                'order_id' => $order->id,
+            ]);
+        }
+    }
+
+    private function notifyDeliveryStatusChanged(
+        Delivery $delivery,
+        ?string $previousStatus,
+        ?int $actorId = null,
+        bool $sendBuyerMail = true
+    ): void {
+        if ($previousStatus !== null && $previousStatus === $delivery->status) {
+            return;
+        }
+
+        try {
+            $delivery->loadMissing('order.buyer', 'order.seller');
+            $order = $delivery->order;
+
+            if ($order?->buyer) {
+                $order->buyer->notify(new DeliveryStatusUpdated($delivery, $previousStatus, $sendBuyerMail));
+            }
+
+            if ($order?->seller && (int) $order->seller->id !== (int) $actorId) {
+                $order->seller->notify(new DeliveryStatusUpdated($delivery, $previousStatus, false));
+            }
+        } catch (\Exception $notifEx) {
+            Log::warning('DeliveryStatusUpdated notification failed: ' . $notifEx->getMessage(), [
+                'delivery_id' => $delivery->id,
             ]);
         }
     }

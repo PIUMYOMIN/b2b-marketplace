@@ -19,11 +19,11 @@ class OrderStatusChanged extends Notification
     {
         $channels = ['database'];
 
-        if (!empty($notifiable->email) && $this->shouldSend($notifiable)) {
+        if (!empty($notifiable->email) && $this->shouldSendTransactionalMail($notifiable)) {
             $channels[] = 'mail';
         }
 
-        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSend($notifiable)));
+        $channels = array_merge($channels, $this->mobilePushChannels($this->shouldSendOrderPush($notifiable)));
 
         return $channels;
     }
@@ -65,10 +65,5 @@ class OrderStatusChanged extends Notification
                 'message' => $body,
             ],
         );
-    }
-
-    public function shouldSend($user): bool
-    {
-        return $this->shouldSendOrderPush($user);
     }
 }

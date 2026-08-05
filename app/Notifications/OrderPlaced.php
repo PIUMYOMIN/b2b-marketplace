@@ -17,7 +17,7 @@ class OrderPlaced extends Notification
     {
         $channels = ['database'];
 
-        if (!empty($notifiable->email) && $this->shouldSendMail($notifiable)) {
+        if (!empty($notifiable->email) && $this->shouldSendTransactionalMail($notifiable)) {
             $channels[] = 'mail';
         }
 
@@ -60,10 +60,5 @@ class OrderPlaced extends Notification
                 'message' => $body,
             ],
         );
-    }
-
-    private function shouldSendMail($user): bool
-    {
-        return $this->shouldSendOrderPush($user);
     }
 }

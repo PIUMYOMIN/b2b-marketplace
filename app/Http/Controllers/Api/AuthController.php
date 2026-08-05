@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 
-use Illuminate\Auth\Events\Registered;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\UserAccountDeletionService;
@@ -127,7 +126,7 @@ class AuthController extends Controller
             }
 
             if ($user->email) {
-                event(new Registered($user));
+                $user->sendEmailVerificationNotification();
             }
 
             // Notify all admins of new registration
@@ -153,7 +152,7 @@ class AuthController extends Controller
                     $this->buildAuthPayload($user, $token),
                     [
                     'requires_onboarding' => $validated['type'] === 'seller',
-                    'email_verification_required' => true
+                    'email_verification_required' => (bool) $user->email,
                     ]
                 )
             ], 201);

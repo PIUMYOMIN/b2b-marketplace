@@ -20,6 +20,7 @@ return [
         'admin_required'          => 'Unauthorized. Admin access required.',
         'email_already_verified'  => 'Email already verified.',
         'verification_sent'       => 'Verification email resent.',
+        'email_required_for_reset' => 'Password reset requires an email address on your account. Please add an email in your profile settings.',
     ],
 
     // ── Orders ────────────────────────────────────────────────────────────────

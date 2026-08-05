@@ -67,7 +67,12 @@ class NewOrderForSeller extends Notification
     {
         $prefs = $this->notificationPreferences($user);
 
-        return (bool) ($prefs['new_order'] ?? $prefs['order_updates'] ?? true);
+        return (bool) (
+            $prefs['new_order']
+            ?? $prefs['new_orders']
+            ?? $prefs['order_updates']
+            ?? true
+        );
     }
 
     private function shouldSendNewOrderPush($user): bool
