@@ -227,8 +227,7 @@
     <div class="wrapper">
         <div class="card">
             <div class="header">
-                <div class="logo">Pyonea<span>.com</span></div>
-                <div class="tagline">Myanmar's Trusted B2B Marketplace · မြန်မာ့ B2B လက်ကားဈေးကွက်</div>
+                @include('emails.partials.logo', ['showTagline' => true])
             </div>
             <div class="body">
                 @yield('content')

@@ -34,8 +34,9 @@
 </head>
 <body>
 <div class="card">
-  <div class="header">
-    <h1>Pyonea Support</h1>
+  <div class="header" style="text-align:center;">
+    @include('emails.partials.logo', ['size' => 48])
+    <h1 style="margin:12px 0 0;">Pyonea Support</h1>
     <p>Support Ticket Update</p>
   </div>
   <div class="body">

@@ -126,6 +126,8 @@ return [
     // 'frontend_url' => env('APP_FRONTEND_URL', 'http://localhost:5173'),
     'frontend_url' => env('APP_FRONTEND_URL', 'https://pyonea.com'),
 
+    'logo_url' => env('APP_LOGO_URL') ?: rtrim((string) env('APP_FRONTEND_URL', 'https://pyonea.com'), '/') . '/icon.png',
+
     'business_address' => env(
         'APP_BUSINESS_ADDRESS',
         'Bet 59-60, 19 Street, Aungmyaetharsan Township, Mandalay, Myanmar',

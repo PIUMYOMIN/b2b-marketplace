@@ -174,8 +174,7 @@
                     <!-- Header -->
                     <div class="header"
                         style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); padding:32px 24px; text-align:center;">
-                        <img src="{{ config('app.logo_url') ?? asset('images/logo-white.png') }}" alt="{{ config('app.name') }}"
-                            class="logo" style="max-width:140px; height:auto; display:block; margin:0 auto 12px;">
+                        @include('emails.partials.logo', ['size' => 56])
                         <h1 style="color:#ffffff; font-size:1.75rem; font-weight:300; letter-spacing:0.02em; margin-top:8px;">🔐 Reset Your
                             Password</h1>
                     </div>

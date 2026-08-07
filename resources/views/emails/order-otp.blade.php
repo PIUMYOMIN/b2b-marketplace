@@ -46,7 +46,7 @@
     <div class="wrapper">
         <div class="card">
             <div class="header">
-                <div class="logo">Pyonea<span>.com</span></div>
+                @include('emails.partials.logo')
             </div>
             <div class="body">
                 <h2>Your Order Confirmation Code 🔐</h2>
