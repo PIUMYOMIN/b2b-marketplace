@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use App\Mail\ContactFormMail;
+use App\Mail\ContactThankYouMail;
 use App\Models\ContactMessage;
 use App\Rules\Recaptcha;
 use App\Support\MailIdentity;
@@ -76,19 +77,24 @@ class ContactMessageController extends Controller
         $data = $request->only(['name', 'email', 'phone', 'subject', 'message']);
 
         try {
-            // Attempt to send email
             Mail::to(MailIdentity::inbox('contact'))->queue(new ContactFormMail($data));
         } catch (\Exception $e) {
-            // Log the error for debugging
-            \Log::error('Contact form email failed: ' . $e->getMessage(),[
-                'trace' => $e->getTraceAsString()
+            \Log::error('Contact form email failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
             ]);
 
-            // Return error response to frontend
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to send message. Please try again later.'
+                'message' => 'Failed to send message. Please try again later.',
             ], 500);
+        }
+
+        try {
+            Mail::to($data['email'])->queue(new ContactThankYouMail($data));
+        } catch (\Exception $e) {
+            \Log::warning('Contact thank-you email failed: ' . $e->getMessage(), [
+                'email' => $data['email'],
+            ]);
         }
 
         // Email sent successfully – now save to database
