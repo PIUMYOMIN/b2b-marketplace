@@ -227,7 +227,7 @@
     <div class="wrapper">
         <div class="card">
             <div class="header">
-                @include('emails.partials.logo', ['showTagline' => true])
+                @include('emails.partials.brand-header', ['showTagline' => true])
             </div>
             <div class="body">
                 @yield('content')

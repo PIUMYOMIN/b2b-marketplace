@@ -46,7 +46,7 @@
     <div class="wrapper">
         <div class="card">
             <div class="header">
-                @include('emails.partials.logo')
+                @include('emails.partials.brand-header')
             </div>
             <div class="body">
                 <h2>Verify your email address ✉️</h2>

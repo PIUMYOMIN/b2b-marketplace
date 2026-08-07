@@ -28,9 +28,8 @@
 </head>
 <body>
 <div class="card">
-  <div class="header" style="text-align:center;">
-    @include('emails.partials.logo', ['size' => 48])
-    <h1 style="margin:12px 0 0;">Pyonea Admin — Support Ticket</h1>
+  <div class="header">
+    <h1>Pyonea Admin — Support Ticket</h1>
     <p>
       @if($event === 'new_report')
         New report submitted
