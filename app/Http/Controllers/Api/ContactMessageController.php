@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use App\Mail\ContactFormMail;
 use App\Models\ContactMessage;
 use App\Rules\Recaptcha;
+use App\Support\MailIdentity;
 
 class ContactMessageController extends Controller
 {
@@ -76,7 +77,7 @@ class ContactMessageController extends Controller
 
         try {
             // Attempt to send email
-            Mail::to(config('mail.from.address'))->queue(new ContactFormMail($data));
+            Mail::to(MailIdentity::inbox('contact'))->queue(new ContactFormMail($data));
         } catch (\Exception $e) {
             // Log the error for debugging
             \Log::error('Contact form email failed: ' . $e->getMessage(),[

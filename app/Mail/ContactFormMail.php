@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Support\MailIdentity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -19,7 +20,8 @@ class ContactFormMail extends Mailable
 
     public function build()
     {
-        return $this->replyTo($this->data['email'], $this->data['name'])
+        return MailIdentity::apply($this, 'contact')
+            ->replyTo($this->data['email'], $this->data['name'])
             ->subject('Contact Form: ' . $this->data['subject'])
             ->view('emails.contact-form');
     }

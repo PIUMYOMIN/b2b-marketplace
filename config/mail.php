@@ -1,9 +1,9 @@
 <?php
 
-$mailFromAddress = env('MAIL_FROM_ADDRESS', 'hello@example.com');
-$mailFromName = env('MAIL_FROM_NAME', 'Example');
-$mailReplyAddress = env('MAIL_REPLY_TO_ADDRESS') ?: $mailFromAddress;
-$mailReplyName = env('MAIL_REPLY_TO_NAME') ?: $mailFromName;
+$mailFromAddress = env('MAIL_FROM_ADDRESS', env('MAIL_TRANSACTIONAL_FROM', 'no-reply@pyonea.com'));
+$mailFromName = env('MAIL_FROM_NAME', env('MAIL_TRANSACTIONAL_NAME', 'Pyonea'));
+$mailReplyAddress = env('MAIL_REPLY_TO_ADDRESS', env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com'));
+$mailReplyName = env('MAIL_REPLY_TO_NAME', env('MAIL_SUPPORT_NAME', 'Pyonea Support'));
 
 $validEmail = static function ($address, $fallback) {
     if (is_string($address) && filter_var($address, FILTER_VALIDATE_EMAIL)) {
@@ -143,6 +143,59 @@ return [
         'name' => $mailReplyName,
     ],
 
-    'admin_report_email' => $validEmail(env('ADMIN_REPORT_EMAIL'), $mailFromAddress),
+    'admin_report_email' => $validEmail(env('ADMIN_REPORT_EMAIL'), env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com')),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Branded sender identities (From + Reply-To per mail category)
+    |--------------------------------------------------------------------------
+    |
+    | SMTP auth uses MAIL_USERNAME (typically no-reply@pyonea.com). Any other From
+    | address here must be an alias on that Namecheap mailbox, or use its own
+    | mailbox credentials via a dedicated mailer.
+    |
+    */
+    'addresses' => [
+        'transactional' => [
+            'address' => $validEmail(env('MAIL_TRANSACTIONAL_FROM', env('MAIL_FROM_ADDRESS', 'no-reply@pyonea.com')), null),
+            'name' => env('MAIL_TRANSACTIONAL_NAME', env('MAIL_FROM_NAME', 'Pyonea')),
+            'reply_to' => [
+                'address' => $validEmail(env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com'), $mailReplyAddress),
+                'name' => env('MAIL_SUPPORT_NAME', $mailReplyName),
+            ],
+        ],
+        'welcome' => [
+            'address' => $validEmail(env('MAIL_WELCOME_FROM', 'hi@pyonea.com'), $mailFromAddress),
+            'name' => env('MAIL_WELCOME_NAME', 'Pyonea'),
+            'reply_to' => [
+                'address' => $validEmail(env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com'), $mailReplyAddress),
+                'name' => env('MAIL_SUPPORT_NAME', $mailReplyName),
+            ],
+        ],
+        'contact' => [
+            'address' => $validEmail(env('MAIL_CONTACT_ADDRESS', 'contact@pyonea.com'), $mailFromAddress),
+            'name' => env('MAIL_CONTACT_NAME', 'Pyonea Contact'),
+            'reply_to' => [
+                'address' => $validEmail(env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com'), $mailReplyAddress),
+                'name' => env('MAIL_SUPPORT_NAME', $mailReplyName),
+            ],
+        ],
+        'support' => [
+            'address' => $validEmail(env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com'), $mailReplyAddress),
+            'name' => env('MAIL_SUPPORT_NAME', $mailReplyName),
+            'reply_to' => [
+                'address' => $validEmail(env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com'), $mailReplyAddress),
+                'name' => env('MAIL_SUPPORT_NAME', $mailReplyName),
+            ],
+        ],
+        'newsletter' => [
+            'address' => $validEmail(env('MAIL_NEWSLETTER_FROM', env('MAIL_TRANSACTIONAL_FROM', 'no-reply@pyonea.com')), $mailFromAddress),
+            'name' => env('MAIL_NEWSLETTER_NAME', 'Pyonea'),
+            'reply_to' => [
+                'address' => $validEmail(env('MAIL_SUPPORT_ADDRESS', 'support@pyonea.com'), $mailReplyAddress),
+                'name' => env('MAIL_SUPPORT_NAME', $mailReplyName),
+            ],
+        ],
+    ],
 
 ];

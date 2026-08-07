@@ -2,7 +2,7 @@
 
 namespace App\Mail;
 
-use App\Models\NewsletterSubscriber;
+use App\Support\MailIdentity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -18,7 +18,7 @@ class NewsletterConfirmMail extends Mailable
 
     public function build(): static
     {
-        return $this
+        return MailIdentity::apply($this, 'newsletter')
             ->subject('Confirm your Pyonea subscription')
             ->view('emails.newsletter-confirm', [
                 'token' => $this->token,

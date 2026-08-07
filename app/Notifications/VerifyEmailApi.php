@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Support\MailIdentity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -41,13 +42,16 @@ class VerifyEmailApi extends Notification
         // Generate a fresh 6-digit code each time the email is sent
         $code = $notifiable->generateVerificationCode();
 
-        return (new MailMessage)
+        return MailIdentity::applyToMailMessage(
+            (new MailMessage)
             ->subject('Verify your Pyonea email address')
             ->view('emails.verify-email', [
                 'url' => $verificationUrl,
                 'user' => $notifiable,
                 'code' => $code,
-            ]);
+            ]),
+            'transactional'
+        );
     }
 
     /**

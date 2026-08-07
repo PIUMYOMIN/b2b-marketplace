@@ -459,7 +459,7 @@ class OrderController extends Controller
 
         // Send synchronously — OTP is time-sensitive, the user is waiting.
         Mail::to($user->email)
-            ->send(new OrderOtpMail($otp, $user->name, $formattedTotal));
+            ->send(new OrderOtpMail($otp, $user->name, $formattedTotal, $user->email));
 
         return response()->json([
             'success'    => true,

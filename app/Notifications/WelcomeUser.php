@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Notifications\Concerns\SendsExpoPush;
+use App\Support\MailIdentity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -23,9 +24,12 @@ class WelcomeUser extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        return (new MailMessage)
+        return MailIdentity::applyToMailMessage(
+            (new MailMessage)
             ->subject("Welcome to Pyonea, {$notifiable->name}!")
-            ->view('emails.welcome', ['user' => $notifiable]);
+            ->view('emails.welcome', ['user' => $notifiable]),
+            'welcome'
+        );
     }
 
     /** @return array<string, mixed> */

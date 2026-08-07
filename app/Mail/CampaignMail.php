@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\EmailCampaign;
+use App\Support\MailIdentity;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -18,7 +19,7 @@ class CampaignMail extends Mailable
 
     public function build(): static
     {
-        $mail = $this
+        $mail = MailIdentity::apply($this, 'newsletter')
             ->subject($this->campaign->subject)
             ->view('emails.newsletter', [
                 'campaign' => $this->campaign,

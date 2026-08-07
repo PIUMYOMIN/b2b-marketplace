@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
+use App\Support\MailIdentity;
 use App\Models\ProductReview;
 use App\Observers\ProductReviewObserver;
 
@@ -69,13 +70,12 @@ class AppServiceProvider extends ServiceProvider
     protected function configureTransactionalMailHeaders(): void
     {
         Event::listen(MessageSending::class, function (MessageSending $event): void {
-            // Laravel already applies config('mail.reply_to') globally via MailManager.
-            // MessageSending exposes Symfony Email where replyTo() is variadic (address only),
-            // so never call replyTo($email, $name) here — the second arg is parsed as another email.
-
             $headers = $event->message->getHeaders();
             if (!$headers->has('X-Mailer')) {
                 $headers->addTextHeader('X-Mailer', config('app.name') . ' Mailer');
+            }
+            if (!$headers->has('X-Auto-Response-Suppress')) {
+                $headers->addTextHeader('X-Auto-Response-Suppress', 'OOF, AutoReply');
             }
         });
     }
