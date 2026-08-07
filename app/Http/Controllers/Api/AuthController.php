@@ -435,12 +435,24 @@ class AuthController extends Controller
         $name     = $socialUser['name']    ?? 'User';
         $avatar   = $socialUser['picture'] ?? $socialUser['avatar'] ?? null;
 
+        $socialProfile = [
+            'name'   => $name,
+            'email'  => $email,
+            'avatar' => $avatar,
+        ];
+
         // Case 1: already linked to this social account
         $user = User::where('social_id', $socialId)
                     ->where('social_provider', $provider)
                     ->first();
 
         if ($user) {
+            // Abandoned Google signup (left before role/phone) must resume onboarding,
+            // not receive a full session with type=pending (no dashboard role).
+            if ($this->isIncompleteSocialUser($user)) {
+                return $this->issueSocialNeedsRole($user, $provider, $socialProfile);
+            }
+
             return $this->issueSocialToken($user, 'authenticated');
         }
 
@@ -453,6 +465,12 @@ class AuthController extends Controller
                     'social_provider' => $provider,
                     'profile_photo'   => $user->profile_photo ?? $avatar,
                 ]);
+                $user = $user->fresh() ?? $user;
+
+                if ($this->isIncompleteSocialUser($user)) {
+                    return $this->issueSocialNeedsRole($user, $provider, $socialProfile);
+                }
+
                 return $this->issueSocialToken($user, 'authenticated');
             }
         }
@@ -475,29 +493,7 @@ class AuthController extends Controller
             'is_active'       => true,
         ]);
 
-        $missingFields = $this->getMissingSocialFields($pending);
-
-        // 15-minute scoped token — only /auth/{provider}/complete accepts it
-        $tempToken = $pending->createToken(
-            'social-pending',
-            ['social-pending'],
-            Carbon::now()->addMinutes(15)
-        )->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'status'  => 'needs_role',
-            'data'    => [
-                'temp_token'  => $tempToken,
-                'provider'    => $provider,
-                'social_user' => [
-                    'name'   => $name,
-                    'email'  => $email,
-                    'avatar' => $avatar,
-                ],
-                'missing_fields' => $missingFields,
-            ],
-        ]);
+        return $this->issueSocialNeedsRole($pending, $provider, $socialProfile);
     }
 
     /**
@@ -736,6 +732,41 @@ class AuthController extends Controller
         }
     }
 
+    private function isIncompleteSocialUser(User $user): bool
+    {
+        return $user->type === 'pending';
+    }
+
+    /**
+     * Issue a short-lived social-pending token so the client can finish role/phone setup.
+     * Revokes prior tokens so abandoned full sessions cannot linger.
+     */
+    private function issueSocialNeedsRole(User $user, string $provider, array $socialProfile): JsonResponse
+    {
+        $user->tokens()->delete();
+
+        $tempToken = $user->createToken(
+            'social-pending',
+            ['social-pending'],
+            Carbon::now()->addMinutes(15)
+        )->plainTextToken;
+
+        return response()->json([
+            'success' => true,
+            'status'  => 'needs_role',
+            'data'    => [
+                'temp_token'  => $tempToken,
+                'provider'    => $provider,
+                'social_user' => [
+                    'name'   => $socialProfile['name'] ?? $user->name,
+                    'email'  => $socialProfile['email'] ?? $user->email,
+                    'avatar' => $socialProfile['avatar'] ?? $user->profile_photo,
+                ],
+                'missing_fields' => $this->getMissingSocialFields($user),
+            ],
+        ]);
+    }
+
     /** Issue a full-session token and return an "authenticated" response. */
     private function issueSocialToken(User $user, string $status): JsonResponse
     {
@@ -851,7 +882,10 @@ class AuthController extends Controller
         if (blank($user->email)) {
             $missing[] = 'email';
         }
-        if (blank($user->phone)) {
+
+        $phone = (string) ($user->phone ?? '');
+        // Placeholder phones from step-1 social signup still count as missing.
+        if ($phone === '' || str_starts_with($phone, 'pending-social-')) {
             $missing[] = 'phone';
         }
 
