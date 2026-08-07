@@ -175,7 +175,7 @@
                     <div class="header"
                         style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); padding:32px 24px; text-align:center;">
                         @include('emails.partials.brand-header', ['inline' => true])
-                        <h1 style="color:#ffffff; font-size:1.75rem; font-weight:300; letter-spacing:0.02em; margin-top:8px;">🔐 Reset Your
+                        <h1 style="color:#ffffff; font-size:1.75rem; font-weight:300; letter-spacing:0.02em; margin-top:16px;">🔐 Reset Your
                             Password</h1>
                     </div>
 
