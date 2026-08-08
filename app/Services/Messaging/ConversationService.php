@@ -201,7 +201,6 @@ class ConversationService
             $body = $message->type === Message::TYPE_ATTACHMENT ? 'Sent an attachment' : 'Sent you a message';
         }
 
-        $frontendBase = rtrim((string) config('app.frontend_url', 'https://pyonea.com'), '/');
         $message = [
             'title' => $sender->name,
             'body' => $body,
@@ -209,10 +208,12 @@ class ConversationService
             'data' => [
                 'type' => 'message_received',
                 'conversation_id' => (string) $conversation->id,
-                'context_type' => $conversation->context_type,
+                'context_type' => (string) $conversation->context_type,
                 'context_id' => (string) $conversation->context_id,
-                'context_label' => $label,
-                'url' => "{$frontendBase}/messages/{$conversation->id}",
+                'context_label' => (string) $label,
+                // Native deep-link path (also works when prefixed by frontend host).
+                'url' => "/messages/{$conversation->id}",
+                'channelId' => 'messages',
             ],
         ];
 

@@ -62,13 +62,18 @@ class AnnouncementPushService
         $this->expoPush->sendToTokens($tokens, $message);
 
         if (config('services.beams.enabled', false) && $this->beamsPush->isConfigured() && $userIds->isNotEmpty()) {
+            $beamsData = is_array($message['data'] ?? null) ? $message['data'] : [];
+            if (!empty($message['channelId'])) {
+                $beamsData['channelId'] = (string) $message['channelId'];
+            }
+
             foreach (array_chunk($userIds->all(), 1000) as $chunk) {
                 $this->beamsPush->publishToUsers(
                     $chunk,
                     $this->beamsPush->buildFcmPayload(
                         (string) $message['title'],
                         (string) $message['body'],
-                        is_array($message['data'] ?? null) ? $message['data'] : [],
+                        $beamsData,
                     ),
                 );
             }
