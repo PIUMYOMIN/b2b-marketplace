@@ -643,6 +643,8 @@ Route::group([
             ->where('token', '.*');
 
         // ── Pusher Beams (authenticated users) ─────────────────────────────
+        // GET is required by the Android BeamsTokenProvider (adds ?user_id=...).
+        Route::get('/beams/auth', [BeamsAuthController::class, 'show']);
         Route::post('/beams/auth', [BeamsAuthController::class, 'store']);
 
         // ── In-app notifications (Laravel DB notifications) ───────────────
