@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\BeamsPushService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class BeamsAuthController extends Controller
 {
@@ -22,6 +23,11 @@ class BeamsAuthController extends Controller
 
         $user = $request->user();
         $tokenPayload = $this->beams->generateUserToken($user->id);
+
+        Log::info('Beams auth token issued', [
+            'user_id' => $user->id,
+            'platform' => $request->header('X-Pyonea-Client') ?: $request->userAgent(),
+        ]);
 
         return response()->json([
             'success' => true,
