@@ -58,6 +58,15 @@ class BeamsPushService
     }
 
     /**
+     * Interest name the mobile app always subscribes to for this user.
+     * Used as a delivery fallback when authenticated-user devices are missing.
+     */
+    public function userInterest(string|int $userId): string
+    {
+        return 'user-'.((string) $userId);
+    }
+
+    /**
      * @param  array<int, string|int>  $userIds
      * @param  array<string, mixed>  $payload
      */
@@ -69,20 +78,32 @@ class BeamsPushService
 
         $users = array_values(array_map('strval', $userIds));
 
+        // Primary delivery: per-user interests. Authenticated-user publish is
+        // unreliable while setUserId hangs on some release APKs (users_no_devices).
+        // Include debug-u-{id} so currently installed builds (already subscribed)
+        // receive pushes before the next APK that also joins user-{id}.
+        $interests = [];
+        foreach ($users as $id) {
+            $interests[] = $this->userInterest($id);
+            $interests[] = 'debug-u-'.$id;
+        }
+        $interests = array_values(array_unique($interests));
+
         try {
-            $response = $this->client()->publishToUsers($users, $payload);
+            $response = $this->client()->publishToInterests($interests, $payload);
             $publishId = is_object($response) && isset($response->publishId)
                 ? (string) $response->publishId
                 : null;
 
-            Log::info('Pusher Beams publishToUsers accepted', [
+            Log::info('Pusher Beams publishToInterests accepted', [
                 'users' => $users,
+                'interests' => $interests,
                 'publish_id' => $publishId,
-                'user_count' => count($users),
             ]);
         } catch (\Throwable $exception) {
-            Log::error('Pusher Beams publishToUsers failed', [
+            Log::error('Pusher Beams publishToInterests failed', [
                 'users' => $users,
+                'interests' => $interests,
                 'message' => $exception->getMessage(),
             ]);
         }
