@@ -64,4 +64,30 @@ class BeamsAuthController extends Controller
             'data' => $tokenPayload,
         ]);
     }
+
+    /**
+     * POST /beams/client-status — app-side Beams registration breadcrumbs
+     * (visible without adb when release APKs fail silently).
+     */
+    public function clientStatus(Request $request)
+    {
+        $data = $request->validate([
+            'status' => 'required|string|max:64',
+            'detail' => 'nullable|string|max:2000',
+            'provider' => 'nullable|string|max:32',
+            'has_instance_id' => 'nullable|boolean',
+            'platform' => 'nullable|string|max:32',
+        ]);
+
+        Log::info('Beams client status', [
+            'user_id' => $request->user()->id,
+            'status' => $data['status'],
+            'detail' => $data['detail'] ?? null,
+            'provider' => $data['provider'] ?? null,
+            'has_instance_id' => $data['has_instance_id'] ?? null,
+            'platform' => $data['platform'] ?? $request->userAgent(),
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
 }

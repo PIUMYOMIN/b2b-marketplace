@@ -647,6 +647,7 @@ Route::group([
         // GET is required by the Android BeamsTokenProvider (adds ?user_id=...).
         Route::get('/beams/auth', [BeamsAuthController::class, 'show']);
         Route::post('/beams/auth', [BeamsAuthController::class, 'store']);
+        Route::post('/beams/client-status', [BeamsAuthController::class, 'clientStatus']);
 
         // ── In-app notifications (Laravel DB notifications) ───────────────
         Route::prefix('notifications')->group(function () {
