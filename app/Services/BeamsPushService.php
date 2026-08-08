@@ -70,7 +70,16 @@ class BeamsPushService
         $users = array_values(array_map('strval', $userIds));
 
         try {
-            $this->client()->publishToUsers($users, $payload);
+            $response = $this->client()->publishToUsers($users, $payload);
+            $publishId = is_object($response) && isset($response->publishId)
+                ? (string) $response->publishId
+                : null;
+
+            Log::info('Pusher Beams publishToUsers accepted', [
+                'users' => $users,
+                'publish_id' => $publishId,
+                'user_count' => count($users),
+            ]);
         } catch (\Throwable $exception) {
             Log::error('Pusher Beams publishToUsers failed', [
                 'users' => $users,
@@ -111,13 +120,25 @@ class BeamsPushService
      */
     public function buildFcmPayload(string $title, string $body, array $data = []): array
     {
+        $channelId = is_string($data['channelId'] ?? null) && $data['channelId'] !== ''
+            ? (string) $data['channelId']
+            : 'messages';
+
         return [
             'fcm' => [
                 'notification' => [
                     'title' => $title,
                     'body' => $body,
+                    'android_channel_id' => $channelId,
                 ],
                 'data' => array_map('strval', $data),
+                'android' => [
+                    'priority' => 'high',
+                    'notification' => [
+                        'channel_id' => $channelId,
+                        'sound' => 'default',
+                    ],
+                ],
             ],
             'apns' => [
                 'aps' => [
