@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\OrderTrackingController;
 use App\Http\Controllers\Api\RevenueExportController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\BeamsAuthController;
+use App\Http\Controllers\Api\BeamsWebhookController;
 use App\Http\Controllers\Api\PushTokenController;
 use App\Http\Controllers\Api\AnnouncementController;
 use App\Http\Controllers\Api\BulkImportController;
@@ -858,6 +859,7 @@ Route::group([
         Route::post('/mmqr',    [PaymentController::class, 'handleMMQRWebhook']);
         Route::post('/kbzpay',  [PaymentController::class, 'handleKBZPayWebhook']);
         Route::post('/wavepay', [PaymentController::class, 'handleWavePayWebhook']);
+        Route::post('/beams', BeamsWebhookController::class);
     });
 
     // --------------------
