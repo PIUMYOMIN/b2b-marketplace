@@ -3,11 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\SellerSubscription;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class SubscriptionApproved extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(public SellerSubscription $subscription) {}
 
     public function via($notifiable): array
@@ -18,7 +21,7 @@ class SubscriptionApproved extends Notification
             $channels[] = 'mail';
         }
 
-        return $channels;
+        return array_merge($channels, $this->mobilePushChannels($this->pushNotificationsEnabled($notifiable)));
     }
 
     public function toMail($notifiable): MailMessage
@@ -50,5 +53,24 @@ class SubscriptionApproved extends Notification
             'url' => '/seller/dashboard?tab=subscription',
             'message' => "Your {$plan?->name} subscription is approved and active.",
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $planName = $this->subscription->plan?->name ?? 'subscription';
+        $body = "Your {$planName} subscription is approved and active.";
+
+        return $this->expoPushPayload(
+            'Subscription Approved',
+            $body,
+            'admin',
+            [
+                'type' => 'subscription_approved',
+                'subscription_id' => (string) $this->subscription->id,
+                'plan_name' => (string) $planName,
+                'message' => $body,
+                'url' => '/seller/dashboard?tab=subscription',
+            ],
+        );
     }
 }

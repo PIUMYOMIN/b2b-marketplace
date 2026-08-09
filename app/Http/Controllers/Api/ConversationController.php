@@ -40,6 +40,7 @@ class ConversationController extends Controller
         $page = max(1, (int) $request->query('page', 1));
         $perPage = min(50, max(1, (int) $request->query('per_page', 20)));
         $total = $rows->count();
+        $totalUnread = (int) $rows->sum(fn ($row) => (int) ($row['unread_count'] ?? 0));
         $items = $rows->slice(($page - 1) * $perPage, $perPage)->values();
 
         return response()->json([
@@ -49,6 +50,7 @@ class ConversationController extends Controller
                 'current_page' => $page,
                 'per_page' => $perPage,
                 'total' => $total,
+                'total_unread' => $totalUnread,
                 'last_page' => (int) ceil($total / $perPage),
             ],
         ]);

@@ -3,19 +3,18 @@
 namespace App\Notifications;
 
 use App\Models\Rfq;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 /**
  * Sent to sellers when a buyer creates a targeted (non-broadcast) RFQ
  * that explicitly lists them as a recipient.
- *
- * Broadcast RFQs are visible to all sellers via the "Received" tab without
- * spamming every seller's inbox — so we skip mail for those and rely on
- * the sellers discovering them on the platform.
  */
 class RfqCreated extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(public Rfq $rfq) {}
 
     public function via($notifiable): array
@@ -24,7 +23,8 @@ class RfqCreated extends Notification
         if (!empty($notifiable->email)) {
             $channels[] = 'mail';
         }
-        return $channels;
+
+        return array_merge($channels, $this->mobilePushChannels($this->pushNotificationsEnabled($notifiable)));
     }
 
     public function toMail($notifiable): MailMessage
@@ -46,13 +46,33 @@ class RfqCreated extends Notification
     public function toArray($notifiable): array
     {
         return [
-            'type'         => 'rfq_created',
-            'rfq_id'       => $this->rfq->id,
-            'rfq_number'   => $this->rfq->rfq_number,
+            'type' => 'rfq_created',
+            'rfq_id' => $this->rfq->id,
+            'rfq_number' => $this->rfq->rfq_number,
             'product_name' => $this->rfq->product_name,
-            'buyer_name'   => $this->rfq->buyer->name ?? 'A buyer',
-            'deadline'     => $this->rfq->deadline->toDateString(),
-            'message'      => "New RFQ {$this->rfq->rfq_number} for \"{$this->rfq->product_name}\" — deadline {$this->rfq->deadline->format('d M Y')}.",
+            'buyer_name' => $this->rfq->buyer->name ?? 'A buyer',
+            'deadline' => $this->rfq->deadline->toDateString(),
+            'url' => '/seller/dashboard?tab=rfq',
+            'message' => "New RFQ {$this->rfq->rfq_number} for \"{$this->rfq->product_name}\" — deadline {$this->rfq->deadline->format('d M Y')}.",
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $body = "New RFQ {$this->rfq->rfq_number}: {$this->rfq->product_name}";
+
+        return $this->expoPushPayload(
+            'New RFQ',
+            $body,
+            'admin',
+            [
+                'type' => 'rfq_created',
+                'rfq_id' => (string) $this->rfq->id,
+                'rfq_number' => (string) $this->rfq->rfq_number,
+                'product_name' => (string) $this->rfq->product_name,
+                'message' => $body,
+                'url' => '/seller/dashboard?tab=rfq',
+            ],
+        );
     }
 }

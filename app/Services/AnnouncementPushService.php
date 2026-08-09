@@ -13,7 +13,6 @@ class AnnouncementPushService
 {
     public function __construct(
         private readonly ExpoPushService $expoPush,
-        private readonly BeamsPushService $beamsPush,
     ) {}
 
     /**
@@ -33,11 +32,7 @@ class AnnouncementPushService
         $userIds = $this->resolveAudienceUserIds($audience);
         $tokens = $this->resolveTokens($userIds);
 
-        if ($tokens->isEmpty() && !config('services.beams.enabled', false)) {
-            return ['sent' => 0, 'skipped' => true, 'reason' => 'no_tokens'];
-        }
-
-        if ($tokens->isEmpty() && $userIds->isEmpty()) {
+        if ($tokens->isEmpty()) {
             return ['sent' => 0, 'skipped' => true, 'reason' => 'no_tokens'];
         }
 
@@ -61,31 +56,13 @@ class AnnouncementPushService
 
         $this->expoPush->sendToTokens($tokens, $message);
 
-        if (config('services.beams.enabled', false) && $this->beamsPush->isConfigured() && $userIds->isNotEmpty()) {
-            $beamsData = is_array($message['data'] ?? null) ? $message['data'] : [];
-            if (!empty($message['channelId'])) {
-                $beamsData['channelId'] = (string) $message['channelId'];
-            }
-
-            foreach (array_chunk($userIds->all(), 1000) as $chunk) {
-                $this->beamsPush->publishToUsers(
-                    $chunk,
-                    $this->beamsPush->buildFcmPayload(
-                        (string) $message['title'],
-                        (string) $message['body'],
-                        $beamsData,
-                    ),
-                );
-            }
-        }
-
         Log::info('Announcement push broadcast dispatched.', [
             'announcement_id' => $announcement->id,
             'audience' => $audience,
             'token_count' => $tokens->count(),
         ]);
 
-        return ['sent' => max($tokens->count(), $userIds->count()), 'skipped' => false];
+        return ['sent' => $tokens->count(), 'skipped' => false];
     }
 
     /** @return Collection<int, int> */

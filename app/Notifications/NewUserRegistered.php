@@ -21,7 +21,7 @@ class NewUserRegistered extends Notification
             $channels[] = 'mail';
         }
 
-        // Native push (Expo + Beams when configured) for admins logged into the app
+        // Native Expo push for admins logged into the app
         $channels = array_merge($channels, $this->mobilePushChannels(true));
 
         return $channels;

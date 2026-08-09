@@ -3,11 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\SellerSubscription;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class SubscriptionRequestSubmitted extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(public SellerSubscription $subscription) {}
 
     public function via($notifiable): array
@@ -18,7 +21,7 @@ class SubscriptionRequestSubmitted extends Notification
             $channels[] = 'mail';
         }
 
-        return $channels;
+        return array_merge($channels, $this->mobilePushChannels($this->pushNotificationsEnabled($notifiable)));
     }
 
     public function toMail($notifiable): MailMessage
@@ -60,6 +63,28 @@ class SubscriptionRequestSubmitted extends Notification
             'message' => ($seller?->sellerProfile?->store_name ?? $seller?->name ?? 'A seller')
                 . " requested {$plan?->name} plan approval.",
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $seller = $this->subscription->user;
+        $sellerName = $seller?->sellerProfile?->store_name ?? $seller?->name ?? 'A seller';
+        $planName = $this->subscription->plan?->name ?? 'a plan';
+        $body = "{$sellerName} requested {$planName} approval.";
+
+        return $this->expoPushPayload(
+            'Subscription Request',
+            $body,
+            'admin',
+            [
+                'type' => 'subscription_request',
+                'subscription_id' => (string) $this->subscription->id,
+                'seller_id' => (string) $this->subscription->user_id,
+                'plan_name' => (string) $planName,
+                'message' => $body,
+                'url' => '/admin/dashboard?tab=subscriptions',
+            ],
+        );
     }
 
     private function paymentMethodLabel(?string $method): ?string

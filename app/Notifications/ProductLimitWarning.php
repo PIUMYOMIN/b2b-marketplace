@@ -3,11 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\SubscriptionPlan;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class ProductLimitWarning extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(
         public int $currentCount,
         public SubscriptionPlan $plan
@@ -21,7 +24,7 @@ class ProductLimitWarning extends Notification
             $channels[] = 'mail';
         }
 
-        return $channels;
+        return array_merge($channels, $this->mobilePushChannels($this->pushNotificationsEnabled($notifiable)));
     }
 
     public function toMail($notifiable): MailMessage
@@ -51,5 +54,24 @@ class ProductLimitWarning extends Notification
             'url' => '/seller/dashboard?tab=subscription',
             'message' => "Your {$this->plan->name} plan is almost full: {$this->currentCount}/{$this->plan->product_limit} products.",
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $body = "{$this->plan->name}: {$this->currentCount}/{$this->plan->product_limit} products used.";
+
+        return $this->expoPushPayload(
+            'Product Limit Warning',
+            $body,
+            'promotions',
+            [
+                'type' => 'product_limit_warning',
+                'plan_name' => (string) $this->plan->name,
+                'current_count' => (string) $this->currentCount,
+                'plan_limit' => (string) $this->plan->product_limit,
+                'message' => $body,
+                'url' => '/seller/dashboard?tab=subscription',
+            ],
+        );
     }
 }

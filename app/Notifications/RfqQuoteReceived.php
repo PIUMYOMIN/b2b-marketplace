@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Rfq;
 use App\Models\RfqQuote;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -12,8 +13,10 @@ use Illuminate\Notifications\Notification;
  */
 class RfqQuoteReceived extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(
-        public Rfq      $rfq,
+        public Rfq $rfq,
         public RfqQuote $quote,
     ) {}
 
@@ -23,7 +26,8 @@ class RfqQuoteReceived extends Notification
         if (!empty($notifiable->email)) {
             $channels[] = 'mail';
         }
-        return $channels;
+
+        return array_merge($channels, $this->mobilePushChannels($this->pushNotificationsEnabled($notifiable)));
     }
 
     public function toMail($notifiable): MailMessage
@@ -53,14 +57,37 @@ class RfqQuoteReceived extends Notification
             ?? 'A seller';
 
         return [
-            'type'         => 'rfq_quote_received',
-            'rfq_id'       => $this->rfq->id,
-            'rfq_number'   => $this->rfq->rfq_number,
-            'quote_id'     => $this->quote->id,
-            'seller_name'  => $storeName,
-            'total_price'  => $this->quote->total_price,
-            'currency'     => $this->quote->currency,
-            'message'      => "{$storeName} submitted a quote of " . number_format($this->quote->total_price) . " {$this->quote->currency} on RFQ {$this->rfq->rfq_number}.",
+            'type' => 'rfq_quote_received',
+            'rfq_id' => $this->rfq->id,
+            'rfq_number' => $this->rfq->rfq_number,
+            'quote_id' => $this->quote->id,
+            'seller_name' => $storeName,
+            'total_price' => $this->quote->total_price,
+            'currency' => $this->quote->currency,
+            'url' => '/rfq',
+            'message' => "{$storeName} submitted a quote of " . number_format($this->quote->total_price) . " {$this->quote->currency} on RFQ {$this->rfq->rfq_number}.",
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $storeName = $this->quote->seller?->sellerProfile?->store_name
+            ?? $this->quote->seller?->name
+            ?? 'A seller';
+        $body = "{$storeName} quoted on RFQ {$this->rfq->rfq_number}.";
+
+        return $this->expoPushPayload(
+            'New RFQ Quote',
+            $body,
+            'admin',
+            [
+                'type' => 'rfq_quote_received',
+                'rfq_id' => (string) $this->rfq->id,
+                'rfq_number' => (string) $this->rfq->rfq_number,
+                'quote_id' => (string) $this->quote->id,
+                'message' => $body,
+                'url' => '/rfq',
+            ],
+        );
     }
 }

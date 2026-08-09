@@ -2,9 +2,7 @@
 
 namespace App\Notifications\Concerns;
 
-use App\Notifications\Channels\BeamsPushChannel;
 use App\Notifications\Channels\ExpoPushChannel;
-use App\Services\BeamsPushService;
 
 trait SendsExpoPush
 {
@@ -15,13 +13,7 @@ trait SendsExpoPush
             return [];
         }
 
-        $channels = [ExpoPushChannel::class];
-
-        if (config('services.beams.enabled', false) && app(BeamsPushService::class)->isConfigured()) {
-            $channels[] = BeamsPushChannel::class;
-        }
-
-        return $channels;
+        return [ExpoPushChannel::class];
     }
 
     /** @return array<string, mixed> */
@@ -174,6 +166,10 @@ trait SendsExpoPush
             }
         }
 
+        if ($type === 'rfq_quote_received') {
+            return "{$base}/rfq";
+        }
+
         if (str_starts_with($type, 'rfq_')) {
             return "{$base}/seller/dashboard?tab=rfq";
         }
@@ -186,8 +182,24 @@ trait SendsExpoPush
             return "{$base}/seller/dashboard?tab=settings";
         }
 
-        if (str_starts_with($type, 'subscription_') || $type === 'subscription_request') {
+        if ($type === 'subscription_request') {
+            return "{$base}/admin/dashboard?tab=subscriptions";
+        }
+
+        if (str_starts_with($type, 'subscription_') || $type === 'product_limit_warning') {
             return "{$base}/seller/dashboard?tab=subscription";
+        }
+
+        if (in_array($type, ['cod_invoice_warning', 'cod_invoice_suspension'], true)) {
+            return "{$base}/seller/dashboard?tab=wallet";
+        }
+
+        if ($type === 'platform_logistics_requested') {
+            return "{$base}/admin/dashboard?tab=platform-logistics";
+        }
+
+        if ($type === 'self_delivery_completed') {
+            return "{$base}/admin/dashboard?tab=orders";
         }
 
         if ($type === 'new_user_registered') {

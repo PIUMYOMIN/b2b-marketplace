@@ -3,11 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\SellerSubscription;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class SubscriptionRejected extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(public SellerSubscription $subscription, public string $reason) {}
 
     public function via($notifiable): array
@@ -18,7 +21,7 @@ class SubscriptionRejected extends Notification
             $channels[] = 'mail';
         }
 
-        return $channels;
+        return array_merge($channels, $this->mobilePushChannels($this->pushNotificationsEnabled($notifiable)));
     }
 
     public function toMail($notifiable): MailMessage
@@ -50,5 +53,25 @@ class SubscriptionRejected extends Notification
             'url' => '/seller/dashboard?tab=subscription',
             'message' => "Your {$plan?->name} subscription request was rejected. Reason: {$this->reason}",
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $planName = $this->subscription->plan?->name ?? 'subscription';
+        $body = "Your {$planName} subscription request was not approved.";
+
+        return $this->expoPushPayload(
+            'Subscription Update',
+            $body,
+            'admin',
+            [
+                'type' => 'subscription_rejected',
+                'subscription_id' => (string) $this->subscription->id,
+                'plan_name' => (string) $planName,
+                'reason' => $this->reason,
+                'message' => $body,
+                'url' => '/seller/dashboard?tab=subscription',
+            ],
+        );
     }
 }

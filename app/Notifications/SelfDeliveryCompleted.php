@@ -3,11 +3,14 @@
 namespace App\Notifications;
 
 use App\Models\Delivery;
+use App\Notifications\Concerns\SendsExpoPush;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class SelfDeliveryCompleted extends Notification
 {
+    use SendsExpoPush;
+
     public function __construct(public Delivery $delivery) {}
 
     public function via($notifiable): array
@@ -18,7 +21,7 @@ class SelfDeliveryCompleted extends Notification
             $channels[] = 'mail';
         }
 
-        return $channels;
+        return array_merge($channels, $this->mobilePushChannels($this->pushNotificationsEnabled($notifiable)));
     }
 
     public function toMail($notifiable): MailMessage
@@ -70,6 +73,31 @@ class SelfDeliveryCompleted extends Notification
             'url' => '/admin/dashboard?tab=orders',
             'message' => "{$sellerName} completed self delivery for order #{$order?->order_number}. Please review before payout.",
         ];
+    }
+
+    public function toExpoPush($notifiable): array
+    {
+        $delivery = $this->delivery->loadMissing('order.seller.sellerProfile', 'supplier');
+        $order = $delivery->order;
+        $sellerName = $order?->seller?->sellerProfile?->store_name
+            ?? $order?->seller?->name
+            ?? $delivery->supplier?->name
+            ?? 'Seller';
+        $body = "{$sellerName} completed self delivery for #{$order?->order_number}.";
+
+        return $this->expoPushPayload(
+            'Self Delivery Completed',
+            $body,
+            'admin',
+            [
+                'type' => 'self_delivery_completed',
+                'delivery_id' => (string) $delivery->id,
+                'order_id' => (string) ($order?->id ?? ''),
+                'order_number' => (string) ($order?->order_number ?? ''),
+                'message' => $body,
+                'url' => '/admin/dashboard?tab=orders',
+            ],
+        );
     }
 
     private function dashboardUrl(): string

@@ -8,7 +8,6 @@ use App\Models\ConversationParticipant;
 use App\Models\Message;
 use App\Models\MessageAttachment;
 use App\Models\User;
-use App\Services\BeamsPushService;
 use App\Services\ExpoPushService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +21,6 @@ class ConversationService
         private readonly ConversationContextService $contextService,
         private readonly MessageSanitizer $sanitizer,
         private readonly ExpoPushService $pushService,
-        private readonly BeamsPushService $beamsPush,
     ) {}
 
     /**
@@ -223,10 +221,6 @@ class ConversationService
         }
 
         $this->pushService->sendToUser($recipient->user_id, $message);
-
-        if (config('services.beams.enabled', false)) {
-            $this->beamsPush->sendToUser($recipient->user_id, $message);
-        }
     }
 
     private function messagePushEnabled(User $user): bool
