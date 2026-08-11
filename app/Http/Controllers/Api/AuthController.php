@@ -139,8 +139,12 @@ class AuthController extends Controller
                 Log::warning('Admin new-user notification failed: ' . $e->getMessage());
             }
 
-            // Generate API token
-            $token = $user->createToken('auth_token')->plainTextToken;
+            // Generate API token (shopping-platform persistent session)
+            $token = $user->createToken(
+                'auth_token',
+                ['*'],
+                Carbon::now()->addDays(90)
+            )->plainTextToken;
 
             // Reload user with roles
             $user->load('roles');
@@ -246,10 +250,13 @@ class AuthController extends Controller
             );
         }
 
-        // Set token expiration based on remember me
+        // Shopping-platform session lifetimes (retail / marketplace norm):
+        // - normal login stays signed in for ~30 days
+        // - "Remember me" extends to ~90 days (Amazon/Shopee-style persistent auth)
+        // Banking-style multi-hour cutoffs are intentionally not used here.
         $expiration = $request->boolean('remember')
-            ? Carbon::now()->addDays(30)   // 30 days for "remember me"
-            : Carbon::now()->addHours(2);  // 2 hours for normal session
+            ? Carbon::now()->addDays(90)
+            : Carbon::now()->addDays(30);
 
         $token = $user->createToken('auth_token', ['*'], $expiration);
 
@@ -264,7 +271,11 @@ class AuthController extends Controller
     {
         $request->user()->currentAccessToken()->delete();
 
-        $token = $request->user()->createToken('auth_token')->plainTextToken;
+        $token = $request->user()->createToken(
+            'auth_token',
+            ['*'],
+            Carbon::now()->addDays(90)
+        )->plainTextToken;
 
         return response()->json([
             'success' => true,
@@ -592,7 +603,7 @@ class AuthController extends Controller
             }
 
             $token = $user->createToken(
-                'auth_token', ['*'], Carbon::now()->addHours(2)
+                'auth_token', ['*'], Carbon::now()->addDays(90)
             )->plainTextToken;
 
             $user->load('roles');
@@ -789,7 +800,7 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken(
-            'auth_token', ['*'], Carbon::now()->addHours(2)
+            'auth_token', ['*'], Carbon::now()->addDays(90)
         )->plainTextToken;
 
         $user->load('roles');
