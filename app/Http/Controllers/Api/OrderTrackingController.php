@@ -58,17 +58,42 @@ class OrderTrackingController extends Controller
             // Build items — merge stored snapshot with live product image
             $items = $order->items->map(function ($item) {
                 $image = null;
+                $imageSources = [];
+
                 if ($item->product && $item->product->images) {
-                    $imgs = is_array($item->product->images)
-                        ? $item->product->images
-                        : json_decode($item->product->images, true);
-                    $first = collect($imgs)->first();
-                    $raw = is_array($first) ? ($first['url'] ?? $first['path'] ?? null) : $first;
-                    if ($raw) {
-                        $image = str_starts_with($raw, 'http')
-                            ? $raw
-                            : url('storage/' . ltrim($raw, '/'));
+                    $imageSources[] = $item->product->images;
+                }
+
+                $productData = is_array($item->product_data)
+                    ? $item->product_data
+                    : (is_string($item->product_data)
+                        ? json_decode($item->product_data, true)
+                        : []);
+
+                if (is_array($productData)) {
+                    if (!empty($productData['images'])) {
+                        $imageSources[] = $productData['images'];
                     }
+                    if (!empty($productData['image'])) {
+                        $imageSources[] = $productData['image'];
+                    }
+                }
+
+                foreach ($imageSources as $source) {
+                    $imgs = is_array($source)
+                        ? $source
+                        : (is_string($source) ? [$source] : []);
+                    $first = collect($imgs)->first();
+                    $raw = is_array($first)
+                        ? ($first['url'] ?? $first['path'] ?? null)
+                        : $first;
+                    if (!$raw || !is_string($raw)) {
+                        continue;
+                    }
+                    $image = str_starts_with($raw, 'http')
+                        ? $raw
+                        : url('storage/' . ltrim($raw, '/'));
+                    break;
                 }
 
                 return [
