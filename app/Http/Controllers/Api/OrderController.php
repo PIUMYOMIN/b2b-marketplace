@@ -842,6 +842,11 @@ class OrderController extends Controller
                             'specifications' => $item['product']->specifications,
                             'category'     => $item['product']->category?->name_en ?? 'Uncategorized',
                             'seller_name'  => $item['product']->seller?->name ?? 'Unknown Seller',
+                            // List price before sale / wholesale tier so receipts can show discounts.
+                            'original_price' => $item['variant']
+                                ? (float) $item['variant']->price
+                                : (float) $item['product']->price,
+                            'charged_price'  => (float) $item['price'],
                         ],
                     ]);
 

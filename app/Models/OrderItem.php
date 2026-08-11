@@ -66,6 +66,7 @@ class OrderItem extends Model
             'sku'              => $product->sku,
             'brand'            => $product->brand,
             'images'           => $product->images,
+            'original_price'   => $variant ? (float) $variant->price : (float) $product->price,
             'variant_id'       => $variant?->id,
             'variant_sku'      => $variant?->sku,
             'variant_price'    => $variant?->price,
