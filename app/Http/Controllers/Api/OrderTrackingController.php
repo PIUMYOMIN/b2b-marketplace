@@ -85,18 +85,31 @@ class OrderTrackingController extends Controller
                         : (is_string($source) ? [$source] : []);
                     $first = collect($imgs)->first();
                     $raw = is_array($first)
-                        ? ($first['url'] ?? $first['path'] ?? null)
+                        ? ($first['url'] ?? $first['path'] ?? $first['image_url'] ?? null)
                         : $first;
                     if (!$raw || !is_string($raw)) {
                         continue;
                     }
-                    $image = str_starts_with($raw, 'http')
-                        ? $raw
-                        : url('storage/' . ltrim($raw, '/'));
-                    break;
+
+                    $image = $this->resolvePublicImageUrl($raw);
+                    if ($image) {
+                        break;
+                    }
+                }
+
+                // Prefer variant snapshot image when present.
+                if (!$image && is_array($productData)) {
+                    $variantImage = $productData['variant_image']
+                        ?? $productData['image_url']
+                        ?? null;
+                    if (is_string($variantImage) && $variantImage !== '') {
+                        $image = $this->resolvePublicImageUrl($variantImage);
+                    }
                 }
 
                 return [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
                     'product_name' => $item->product_name
                         ?? $item->product?->name_en
                         ?? $item->product?->name_mm
@@ -106,6 +119,8 @@ class OrderTrackingController extends Controller
                     'quantity' => (int) $item->quantity,
                     'subtotal' => (float) ($item->subtotal ?? ($item->price * $item->quantity)),
                     'image' => $image,
+                    'image_url' => $image,
+                    'product_data' => is_array($productData) ? $productData : null,
                 ];
             });
 
@@ -191,5 +206,28 @@ class OrderTrackingController extends Controller
         ]);
 
         return $parts ? implode(', ', $parts) : null;
+    }
+
+    private function resolvePublicImageUrl(string $raw): ?string
+    {
+        $value = trim($raw);
+        if ($value === '') {
+            return null;
+        }
+
+        if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://') || str_starts_with($value, 'data:')) {
+            return $value;
+        }
+
+        // Avoid doubling /storage/storage/... when path already includes it.
+        $relative = ltrim($value, '/');
+        if (str_starts_with($relative, 'storage/')) {
+            $relative = substr($relative, strlen('storage/'));
+        }
+        if (str_starts_with($relative, 'public/')) {
+            $relative = substr($relative, strlen('public/'));
+        }
+
+        return url('storage/' . ltrim($relative, '/'));
     }
 }
