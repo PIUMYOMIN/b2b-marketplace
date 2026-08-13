@@ -130,11 +130,15 @@ class ContactMessageController extends Controller
     public function markAsRead($id)
     {
         $message = ContactMessage::findOrFail($id);
-        $message->update(['read_at' => now()]);
+
+        if (! $message->read_at) {
+            $message->forceFill(['read_at' => now()])->save();
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Message marked as read'
+            'message' => 'Message marked as read',
+            'data' => $message->fresh(),
         ]);
     }
 
