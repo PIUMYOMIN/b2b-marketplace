@@ -53,7 +53,7 @@ class NewUserRegistered extends Notification
             'user_id'   => $this->newUser->id,
             'user_name' => $this->newUser->name,
             'user_type' => $userType,
-            'url'       => '/admin/dashboard?tab=overview',
+            'url'       => '/admin/dashboard?tab=users',
             'message'   => $message,
         ];
     }
@@ -72,7 +72,7 @@ class NewUserRegistered extends Notification
                 'user_id' => (string) $this->newUser->id,
                 'user_name' => $this->newUser->name,
                 'user_type' => $this->newUser->type,
-                'url' => '/admin/dashboard?tab=overview',
+                'url' => '/admin/dashboard?tab=users',
                 'message' => $body,
             ],
         );

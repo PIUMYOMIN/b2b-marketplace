@@ -203,7 +203,7 @@ trait SendsExpoPush
         }
 
         if ($type === 'new_user_registered') {
-            return "{$base}/admin/dashboard?tab=overview";
+            return "{$base}/admin/dashboard?tab=users";
         }
 
         if (in_array($type, ['new_report', 'report_reporter_replied'], true) && !empty($data['ticket_id'])) {
