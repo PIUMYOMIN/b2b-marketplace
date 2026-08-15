@@ -84,13 +84,19 @@ class SellerController extends Controller
                         $value = $utf8($value);
                     }
                 });
-                $sellerData['store_logo'] = !empty($sellerData['store_logo'])
-                    ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
-                    : null;
 
-                $sellerData['store_banner'] = !empty($sellerData['store_banner'])
-                    ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
-                    : null;
+                $toPublicStorageUrl = static function (?string $path): ?string {
+                    if ($path === null || $path === '') {
+                        return null;
+                    }
+                    if (filter_var($path, FILTER_VALIDATE_URL)) {
+                        return $path;
+                    }
+                    return url('storage/' . ltrim($path, '/'));
+                };
+
+                $sellerData['store_logo'] = $toPublicStorageUrl($sellerData['store_logo'] ?? null);
+                $sellerData['store_banner'] = $toPublicStorageUrl($sellerData['store_banner'] ?? null);
 
                 return $sellerData;
             });
