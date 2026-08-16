@@ -450,6 +450,7 @@ Route::group([
             Route::get('/dashboard', [SellerController::class, 'dashboard']);
             Route::get('/recent-orders', [SellerController::class, 'recentOrders']);
             // Customer management is available on every seller plan.
+            Route::get('/customers/export', [SellerController::class, 'exportCustomers']);
             Route::get('/customers', [SellerController::class, 'customers']);
 
             // Analytics — Pro & Enterprise only
@@ -868,3 +869,4 @@ Route::group([
         throw new Exception('Pyonea Production Test');
     });
 });
+

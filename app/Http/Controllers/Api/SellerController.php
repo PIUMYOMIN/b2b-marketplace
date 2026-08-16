@@ -6178,7 +6178,14 @@ class SellerController extends Controller
             }
 
             // ── Sort ──────────────────────────────────────────────────────────
-            match ($sort) {
+            $sortColumn = match ($sort) {
+                'spent', 'total_spent' => 'total_spent',
+                'orders', 'order_count' => 'order_count',
+                'name' => 'name',
+                default => 'last_order',
+            };
+
+            match ($sortColumn) {
                 'total_spent' => $customersQuery->orderByDesc('total_spent'),
                 'order_count' => $customersQuery->orderByDesc('order_count'),
                 'name' => $customersQuery->orderBy('u.name'),
@@ -6230,6 +6237,138 @@ class SellerController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load customers.',
+            ], 500);
+        }
+    }
+    /**
+     * GET /seller/customers/export
+     * Exports the seller customer list as an Excel spreadsheet.
+     */
+    public function exportCustomers(Request $request)
+    {
+        try {
+            $user = $request->user();
+            SellerProfile::where('user_id', $user->id)->firstOrFail();
+            $sellerId = $user->id;
+
+            $search = trim((string) $request->input('search', ''));
+            $sort = $request->input('sort', 'last_order');
+            $sortColumn = match ($sort) {
+                'spent', 'total_spent' => 'total_spent',
+                'orders', 'order_count' => 'order_count',
+                'name' => 'name',
+                default => 'last_order',
+            };
+
+            $customersQuery = DB::table('orders as o')
+                ->join('users as u', 'u.id', '=', 'o.buyer_id')
+                ->where('o.seller_id', $sellerId)
+                ->whereNotIn('o.status', ['cancelled', 'refunded'])
+                ->select([
+                    'u.id',
+                    'u.name',
+                    'u.email',
+                    'u.phone',
+                    'u.city',
+                    DB::raw('COUNT(o.id) AS order_count'),
+                    DB::raw('SUM(o.total_amount) AS total_spent'),
+                    DB::raw('COALESCE(AVG(o.total_amount), 0) AS avg_order_value'),
+                    DB::raw("SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) AS delivered_count"),
+                    DB::raw('MAX(o.created_at) AS last_order_at'),
+                    DB::raw('MIN(o.created_at) AS first_order_at'),
+                ])
+                ->groupBy('u.id', 'u.name', 'u.email', 'u.phone', 'u.city');
+
+            if ($search !== '') {
+                $customersQuery->where(function ($query) use ($search) {
+                    $query->where('u.name', 'like', "%{$search}%")
+                        ->orWhere('u.email', 'like', "%{$search}%")
+                        ->orWhere('u.phone', 'like', "%{$search}%");
+                });
+            }
+
+            match ($sortColumn) {
+                'total_spent' => $customersQuery->orderByDesc('total_spent'),
+                'order_count' => $customersQuery->orderByDesc('order_count'),
+                'name' => $customersQuery->orderBy('u.name'),
+                default => $customersQuery->orderByDesc('last_order_at'),
+            };
+
+            $customers = $customersQuery->get();
+
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Customers');
+
+            $headers = [
+                'Name',
+                'Email',
+                'Phone',
+                'City',
+                'Total Orders',
+                'Total Spent (MMK)',
+                'Avg Order (MMK)',
+                'Delivered Orders',
+                'First Order',
+                'Last Order',
+            ];
+
+            foreach ($headers as $index => $header) {
+                $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+            }
+
+            $row = 2;
+            foreach ($customers as $customer) {
+                $sheet->setCellValueByColumnAndRow(1, $row, (string) ($customer->name ?? ''));
+                $sheet->setCellValueByColumnAndRow(2, $row, (string) ($customer->email ?? ''));
+                $sheet->setCellValueByColumnAndRow(3, $row, (string) ($customer->phone ?? ''));
+                $sheet->setCellValueByColumnAndRow(4, $row, (string) ($customer->city ?? ''));
+                $sheet->setCellValueByColumnAndRow(5, $row, (int) ($customer->order_count ?? 0));
+                $sheet->setCellValueByColumnAndRow(6, $row, (float) ($customer->total_spent ?? 0));
+                $sheet->setCellValueByColumnAndRow(7, $row, (float) ($customer->avg_order_value ?? 0));
+                $sheet->setCellValueByColumnAndRow(8, $row, (int) ($customer->delivered_count ?? 0));
+                $sheet->setCellValueByColumnAndRow(9, $row, $customer->first_order_at ? Carbon::parse($customer->first_order_at)->format('Y-m-d') : '-');
+                $sheet->setCellValueByColumnAndRow(10, $row, $customer->last_order_at ? Carbon::parse($customer->last_order_at)->format('Y-m-d') : '-');
+                $row++;
+            }
+
+            $sheet->freezePane('A2');
+            $sheet->setAutoFilter($sheet->calculateWorksheetDimension());
+            $sheet->getStyle('A1:J1')->getFont()->setBold(true);
+            $sheet->getColumnDimension('A')->setWidth(22);
+            $sheet->getColumnDimension('B')->setWidth(28);
+            $sheet->getColumnDimension('C')->setWidth(18);
+            $sheet->getColumnDimension('D')->setWidth(16);
+            $sheet->getColumnDimension('E')->setWidth(14);
+            $sheet->getColumnDimension('F')->setWidth(18);
+            $sheet->getColumnDimension('G')->setWidth(18);
+            $sheet->getColumnDimension('H')->setWidth(16);
+            $sheet->getColumnDimension('I')->setWidth(15);
+            $sheet->getColumnDimension('J')->setWidth(15);
+
+            $exportDir = storage_path('app/exports');
+            if (!is_dir($exportDir)) {
+                mkdir($exportDir, 0775, true);
+            }
+
+            $filename = 'seller_customers_' . now()->format('Ymd_His') . '.xlsx';
+            $filePath = $exportDir . DIRECTORY_SEPARATOR . $filename;
+
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save($filePath);
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+
+            return response()
+                ->download($filePath, $filename, [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                ])
+                ->deleteFileAfterSend(true);
+        } catch (\Throwable $e) {
+            Log::error('Seller customers export failed: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Export failed.',
             ], 500);
         }
     }
@@ -6745,3 +6884,6 @@ class SellerController extends Controller
 
 
 }
+
+
+
