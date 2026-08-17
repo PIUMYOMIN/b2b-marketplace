@@ -6313,22 +6313,24 @@ class SellerController extends Controller
                 'Last Order',
             ];
 
+            $columnLetter = static fn (int $columnIndex): string => \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($columnIndex);
+
             foreach ($headers as $index => $header) {
-                $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
+                $sheet->setCellValue($columnLetter($index + 1) . '1', $header);
             }
 
             $row = 2;
             foreach ($customers as $customer) {
-                $sheet->setCellValueByColumnAndRow(1, $row, (string) ($customer->name ?? ''));
-                $sheet->setCellValueByColumnAndRow(2, $row, (string) ($customer->email ?? ''));
-                $sheet->setCellValueByColumnAndRow(3, $row, (string) ($customer->phone ?? ''));
-                $sheet->setCellValueByColumnAndRow(4, $row, (string) ($customer->city ?? ''));
-                $sheet->setCellValueByColumnAndRow(5, $row, (int) ($customer->order_count ?? 0));
-                $sheet->setCellValueByColumnAndRow(6, $row, (float) ($customer->total_spent ?? 0));
-                $sheet->setCellValueByColumnAndRow(7, $row, (float) ($customer->avg_order_value ?? 0));
-                $sheet->setCellValueByColumnAndRow(8, $row, (int) ($customer->delivered_count ?? 0));
-                $sheet->setCellValueByColumnAndRow(9, $row, $customer->first_order_at ? Carbon::parse($customer->first_order_at)->format('Y-m-d') : '-');
-                $sheet->setCellValueByColumnAndRow(10, $row, $customer->last_order_at ? Carbon::parse($customer->last_order_at)->format('Y-m-d') : '-');
+                $sheet->setCellValue('A' . $row, (string) ($customer->name ?? ''));
+                $sheet->setCellValue('B' . $row, (string) ($customer->email ?? ''));
+                $sheet->setCellValue('C' . $row, (string) ($customer->phone ?? ''));
+                $sheet->setCellValue('D' . $row, (string) ($customer->city ?? ''));
+                $sheet->setCellValue('E' . $row, (int) ($customer->order_count ?? 0));
+                $sheet->setCellValue('F' . $row, (float) ($customer->total_spent ?? 0));
+                $sheet->setCellValue('G' . $row, (float) ($customer->avg_order_value ?? 0));
+                $sheet->setCellValue('H' . $row, (int) ($customer->delivered_count ?? 0));
+                $sheet->setCellValue('I' . $row, $customer->first_order_at ? Carbon::parse($customer->first_order_at)->format('Y-m-d') : '-');
+                $sheet->setCellValue('J' . $row, $customer->last_order_at ? Carbon::parse($customer->last_order_at)->format('Y-m-d') : '-');
                 $row++;
             }
 
@@ -6883,5 +6885,4 @@ class SellerController extends Controller
 
 
 }
-
 
