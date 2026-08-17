@@ -6346,24 +6346,23 @@ class SellerController extends Controller
             $sheet->getColumnDimension('I')->setWidth(15);
             $sheet->getColumnDimension('J')->setWidth(15);
 
-            $exportDir = storage_path('app/exports');
-            if (!is_dir($exportDir)) {
-                mkdir($exportDir, 0775, true);
-            }
-
             $filename = 'seller_customers_' . now()->format('Ymd_His') . '.xlsx';
-            $filePath = $exportDir . DIRECTORY_SEPARATOR . $filename;
 
             $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-            $writer->save($filePath);
-            $spreadsheet->disconnectWorksheets();
-            unset($spreadsheet);
 
-            return response()
-                ->download($filePath, $filename, [
+            return response()->streamDownload(
+                function () use ($writer, $spreadsheet) {
+                    $writer->save('php://output');
+                    $spreadsheet->disconnectWorksheets();
+                    unset($spreadsheet);
+                },
+                $filename,
+                [
                     'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                ])
-                ->deleteFileAfterSend(true);
+                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma' => 'no-cache',
+                ]
+            );
         } catch (\Throwable $e) {
             Log::error('Seller customers export failed: ' . $e->getMessage());
             return response()->json([
@@ -6884,6 +6883,5 @@ class SellerController extends Controller
 
 
 }
-
 
 
