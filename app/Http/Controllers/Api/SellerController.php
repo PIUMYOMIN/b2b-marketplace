@@ -6323,7 +6323,7 @@ class SellerController extends Controller
             foreach ($customers as $customer) {
                 $sheet->setCellValue('A' . $row, (string) ($customer->name ?? ''));
                 $sheet->setCellValue('B' . $row, (string) ($customer->email ?? ''));
-                $sheet->setCellValue('C' . $row, (string) ($customer->phone ?? ''));
+                $sheet->setCellValueExplicit('C' . $row, (string) ($customer->phone ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
                 $sheet->setCellValue('D' . $row, (string) ($customer->city ?? ''));
                 $sheet->setCellValue('E' . $row, (int) ($customer->order_count ?? 0));
                 $sheet->setCellValue('F' . $row, (float) ($customer->total_spent ?? 0));
@@ -6347,6 +6347,7 @@ class SellerController extends Controller
             $sheet->getColumnDimension('H')->setWidth(16);
             $sheet->getColumnDimension('I')->setWidth(15);
             $sheet->getColumnDimension('J')->setWidth(15);
+            $sheet->getStyle('C2:C' . max(2, $row - 1))->getNumberFormat()->setFormatCode(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT);
 
             $filename = 'seller_customers_' . now()->format('Ymd_His') . '.xlsx';
 
@@ -6885,4 +6886,3 @@ class SellerController extends Controller
 
 
 }
-
