@@ -524,7 +524,7 @@ Route::group([
                 Route::delete('/{discount}', [DiscountController::class, 'destroy']);
                 Route::post('/validate', [DiscountController::class, 'validateDiscount']);
                 Route::get('/product/{productId}', [DiscountController::class, 'getProductDiscounts']);
-                Route::put('/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
+                Route::match(['put', 'patch'], '/{discount}/toggle-status', [DiscountController::class, 'toggleStatus']);
             });
 
             // Seller coupon management (buyer-entered codes at checkout)

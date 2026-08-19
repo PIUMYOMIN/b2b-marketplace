@@ -1548,7 +1548,12 @@ class ProductController extends Controller
 
         $validator = Validator::make($request->all(), [
             'discount_type' => 'required|in:percentage,fixed,none',
-            'discount_value' => 'required_if:discount_type,percentage,fixed|numeric|min:0',
+            'discount_value' => [
+                'required_if:discount_type,percentage,fixed',
+                'numeric',
+                'min:0',
+                $request->discount_type === 'percentage' ? 'max:100' : 'nullable',
+            ],
             'discount_start' => 'nullable|date',
             'discount_end' => 'nullable|date|after_or_equal:discount_start',
             'compare_at_price' => 'nullable|numeric|min:0',
@@ -1567,6 +1572,7 @@ class ProductController extends Controller
         try {
             $updateData = [
                 'is_on_sale' => $request->get('is_on_sale', true),
+                'discount_type' => $request->discount_type,
                 'discount_start' => $request->discount_start,
                 'discount_end' => $request->discount_end,
                 'compare_at_price' => $request->compare_at_price,
@@ -1584,10 +1590,12 @@ class ProductController extends Controller
             } else {
                 $updateData['discount_price'] = null;
                 $updateData['discount_percentage'] = null;
+                $updateData['discount_type'] = 'none';
                 $updateData['is_on_sale'] = false;
             }
 
             $product->update($updateData);
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,
@@ -1627,6 +1635,7 @@ class ProductController extends Controller
             $product->update([
                 'discount_price' => null,
                 'discount_percentage' => null,
+                'discount_type' => 'none',
                 'discount_start' => null,
                 'discount_end' => null,
                 'compare_at_price' => null,
@@ -1635,6 +1644,7 @@ class ProductController extends Controller
                 'sale_sold' => 0,
                 'is_on_sale' => false
             ]);
+            $this->flushPublicCatalogCaches();
 
             return response()->json([
                 'success' => true,

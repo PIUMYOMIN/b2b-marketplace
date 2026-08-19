@@ -7,6 +7,7 @@ use App\Models\Discount;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
@@ -54,7 +55,7 @@ class DiscountController extends Controller
             $query->where('created_by', (int) Auth::id());
         }
 
-        $discounts = $query->latest()->paginate($request->input('per_page', 15));
+        $discounts = $query->latest()->paginate($request->input('per_page', 100));
 
         return response()->json([
             'success' => true,
@@ -100,8 +101,8 @@ class DiscountController extends Controller
             'max_uses'         => 'nullable|integer|min:1',
             // FIX: field was max_uses_per_user on DB but frontend sent max_uses_per_customer
             'max_uses_per_user'=> 'nullable|integer|min:1',
-            'starts_at'        => 'required|date',
-            'expires_at'       => 'required|date|after:starts_at',
+            'starts_at'        => 'nullable|date',
+            'expires_at'       => 'nullable|date|after_or_equal:starts_at',
             'applicable_to'    => [
                 'required',
                 // FIX: sellers cannot create store-wide discounts
@@ -138,6 +139,8 @@ class DiscountController extends Controller
             : strtoupper(Str::random(8));
         $data['created_by'] = (int) Auth::id();
         $data['is_active']  = $request->boolean('is_active', true);
+        $data['starts_at']  = $request->starts_at ?: now();
+        $data['expires_at'] = $request->expires_at ?: now()->addYear();
 
         if (!$isSeller) {
             $data['applicable_seller_ids'] = $request->applicable_seller_ids;
@@ -145,6 +148,9 @@ class DiscountController extends Controller
 
         try {
             $discount = Discount::create($data);
+            if ($discount->is_active) {
+                $this->applyDiscountToProducts($discount);
+            }
 
             return response()->json([
                 'success' => true,
@@ -178,8 +184,8 @@ class DiscountController extends Controller
             'min_order_amount' => 'nullable|numeric|min:0',
             'max_uses'         => 'nullable|integer|min:1',
             'max_uses_per_user'=> 'nullable|integer|min:1',
-            'starts_at'        => 'sometimes|date',
-            'expires_at'       => 'sometimes|date|after:starts_at',
+            'starts_at'        => 'nullable|date',
+            'expires_at'       => 'nullable|date|after_or_equal:starts_at',
             'applicable_to'    => [
                 'sometimes',
                 $isSeller
@@ -216,11 +222,17 @@ class DiscountController extends Controller
         }
 
         try {
+            $previousIds = $this->resolveTargetProductIds($discount);
             $discount->update($updateData);
+            $fresh = $discount->fresh();
+            $this->clearDiscountFromProductIds($previousIds);
+            if ($fresh && $fresh->is_active) {
+                $this->applyDiscountToProducts($fresh);
+            }
 
             return response()->json([
                 'success' => true,
-                'data'    => $discount->fresh(),
+                'data'    => $fresh,
                 'message' => 'Discount updated successfully',
             ]);
 
@@ -239,6 +251,7 @@ class DiscountController extends Controller
         }
 
         try {
+            $this->clearDiscountFromProductIds($this->resolveTargetProductIds($discount));
             $discount->delete();
             return response()->json(['success' => true, 'message' => 'Discount deleted successfully']);
         } catch (\Exception $e) {
@@ -253,11 +266,18 @@ class DiscountController extends Controller
         }
 
         $discount->update(['is_active' => !$discount->is_active]);
+        $fresh = $discount->fresh();
+
+        if ($fresh && $fresh->is_active) {
+            $this->applyDiscountToProducts($fresh);
+        } else {
+            $this->clearDiscountFromProductIds($this->resolveTargetProductIds($discount));
+        }
 
         return response()->json([
             'success'   => true,
             'message'   => 'Discount status updated',
-            'is_active' => $discount->is_active,
+            'is_active' => (bool) $fresh?->is_active,
         ]);
     }
 
@@ -305,5 +325,94 @@ class DiscountController extends Controller
         if ($foreign) {
             abort(422, 'You can only create discounts for your own products');
         }
+    }
+
+    private function resolveTargetProductIds(Discount $discount): array
+    {
+        $sellerId = Auth::user()?->hasRole('seller') ? (int) Auth::id() : null;
+
+        if ($discount->applicable_to === 'specific_products') {
+            return array_values(array_unique(array_map('intval', $discount->applicable_product_ids ?? [])));
+        }
+
+        if ($discount->applicable_to === 'specific_categories') {
+            $categoryIds = array_map('intval', $discount->applicable_category_ids ?? []);
+            if (! $categoryIds) {
+                return [];
+            }
+
+            $query = Product::query()->whereIn('category_id', $categoryIds);
+            if ($sellerId) {
+                $query->where('seller_id', $sellerId);
+            }
+
+            return $query->pluck('id')->map(fn ($id) => (int) $id)->all();
+        }
+
+        if ($discount->applicable_to === 'all_products' && $sellerId) {
+            return Product::where('seller_id', $sellerId)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        }
+
+        return [];
+    }
+
+    private function applyDiscountToProducts(Discount $discount): void
+    {
+        if ($discount->type === 'free_shipping') {
+            return;
+        }
+
+        $products = Product::whereIn('id', $this->resolveTargetProductIds($discount))->get();
+
+        foreach ($products as $product) {
+            $update = [
+                'discount_start' => $discount->starts_at,
+                'discount_end'   => $discount->expires_at,
+                'is_on_sale'     => true,
+                'discount_type'  => $discount->type,
+            ];
+
+            if ($discount->type === 'percentage') {
+                $update['discount_percentage'] = $discount->value;
+                $update['discount_price'] = null;
+            } else {
+                $price = (float) $product->price;
+                $salePrice = (float) $discount->value;
+                if ($price <= 0 || $salePrice <= 0 || $salePrice >= $price) {
+                    continue;
+                }
+                $update['discount_price'] = $salePrice;
+                $update['discount_percentage'] = null;
+            }
+
+            $product->update($update);
+        }
+
+        $this->flushPublicCatalogCaches();
+    }
+
+    private function clearDiscountFromProductIds(array $productIds): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $productIds)));
+        if (! $ids) {
+            return;
+        }
+
+        Product::whereIn('id', $ids)->update([
+            'discount_price'      => null,
+            'discount_percentage' => null,
+            'discount_start'      => null,
+            'discount_end'        => null,
+            'discount_type'       => 'none',
+            'is_on_sale'          => false,
+        ]);
+
+        $this->flushPublicCatalogCaches();
+    }
+
+    private function flushPublicCatalogCaches(): void
+    {
+        Cache::forget('categories_tree');
+        Cache::forget('featured_products');
     }
 }
