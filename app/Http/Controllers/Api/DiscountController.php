@@ -213,6 +213,10 @@ class DiscountController extends Controller
             'max_uses_per_user', 'is_one_time_use', 'is_active',
         ]);
 
+        if ($request->exists('is_active')) {
+            $updateData['is_active'] = $request->boolean('is_active');
+        }
+
         if ($request->filled('code')) {
             $updateData['code'] = strtoupper($request->code);
         }
