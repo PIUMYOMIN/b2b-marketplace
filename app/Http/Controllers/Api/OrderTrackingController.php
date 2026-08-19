@@ -116,6 +116,9 @@ class OrderTrackingController extends Controller
                         ?? 'Product',
                     'product_sku' => $item->product_sku ?? $item->product?->sku,
                     'price' => (float) $item->price,
+                    'original_price' => is_array($productData)
+                        ? ($productData['original_price'] ?? null)
+                        : null,
                     'quantity' => (int) $item->quantity,
                     'subtotal' => (float) ($item->subtotal ?? ($item->price * $item->quantity)),
                     'image' => $image,

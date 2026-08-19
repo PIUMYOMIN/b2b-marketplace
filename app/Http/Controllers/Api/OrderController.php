@@ -298,6 +298,7 @@ class OrderController extends Controller
             'selected_options' => $this->jsonSafeValue($item->selected_options),
             'quantity_unit' => $this->jsonSafeString($item->quantity_unit),
             'price' => $item->price,
+            'original_price' => $productData['original_price'] ?? null,
             'quantity' => $item->quantity,
             'subtotal' => $item->subtotal,
             'product_data' => $this->jsonSafeValue($productData),
@@ -703,8 +704,8 @@ class OrderController extends Controller
                     // Volume tier matched — use tier price (overrides sale price).
                     $itemPrice = $tierPrice;
                 } elseif ($isOnSale) {
-                    // No tier matched; apply active sale discount.
-                    $itemPrice = (float) $product->discount_price;
+                    // No tier matched; apply active sale discount (fixed or %).
+                    $itemPrice = $product->getSellingPrice();
                 } else {
                     $itemPrice = $baseItemPrice;
                 }
@@ -1645,7 +1646,7 @@ class OrderController extends Controller
                 if ($tierPrice !== null) {
                     $itemPrice = $tierPrice;
                 } elseif ($isOnSale) {
-                    $itemPrice = (float) $product->discount_price;
+                    $itemPrice = $product->getSellingPrice();
                 } else {
                     $itemPrice = $baseItemPrice;
                 }

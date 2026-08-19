@@ -119,6 +119,8 @@ class Product extends Model
 
             if ($price > 0 && $discountPrice > 0 && $discountPrice < $price && $discountPct <= 0) {
                 $product->discount_percentage = round((($price - $discountPrice) / $price) * 100, 1);
+            } elseif ($price > 0 && $discountPct > 0 && $discountPct < 100 && ($discountPrice <= 0 || $discountPrice >= $price)) {
+                $product->discount_price = round($price * (1 - $discountPct / 100), 2);
             }
         });
     }

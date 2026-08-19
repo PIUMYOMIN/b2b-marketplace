@@ -188,14 +188,12 @@ class CartController extends Controller
                             ? round((1 - $tierPrice / $livePrice) * 100, 2)
                             : 0.0;
                         $discountSaved = round($livePrice - $tierPrice, 2);
-                    } elseif (!$productGone && $product->is_on_sale) {
-                        $today = now()->toDateString();
-                        $inWindow = (!$product->discount_start || $product->discount_start <= $today)
-                                 && (!$product->discount_end   || $product->discount_end   >= $today);
-                        if ($inWindow && $product->discount_price) {
-                            $isOnSale     = true;
-                            $sellingPrice = (float) $product->discount_price;
-                            $discountPct  = (float) ($product->discount_percentage ?? 0);
+                    } elseif (!$productGone && !$variant && $product->isCurrentlyOnSale()) {
+                        $salePrice = $product->getSellingPrice();
+                        if ($salePrice > 0 && $salePrice < $livePrice) {
+                            $isOnSale      = true;
+                            $sellingPrice  = $salePrice;
+                            $discountPct   = $product->getEffectiveDiscountPercentage();
                             $discountSaved = round($livePrice - $sellingPrice, 2);
                         }
                     }
