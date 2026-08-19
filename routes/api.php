@@ -616,6 +616,7 @@ Route::group([
             Route::prefix('cart')->group(function () {
                 Route::get('/', [CartController::class, 'index']);
                 Route::post('/', [CartController::class, 'store']);
+                Route::get('/recommendations', [CartController::class, 'recommendations']);
                 Route::put('/{id}', [CartController::class, 'update']);
                 Route::delete('/{id}', [CartController::class, 'destroy']);
                 Route::post('/clear', [CartController::class, 'clear']);

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Cart;
 use App\Models\Product;
+use App\Services\CartRecommendationService;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -216,6 +217,7 @@ class CartController extends Controller
                         'quantity_unit'        => $unit,
                         'image'                => $image,
                         'category'             => $categoryName,
+                        'category_id'          => $productGone ? null : $product->category_id,
                         'stock'                => $stock,          // null = unlimited
                         'min_order'            => $moq,
                         'quantity_step'        => $step,
@@ -229,7 +231,7 @@ class CartController extends Controller
                             && ($stock === null || $item->quantity <= $stock)
                             && $item->isQuantityValid(),
                         'subtotal'             => $subtotal,
-                        'seller_id'            => $product?->seller?->sellerProfile?->user_id,
+                        'seller_id'            => $productGone ? null : ($product->seller_id ?: $product->seller?->id),
                         'seller_name'          => $product?->seller?->sellerProfile?->store_name,
                         'seller_slug'          => $product?->seller?->sellerProfile?->store_slug,
                     ];
@@ -651,6 +653,55 @@ class CartController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get cart count'
+            ], 500);
+        }
+    }
+
+    /**
+     * Grouped product recommendations for the current cart (or explicit product IDs).
+     */
+    public function recommendations(Request $request, CartRecommendationService $recommendations)
+    {
+        try {
+            $user = Auth::user();
+
+            if (!$user || !$user->hasRole('buyer')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only buyers can access cart recommendations',
+                ], 403);
+            }
+
+            $requestedIds = collect(explode(',', (string) $request->query('product_ids', '')))
+                ->map(fn ($id) => (int) trim($id))
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+
+            $productIds = $requestedIds !== []
+                ? $requestedIds
+                : Cart::query()
+                    ->where('user_id', $user->id)
+                    ->pluck('product_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+            return response()->json([
+                'success' => true,
+                'data' => $recommendations->forProductIds($productIds),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Cart recommendations error: '.$e->getMessage(), [
+                'user_id' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load cart recommendations',
             ], 500);
         }
     }
