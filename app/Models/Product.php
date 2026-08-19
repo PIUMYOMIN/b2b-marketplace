@@ -103,6 +103,26 @@ class Product extends Model
         'quantity_step'       => 'integer',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (Product $product) {
+            if (! $product->hasDiscountValue()) {
+                $product->is_on_sale = false;
+                return;
+            }
+
+            $product->is_on_sale = true;
+
+            $price = (float) $product->price;
+            $discountPrice = (float) ($product->discount_price ?? 0);
+            $discountPct = (float) ($product->discount_percentage ?? 0);
+
+            if ($price > 0 && $discountPrice > 0 && $discountPrice < $price && $discountPct <= 0) {
+                $product->discount_percentage = round((($price - $discountPrice) / $price) * 100, 1);
+            }
+        });
+    }
+
     // -------------------------------------------------------------------------
     // Relationships
     // -------------------------------------------------------------------------
@@ -407,31 +427,38 @@ class Product extends Model
      * Whether the product currently has an active, valid sale.
      *
      * Checks:
-     *   1. is_on_sale flag is true
-     *   2. A discount_price or discount_percentage is actually set
-     *   3. Today falls within discount_start / discount_end (if set)
+     *   1. A discount_price or discount_percentage is actually set
+     *   2. Today falls within discount_start / discount_end (if set)
      */
+    public function hasDiscountValue(): bool
+    {
+        $price = (float) $this->price;
+        $discountPrice = $this->discount_price !== null && $this->discount_price !== ''
+            ? (float) $this->discount_price
+            : 0.0;
+        $discountPct = (float) ($this->discount_percentage ?? 0);
+
+        return ($price > 0 && $discountPrice > 0 && $discountPrice < $price)
+            || ($discountPct > 0 && $discountPct < 100);
+    }
+
     public function isCurrentlyOnSale(): bool
     {
-        if (!$this->is_on_sale) {
+        // Honor a stored sale price even if is_on_sale was not set on older rows.
+        if (! $this->hasDiscountValue()) {
             return false;
         }
- 
-        // Must have an actual discount value
-        if (!$this->discount_price && !$this->discount_percentage) {
-            return false;
-        }
- 
+
         $today = now()->startOfDay();
- 
+
         if ($this->discount_start && $this->discount_start->gt($today)) {
             return false;
         }
- 
+
         if ($this->discount_end && $this->discount_end->lt($today)) {
             return false;
         }
- 
+
         return true;
     }
  
