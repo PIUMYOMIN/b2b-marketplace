@@ -339,6 +339,47 @@ class Product extends Model
             : ['price' => $basePrice, 'tier' => null];
     }
 
+    /**
+     * Unit price the buyer pays for a cart/checkout line.
+     * Product sale applies to simple and variant rows; a wholesale tier
+     * only wins when it is cheaper than that sale price.
+     *
+     * @return array{selling_price: float, is_on_sale: bool, discount_pct: float, discount_saved: float}
+     */
+    public function resolveBuyerUnitPrice(float $listPrice, ?float $tierPrice = null): array
+    {
+        $selling = $listPrice;
+        $onSale = false;
+        $discountPct = 0.0;
+
+        if ($this->isCurrentlyOnSale()) {
+            $base = (float) $this->price;
+            $sale = $this->getSellingPrice();
+            if ($base > 0 && $sale > 0 && $sale < $base) {
+                $selling = abs($listPrice - $base) < 0.0001
+                    ? $sale
+                    : round($listPrice * ($sale / $base), 2);
+                $onSale = $selling + 0.0001 < $listPrice;
+                $discountPct = $this->getEffectiveDiscountPercentage();
+            }
+        }
+
+        if ($tierPrice !== null && $tierPrice > 0 && $tierPrice + 0.0001 < $selling) {
+            $selling = $tierPrice;
+            $onSale = $selling + 0.0001 < $listPrice;
+            $discountPct = $listPrice > 0
+                ? round((1 - $selling / $listPrice) * 100, 1)
+                : $discountPct;
+        }
+
+        return [
+            'selling_price'  => $selling,
+            'is_on_sale'     => $onSale,
+            'discount_pct'   => $discountPct,
+            'discount_saved' => round(max(0, $listPrice - $selling), 2),
+        ];
+    }
+
     // -------------------------------------------------------------------------
     // Scopes
     // -------------------------------------------------------------------------

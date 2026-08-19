@@ -173,30 +173,21 @@ class CartController extends Controller
                     }
 
                     // ── Discount / selling price ──────────────────────────────
-                    // Wholesale tier price takes precedence over sale price.
-                    // If no tier applies, fall back to active sale discount.
-                    $sellingPrice = $livePrice;
-                    $isOnSale     = false;
-                    $discountPct  = 0.0;
-                    $discountSaved = 0.0;
+                    // Same sale as product cards, including variant rows.
+                    // A wholesale tier only replaces the sale when it is cheaper.
+                    $priced = $productGone
+                        ? [
+                            'selling_price'  => $livePrice,
+                            'is_on_sale'     => false,
+                            'discount_pct'   => 0.0,
+                            'discount_saved' => 0.0,
+                        ]
+                        : $product->resolveBuyerUnitPrice($livePrice, $tierPrice);
 
-                    if ($tierPrice !== null) {
-                        // Tier pricing active — show tier discount relative to base price
-                        $sellingPrice  = $tierPrice;
-                        $isOnSale      = true;
-                        $discountPct   = $livePrice > 0
-                            ? round((1 - $tierPrice / $livePrice) * 100, 2)
-                            : 0.0;
-                        $discountSaved = round($livePrice - $tierPrice, 2);
-                    } elseif (!$productGone && !$variant && $product->isCurrentlyOnSale()) {
-                        $salePrice = $product->getSellingPrice();
-                        if ($salePrice > 0 && $salePrice < $livePrice) {
-                            $isOnSale      = true;
-                            $sellingPrice  = $salePrice;
-                            $discountPct   = $product->getEffectiveDiscountPercentage();
-                            $discountSaved = round($livePrice - $sellingPrice, 2);
-                        }
-                    }
+                    $sellingPrice  = (float) $priced['selling_price'];
+                    $isOnSale      = (bool) $priced['is_on_sale'];
+                    $discountPct   = (float) $priced['discount_pct'];
+                    $discountSaved = (float) $priced['discount_saved'];
 
                     $subtotal = $sellingPrice * $item->quantity;
 
@@ -208,8 +199,10 @@ class CartController extends Controller
                         'name'                 => $productName,
                         'price'                => $livePrice,
                         'selling_price'        => $sellingPrice,
+                        'discount_price'       => $productGone ? null : $product->discount_price,
                         'is_currently_on_sale' => $isOnSale,
                         'discount_percentage'  => $discountPct,
+                        'effective_discount_pct' => $discountPct,
                         'discount_saved'       => $discountSaved,
                         'quantity'             => (int) $item->quantity,
                         'quantity_unit'        => $unit,

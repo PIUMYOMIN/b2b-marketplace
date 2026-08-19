@@ -692,23 +692,11 @@ class OrderController extends Controller
                 // ProductDetail.jsx display logic so the buyer is never charged more
                 // than what they saw in the cart.
                 $baseItemPrice = $variant ? (float) $variant->price : (float) $product->price;
-                $isOnSale      = !$variant && $product->isCurrentlyOnSale();
-
-                // Always check wholesale tiers first.
                 $resolved  = $variant
                     ? $variant->resolveWholesalePrice((float) $item['quantity'])
                     : $product->resolveWholesalePrice((float) $item['quantity']);
                 $tierPrice = $resolved['price'] !== $baseItemPrice ? $resolved['price'] : null;
-
-                if ($tierPrice !== null) {
-                    // Volume tier matched — use tier price (overrides sale price).
-                    $itemPrice = $tierPrice;
-                } elseif ($isOnSale) {
-                    // No tier matched; apply active sale discount (fixed or %).
-                    $itemPrice = $product->getSellingPrice();
-                } else {
-                    $itemPrice = $baseItemPrice;
-                }
+                $itemPrice = $product->resolveBuyerUnitPrice($baseItemPrice, $tierPrice)['selling_price'];
                 $sellerId = $product->seller_id;
                 $itemTotal = $itemPrice * $item['quantity'];
                 $subtotal += $itemTotal;
@@ -1636,20 +1624,11 @@ class OrderController extends Controller
                 $quantity = (float) $row->quantity;
 
                 $baseItemPrice = $variant ? (float) $variant->price : (float) $product->price;
-                $isOnSale      = ! $variant && $product->isCurrentlyOnSale();
-
                 $resolved  = $variant
                     ? $variant->resolveWholesalePrice($quantity)
                     : $product->resolveWholesalePrice($quantity);
                 $tierPrice = $resolved['price'] !== $baseItemPrice ? $resolved['price'] : null;
-
-                if ($tierPrice !== null) {
-                    $itemPrice = $tierPrice;
-                } elseif ($isOnSale) {
-                    $itemPrice = $product->getSellingPrice();
-                } else {
-                    $itemPrice = $baseItemPrice;
-                }
+                $itemPrice = $product->resolveBuyerUnitPrice($baseItemPrice, $tierPrice)['selling_price'];
 
                 $itemTotal = $itemPrice * $quantity;
                 $subtotal += $itemTotal;
