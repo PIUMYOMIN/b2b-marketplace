@@ -186,8 +186,17 @@ class WalletController extends Controller
             return response()->json(['success' => false, 'message' => 'The seller transfer reference is required.'], 422);
         }
 
-        $payout = DB::transaction(function () use ($payout, $admin, $next, $validated) {
-            $payout = PayoutRequest::lockForUpdate()->findOrFail($payout->id);
+        try {
+            $payout = DB::transaction(function () use ($payout, $admin, $next, $validated) {
+                $payout = PayoutRequest::lockForUpdate()->findOrFail($payout->id);
+                $allowedForCurrentStatus = [
+                    'requested' => ['approved', 'rejected'],
+                    'approved' => ['rejected', 'admin_withdrawn'],
+                    'admin_withdrawn' => ['paid'],
+                ];
+                if (!in_array($next, $allowedForCurrentStatus[$payout->status] ?? [], true)) {
+                    throw new \RuntimeException("Cannot move payout from {$payout->status} to {$next}.");
+                }
             $payout->fill([
                 'status' => $next,
                 'admin_note' => $validated['admin_note'] ?? $payout->admin_note,
@@ -219,8 +228,11 @@ class WalletController extends Controller
                 $payout->paid_at = now();
             }
             $payout->save();
-            return $payout->fresh();
-        });
+                return $payout->fresh();
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
 
         $payout->seller?->notify(new PayoutRequestUpdated($payout));
         return response()->json([
