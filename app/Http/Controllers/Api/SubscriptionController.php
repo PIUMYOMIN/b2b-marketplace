@@ -165,7 +165,12 @@ class SubscriptionController extends Controller
 
         try {
             $gateway = PaymentService::gateway($request->payment_method);
-            $orderNumber = 'SUB-' . $seller->id . '-' . strtoupper($plan->slug) . '-' . now()->format('YmdHis');
+
+            // Keep subscription references short like product order numbers and
+            // avoid collisions when a seller retries within the same second.
+            do {
+                $orderNumber = 'SUB-' . now()->format('Ymd') . '-' . random_int(10000000, 99999999);
+            } while (SubscriptionPayment::where('order_id', $orderNumber)->exists());
 
             $subscriptionPayment = SubscriptionPayment::create([
                 'user_id'        => $seller->id,
