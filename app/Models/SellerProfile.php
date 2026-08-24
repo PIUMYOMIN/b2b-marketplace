@@ -77,6 +77,7 @@ class SellerProfile extends Model
         'contact_phone',
         'website',
         'account_number',
+        'bank_name',
         'social_facebook',
         'social_twitter',
         'social_instagram',

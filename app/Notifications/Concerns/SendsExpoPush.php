@@ -202,6 +202,14 @@ trait SendsExpoPush
             return "{$base}/admin/dashboard?tab=orders";
         }
 
+        if ($type === 'seller_payout_requested') {
+            return "{$base}/admin/dashboard?tab=payouts";
+        }
+
+        if ($type === 'seller_payout_updated') {
+            return "{$base}/seller/dashboard?tab=wallet";
+        }
+
         if ($type === 'new_user_registered') {
             return "{$base}/admin/dashboard?tab=users";
         }

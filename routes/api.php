@@ -368,6 +368,11 @@ Route::group([
                 Route::post('/{id}/waive', [DashboardController::class, 'adminWaiveCodInvoice']);
             });
 
+            Route::prefix('payout-requests')->middleware('role:admin')->group(function () {
+                Route::get('/', [WalletController::class, 'adminPayoutRequests']);
+                Route::patch('/{payout}/status', [WalletController::class, 'updatePayoutRequest']);
+            });
+
             // Admin referral stats
             Route::middleware('role:admin')->group(function () {
                 Route::get('/referrals', [ReferralController::class, 'adminIndex']);
@@ -556,6 +561,8 @@ Route::group([
 
             //Seller Wallet
             Route::get('/wallet', [WalletController::class, 'sellerSummary']);
+            Route::post('/wallet/withdrawal-requests', [WalletController::class, 'createPayoutRequest']);
+            Route::get('/wallet/withdrawal-requests', [WalletController::class, 'sellerPayoutRequests']);
             Route::prefix('cod-invoices')->group(function () {
                 Route::get('/', [WalletController::class, 'sellerCodInvoices']);
                 Route::post('/{invoice}/submit-payment', [WalletController::class, 'submitCodPayment']);
@@ -870,4 +877,3 @@ Route::group([
         throw new Exception('Pyonea Production Test');
     });
 });
-

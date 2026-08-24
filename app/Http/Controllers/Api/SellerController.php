@@ -640,6 +640,7 @@ class SellerController extends Controller
             'contact_phone'               => $s->contact_phone,
             'website'                     => $s->website,
             'account_number'              => $s->account_number,
+            'bank_name'                   => $s->bank_name,
 
             // Address
             'address'                     => $s->address,
@@ -1330,6 +1331,7 @@ class SellerController extends Controller
                 'store_logo' => 'nullable',
                 'store_banner' => 'nullable|max:500',
                 'account_number' => 'nullable|string|max:255',
+                'bank_name' => 'nullable|string|max:120',
                 'location' => 'nullable|string|max:255',
                 'year_established' => 'nullable|integer|min:1900|max:' . date('Y'),
                 'employees_count' => 'nullable|in:1-5,6-20,21-50,51-100,101-200,201-500,501+',
@@ -1442,6 +1444,7 @@ class SellerController extends Controller
                 'year_established'  => $seller->year_established,
                 'employees_count'   => $seller->employees_count,
                 'account_number'    => $seller->account_number,
+                'bank_name'         => $seller->bank_name,
                 'nrc_division'      => $seller->nrc_division,
                 'nrc_township_code' => $seller->nrc_township_code,
                 'nrc_township_mm'   => $seller->nrc_township_mm
@@ -1577,6 +1580,7 @@ class SellerController extends Controller
                 'tax_id' => 'nullable|string|max:255',
                 'website' => 'nullable|url|max:255',
                 'account_number' => 'nullable|string|max:255',
+                'bank_name' => 'nullable|string|max:120',
                 'social_facebook' => 'nullable|url|max:255',
                 'social_instagram' => 'nullable|url|max:255',
                 'social_twitter' => 'nullable|url|max:255',
@@ -2192,6 +2196,7 @@ class SellerController extends Controller
             $rules = [
                 'website'          => 'nullable|url|max:255',
                 'account_number'   => 'nullable|string|max:255',
+                'bank_name'        => 'nullable|string|max:120',
                 'social_facebook'  => 'nullable|url|max:255',
                 'social_instagram' => 'nullable|url|max:255',
                 'social_twitter'   => 'nullable|url|max:255',
@@ -3371,6 +3376,7 @@ class SellerController extends Controller
                     'tax_id'           => $sellerProfile->tax_id,
                     'website'          => $sellerProfile->website,
                     'account_number'   => $sellerProfile->account_number,
+                    'bank_name'        => $sellerProfile->bank_name,
                     'social_facebook'  => $sellerProfile->social_facebook,
                     'social_instagram' => $sellerProfile->social_instagram,
                     'social_twitter'   => $sellerProfile->social_twitter,
@@ -5834,6 +5840,7 @@ class SellerController extends Controller
                 'auto_withdrawal' => 'sometimes|boolean',
                 'withdrawal_threshold' => 'nullable|numeric|min:0',
                 'preferred_payment_method' => 'sometimes|in:bank_transfer,wave_money,kbz_pay,mpu,visa_master',
+                'bank_name' => 'nullable|string|max:120',
 
                 // Store Status
                 'is_active' => 'sometimes|boolean',
@@ -5939,6 +5946,7 @@ class SellerController extends Controller
             'auto_withdrawal',
             'withdrawal_threshold',
             'preferred_payment_method',
+            'bank_name',
             'is_active',
             'vacation_mode',
             'vacation_message',

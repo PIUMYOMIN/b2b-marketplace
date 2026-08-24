@@ -7,6 +7,9 @@ use App\Models\CodCommissionInvoice;
 use App\Models\SellerWallet;
 use App\Models\WalletTransaction;
 use App\Models\User;
+use App\Models\PayoutRequest;
+use App\Notifications\PayoutRequestSubmitted;
+use App\Notifications\PayoutRequestUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -66,6 +69,196 @@ class WalletController extends Controller
                 'recent_transactions' => $recentTx,
             ],
         ]);
+    }
+
+    /**
+     * POST /seller/wallet/withdrawal-requests
+     * Create a manual payout request against the seller's available ledger balance.
+     */
+    public function createPayoutRequest(Request $request)
+    {
+        $seller = Auth::user();
+        $validated = $request->validate([
+            'amount' => 'required|numeric|min:1',
+            'seller_note' => 'nullable|string|max:1000',
+        ]);
+        $profile = $seller->sellerProfile;
+
+        if (!$profile || !$profile->bank_name || !$profile->account_number) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please save your bank name and payout account number before requesting a withdrawal.',
+            ], 422);
+        }
+
+        try {
+            $payout = DB::transaction(function () use ($seller, $profile, $validated) {
+                $wallet = SellerWallet::lockForSeller($seller->id);
+                $reserved = PayoutRequest::where('seller_id', $seller->id)
+                    ->whereIn('status', ['requested', 'approved', 'admin_withdrawn'])
+                    ->lockForUpdate()
+                    ->sum('amount');
+                $available = (float) $wallet->available_balance - (float) $reserved;
+                $amount = (float) $validated['amount'];
+
+                if ($amount > $available + 0.0001) {
+                    throw new \RuntimeException('The requested amount is greater than your eligible available balance.');
+                }
+
+                return PayoutRequest::create([
+                    'seller_id' => $seller->id,
+                    'amount' => $amount,
+                    'status' => 'requested',
+                    'payment_method' => $profile->preferred_payment_method ?: 'bank_transfer',
+                    'bank_name' => $profile->bank_name,
+                    'account_name' => $seller->name,
+                    'account_number' => $profile->account_number,
+                    'seller_note' => $validated['seller_note'] ?? null,
+                ]);
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        User::query()
+            ->where(fn ($query) => $query->where('type', 'admin')->orWhereHas('roles', fn ($roleQuery) => $roleQuery->where('name', 'admin')))
+            ->get()
+            ->each(fn (User $admin) => $admin->notify(new PayoutRequestSubmitted($payout)));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Withdrawal request submitted for admin review.',
+            'data' => $this->formatPayoutRequest($payout),
+        ], 201);
+    }
+
+    /** GET /seller/wallet/withdrawal-requests */
+    public function sellerPayoutRequests(Request $request)
+    {
+        $payouts = PayoutRequest::where('seller_id', Auth::id())
+            ->orderByDesc('created_at')
+            ->paginate($request->get('per_page', 20));
+
+        return response()->json([
+            'success' => true,
+            'data' => $payouts->through(fn (PayoutRequest $payout) => $this->formatPayoutRequest($payout)),
+        ]);
+    }
+
+    /** GET /admin/payout-requests */
+    public function adminPayoutRequests(Request $request)
+    {
+        $query = PayoutRequest::with('seller:id,name,email')
+            ->orderByDesc('created_at');
+        if ($request->filled('status')) $query->where('status', $request->status);
+
+        $payouts = $query->paginate($request->get('per_page', 30));
+        return response()->json([
+            'success' => true,
+            'data' => $payouts->through(fn (PayoutRequest $payout) => $this->formatPayoutRequest($payout, true)),
+        ]);
+    }
+
+    /** PATCH /admin/payout-requests/{payout}/status */
+    public function updatePayoutRequest(Request $request, PayoutRequest $payout)
+    {
+        $admin = Auth::user();
+        $validated = $request->validate([
+            'status' => 'required|in:approved,rejected,admin_withdrawn,paid',
+            'admin_note' => 'nullable|string|max:1000',
+            'admin_withdrawal_reference' => 'nullable|string|max:120',
+            'seller_transfer_reference' => 'nullable|string|max:120',
+        ]);
+
+        $next = $validated['status'];
+        $allowed = [
+            'requested' => ['approved', 'rejected'],
+            'approved' => ['rejected', 'admin_withdrawn'],
+            'admin_withdrawn' => ['paid'],
+        ];
+        if (!in_array($next, $allowed[$payout->status] ?? [], true)) {
+            return response()->json(['success' => false, 'message' => "Cannot move payout from {$payout->status} to {$next}."], 422);
+        }
+        if ($next === 'admin_withdrawn' && empty($validated['admin_withdrawal_reference'])) {
+            return response()->json(['success' => false, 'message' => 'The MyanMyanPay withdrawal reference is required.'], 422);
+        }
+        if ($next === 'paid' && empty($validated['seller_transfer_reference'])) {
+            return response()->json(['success' => false, 'message' => 'The seller transfer reference is required.'], 422);
+        }
+
+        $payout = DB::transaction(function () use ($payout, $admin, $next, $validated) {
+            $payout = PayoutRequest::lockForUpdate()->findOrFail($payout->id);
+            $payout->fill([
+                'status' => $next,
+                'admin_note' => $validated['admin_note'] ?? $payout->admin_note,
+                'admin_withdrawal_reference' => $validated['admin_withdrawal_reference'] ?? $payout->admin_withdrawal_reference,
+                'seller_transfer_reference' => $validated['seller_transfer_reference'] ?? $payout->seller_transfer_reference,
+                'processed_by' => $admin->id,
+            ]);
+            if ($next === 'approved') $payout->approved_at = now();
+            if ($next === 'rejected') $payout->rejected_at = now();
+            if ($next === 'admin_withdrawn') $payout->admin_withdrawn_at = now();
+
+            if ($next === 'paid') {
+                $wallet = SellerWallet::lockForSeller($payout->seller_id);
+                if ((float) $wallet->available_balance < (float) $payout->amount) {
+                    throw new \RuntimeException('Seller available balance is lower than this payout amount.');
+                }
+                $wallet->decrement('available_balance', $payout->amount);
+                $wallet->increment('total_withdrawn', $payout->amount);
+                $wallet->refresh();
+                $wallet->transactions()->create([
+                    'type' => 'withdrawal',
+                    'amount' => -((float) $payout->amount),
+                    'escrow_balance_after' => $wallet->escrow_balance,
+                    'available_balance_after' => $wallet->available_balance,
+                    'reference' => $payout->seller_transfer_reference,
+                    'notes' => "Payout request #{$payout->id} transferred to seller.",
+                    'created_by' => $admin->id,
+                ]);
+                $payout->paid_at = now();
+            }
+            $payout->save();
+            return $payout->fresh();
+        });
+
+        $payout->seller?->notify(new PayoutRequestUpdated($payout));
+        return response()->json([
+            'success' => true,
+            'message' => "Payout request {$next}.",
+            'data' => $this->formatPayoutRequest($payout, true),
+        ]);
+    }
+
+    private function formatPayoutRequest(PayoutRequest $payout, bool $includeSeller = false): array
+    {
+        $data = [
+            'id' => $payout->id,
+            'seller_id' => $payout->seller_id,
+            'amount' => (float) $payout->amount,
+            'status' => $payout->status,
+            'payment_method' => $payout->payment_method,
+            'bank_name' => $payout->bank_name,
+            'account_name' => $payout->account_name,
+            'account_number' => $payout->account_number,
+            'seller_note' => $payout->seller_note,
+            'admin_note' => $payout->admin_note,
+            'admin_withdrawal_reference' => $payout->admin_withdrawal_reference,
+            'seller_transfer_reference' => $payout->seller_transfer_reference,
+            'approved_at' => $payout->approved_at?->toISOString(),
+            'admin_withdrawn_at' => $payout->admin_withdrawn_at?->toISOString(),
+            'paid_at' => $payout->paid_at?->toISOString(),
+            'rejected_at' => $payout->rejected_at?->toISOString(),
+            'created_at' => $payout->created_at?->toISOString(),
+        ];
+        if ($includeSeller) {
+            $data['seller'] = $payout->seller ? [
+                'id' => $payout->seller->id,
+                'name' => $payout->seller->name,
+                'email' => $payout->seller->email,
+            ] : null;
+        }
+        return $data;
     }
 
     // ── Seller: COD invoices ───────────────────────────────────────────────────
