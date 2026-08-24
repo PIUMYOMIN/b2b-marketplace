@@ -116,6 +116,7 @@ class MMQRGateway implements PaymentGatewayInterface
             'success'     => true,
             'reference'   => $payload['orderId'] ?? null,
             'paid'        => $status === 'SUCCESS',
+            'status'      => $status,
             'gateway_ref' => $payload['transactionRefId'] ?? null,
             'amount'      => (float) ($payload['amount'] ?? 0),
             'raw'         => $payload,

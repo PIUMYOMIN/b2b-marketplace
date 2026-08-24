@@ -311,8 +311,16 @@ class PaymentController extends Controller
 
         if ($result['paid']) {
             PaymentService::markPaid($order, $result);
-        } else {
+        } elseif (in_array($result['status'] ?? '', ['FAILED', 'CANCELLED', 'EXPIRED', 'REFUNDED'], true)) {
             PaymentService::markFailed($order, $result['message'] ?? 'Gateway reported failure');
+        } else {
+            // MMQR may send PENDING callbacks before the final result. Do not
+            // cancel the order or its delivery record while payment is pending.
+            Log::info('MMQR payment still pending', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'status' => $result['status'] ?? 'PENDING',
+            ]);
         }
 
         return true;
