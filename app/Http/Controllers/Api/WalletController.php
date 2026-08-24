@@ -79,7 +79,7 @@ class WalletController extends Controller
     {
         $seller = Auth::user();
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:1',
+            'amount' => 'required|numeric|min:10000',
             'seller_note' => 'nullable|string|max:1000',
         ]);
         $profile = $seller->sellerProfile;
