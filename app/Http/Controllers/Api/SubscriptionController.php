@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PaymentSetting;
 use App\Models\Product;
 use App\Models\SellerSubscription;
+use App\Models\SubscriptionPayment;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
 use App\Notifications\SubscriptionApproved;
@@ -166,6 +167,15 @@ class SubscriptionController extends Controller
             $gateway = PaymentService::gateway($request->payment_method);
             $orderNumber = 'SUB-' . $seller->id . '-' . strtoupper($plan->slug) . '-' . now()->format('YmdHis');
 
+            $subscriptionPayment = SubscriptionPayment::create([
+                'user_id'        => $seller->id,
+                'plan_id'        => $plan->id,
+                'order_id'       => $orderNumber,
+                'amount_mmk'     => $plan->price_mmk,
+                'payment_method' => $request->payment_method,
+                'status'         => 'pending',
+            ]);
+
             $result = $gateway->initiatePayment(
                 amount: (float) $plan->price_mmk,
                 currency: 'MMK',
@@ -178,8 +188,18 @@ class SubscriptionController extends Controller
             );
 
             if (! ($result['success'] ?? false)) {
+                $subscriptionPayment->update([
+                    'status'      => 'failed',
+                    'raw_payload' => $result,
+                ]);
+
                 return response()->json($result, 502);
             }
+
+            $subscriptionPayment->update([
+                'gateway_reference' => $result['gateway_ref'] ?? null,
+                'raw_payload'       => $result['raw'] ?? $result,
+            ]);
 
             return response()->json(array_merge($result, [
                 'amount' => (int) $plan->price_mmk,
@@ -229,15 +249,33 @@ class SubscriptionController extends Controller
         }
 
         try {
-            $gateway = PaymentService::gateway($request->payment_method);
-            $result = $gateway->verifyPayment($request->payment_reference);
+            $payment = SubscriptionPayment::where('user_id', $request->user()->id)
+                ->where('payment_method', $request->payment_method)
+                ->where(function ($query) use ($request) {
+                    $query->where('order_id', $request->payment_reference)
+                        ->orWhere('gateway_reference', $request->payment_reference);
+                })
+                ->latest('id')
+                ->first();
+
+            if (! $payment) {
+                return response()->json([
+                    'success' => false,
+                    'paid' => false,
+                    'reference' => $request->payment_reference,
+                    'message' => 'Payment session not found for this account.',
+                ], 404);
+            }
 
             return response()->json([
-                'success' => (bool) ($result['success'] ?? false),
-                'paid' => (bool) ($result['paid'] ?? false),
+                'success' => true,
+                'paid' => $payment->status === 'paid',
                 'reference' => $request->payment_reference,
-                'gateway_ref' => $result['gateway_ref'] ?? null,
-                'message' => $result['message'] ?? null,
+                'gateway_ref' => $payment->gateway_reference,
+                'status' => $payment->status,
+                'message' => $payment->status === 'paid'
+                    ? 'Payment confirmed.'
+                    : 'Payment is not confirmed yet.',
             ]);
         } catch (\Throwable $e) {
             Log::warning('Subscription payment verification failed: ' . $e->getMessage(), [
@@ -314,6 +352,25 @@ class SubscriptionController extends Controller
                     'success' => false,
                     'message' => 'The selected payment method is not currently available for subscription payments.',
                     'error'   => 'payment_method_unavailable',
+                ], 422);
+            }
+
+            $payment = SubscriptionPayment::where('user_id', $seller->id)
+                ->where('plan_id', $plan->id)
+                ->where('payment_method', $request->payment_method)
+                ->where('status', 'paid')
+                ->where(function ($query) use ($request) {
+                    $query->where('order_id', $request->payment_reference)
+                        ->orWhere('gateway_reference', $request->payment_reference);
+                })
+                ->latest('id')
+                ->first();
+
+            if (! $payment || abs((float) $payment->amount_mmk - (float) $plan->price_mmk) > 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The payment could not be verified for this plan and account.',
+                    'error'   => 'payment_not_confirmed',
                 ], 422);
             }
         }

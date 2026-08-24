@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\SubscriptionPayment;
 use App\Services\Payment\PaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -237,11 +238,54 @@ class PaymentController extends Controller
             return false;
         }
 
+        $gatewayRef = $result['gateway_ref'] ?? null;
+        $subscriptionPayment = SubscriptionPayment::where('payment_method', $method)
+            ->where(function ($query) use ($reference, $gatewayRef) {
+                $query->where('order_id', $reference);
+
+                if ($gatewayRef && $gatewayRef !== 'MMPX_MANUAL') {
+                    $query->orWhere('gateway_reference', $gatewayRef);
+                }
+            })
+            ->first();
+
+        if ($subscriptionPayment) {
+            $paidAmount = isset($result['amount']) && is_numeric($result['amount'])
+                ? (float) $result['amount']
+                : 0.0;
+            $amountMatches = $paidAmount <= 0
+                || abs($paidAmount - (float) $subscriptionPayment->amount_mmk) <= 1;
+
+            $status = 'pending';
+            if (($result['paid'] ?? false) && $amountMatches) {
+                $status = 'paid';
+            } elseif (in_array(strtoupper((string) ($result['raw']['status'] ?? '')), ['FAILED', 'CANCELLED', 'EXPIRED', 'REFUNDED'], true)) {
+                $status = strtolower((string) $result['raw']['status']);
+            }
+
+            $subscriptionPayment->update([
+                'status'            => $status,
+                'gateway_reference' => $gatewayRef ?: $subscriptionPayment->gateway_reference,
+                'paid_at'           => $status === 'paid' ? ($subscriptionPayment->paid_at ?: now()) : null,
+                'raw_payload'       => $result['raw'] ?? $result,
+            ]);
+
+            if (($result['paid'] ?? false) && ! $amountMatches) {
+                Log::critical('Subscription payment amount mismatch', [
+                    'subscription_payment_id' => $subscriptionPayment->id,
+                    'expected_amount' => $subscriptionPayment->amount_mmk,
+                    'paid_amount' => $paidAmount,
+                    'reference' => $reference,
+                ]);
+            }
+
+            return true;
+        }
+
         $order = Order::where('payment_reference', $reference)
             ->orWhere('order_number', $reference)
             ->first();
 
-        $gatewayRef = $result['gateway_ref'] ?? null;
         if (! $order && $gatewayRef && $gatewayRef !== 'MMPX_MANUAL') {
             $order = Order::where('transaction_id', $gatewayRef)->first();
         }
