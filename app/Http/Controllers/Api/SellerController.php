@@ -4762,7 +4762,7 @@ class SellerController extends Controller
                 ->where('seller_id', $user->id)
                 ->whereNull('deleted_at')
                 ->whereNotIn('status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
-                ->where('created_at', '>=', Carbon::now()->subDays(7))
+                ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     DB::raw('DATE(created_at) as date'),
                     DB::raw('COALESCE(SUM(total_amount), 0) as revenue'),
@@ -5076,6 +5076,11 @@ class SellerController extends Controller
     public function topProducts(Request $request)
     {
         try {
+            $request->validate([
+                'start_date' => ['nullable', 'date'],
+                'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            ]);
+
             $user = $request->user();
 
             if (!isset($user->type) || $user->type !== 'seller') {
@@ -5086,13 +5091,14 @@ class SellerController extends Controller
             }
 
             $limit = $request->input('limit', 5);
-            $days = $request->input('days', 30);
+            $startDate = $request->input('start_date', Carbon::now()->subDays(30)->format('Y-m-d'));
+            $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
 
             $topProducts = DB::table('order_items')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->join('products', 'order_items.product_id', '=', 'products.id')
                 ->where('orders.seller_id', $user->id)
-                ->where('orders.created_at', '>=', Carbon::now()->subDays($days))
+                ->whereBetween('orders.created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
                 ->select(
                     'products.id',
                     'products.name_en as name', // FIXED: Changed from 'products.name' to 'products.name_en'
