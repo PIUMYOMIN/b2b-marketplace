@@ -32,6 +32,7 @@ class AbandonedCartReminder extends Notification
 
         return [
             'type' => 'abandoned_cart',
+            'cart_id' => (string) $this->cart->id,
             'product_id' => (string) $this->product->id,
             'product_slug' => (string) ($this->product->slug_en ?: $this->product->slug_mm ?: ''),
             'product_name' => $productName,
@@ -52,6 +53,7 @@ class AbandonedCartReminder extends Notification
             'promotions',
             [
                 'type' => 'abandoned_cart',
+                'cart_id' => (string) $this->cart->id,
                 'product_id' => (string) $this->product->id,
                 'product_slug' => (string) ($this->product->slug_en ?: $this->product->slug_mm ?: ''),
                 'product_name' => $productName,

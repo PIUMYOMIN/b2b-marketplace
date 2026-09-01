@@ -10,6 +10,7 @@ use App\Notifications\AbandonedCartReminder;
 use App\Support\MarketingPushThrottle;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
@@ -22,7 +23,7 @@ class SendAbandonedCartReminders extends Command
 {
     protected $signature = 'cart:send-reminders
                             {--days=3 : Minimum days since the cart item was last updated}
-                            {--cooldown=7 : Minimum days before re-reminding the same cart item}
+                            {--cooldown=7 : Minimum days before re-reminding the same buyer}
                             {--dry-run : Preview recipients without sending}';
 
     protected $description = 'Send checkout reminder pushes for cart items that have not been purchased.';
@@ -37,7 +38,7 @@ class SendAbandonedCartReminders extends Command
         $remindedBefore = Carbon::now()->subDays($cooldownDays);
 
         $candidates = Cart::query()
-            ->with(['user', 'product'])
+            ->with(['user', 'product', 'variant'])
             ->where('updated_at', '<=', $staleBefore)
             ->where(function ($query) use ($remindedBefore) {
                 $query->whereNull('last_reminded_at')
@@ -91,7 +92,7 @@ class SendAbandonedCartReminders extends Command
                 continue;
             }
 
-            if (!$this->cartItemIsAvailable($product)) {
+            if (!$this->cartItemIsAvailable($cart, $product)) {
                 $skipped++;
                 continue;
             }
@@ -101,7 +102,7 @@ class SendAbandonedCartReminders extends Command
                 continue;
             }
 
-            $itemCount = (int) ($cartCounts[$user->id] ?? 1);
+            $itemCount = (int) ($cartCounts[$user->id] ?? $cartCounts[(string) $user->id] ?? 1);
 
             if ($dryRun) {
                 $this->line(
@@ -115,9 +116,15 @@ class SendAbandonedCartReminders extends Command
 
             try {
                 Notification::send($user, new AbandonedCartReminder($cart, $product, $itemCount));
-                $cart->update(['last_reminded_at' => now()]);
+                $this->markBuyerCartsReminded($user->id);
                 $usersNotifiedToday[$user->id] = true;
                 $sent++;
+                Log::info('cart:send-reminders sent', [
+                    'cart_id' => $cart->id,
+                    'user_id' => $user->id,
+                    'product_id' => $product->id,
+                    'cart_item_count' => $itemCount,
+                ]);
             } catch (\Throwable $exception) {
                 $skipped++;
                 Log::error('cart:send-reminders failed for cart item', [
@@ -135,6 +142,16 @@ class SendAbandonedCartReminders extends Command
         );
 
         return self::SUCCESS;
+    }
+
+    private function markBuyerCartsReminded(int $userId): void
+    {
+        // Query builder on the table so we do not bump updated_at (that would
+        // reset the 3-day stale window). Stamp every line so leftover items
+        // cannot fire another push tomorrow.
+        DB::table('carts')
+            ->where('user_id', $userId)
+            ->update(['last_reminded_at' => now()]);
     }
 
     private function userAllowsCartReminder(object $user): bool
@@ -160,7 +177,7 @@ class SendAbandonedCartReminders extends Command
             ->exists();
     }
 
-    private function cartItemIsAvailable(Product $product): bool
+    private function cartItemIsAvailable(Cart $cart, Product $product): bool
     {
         if (!$product->is_active || $product->status !== 'approved') {
             return false;
@@ -168,6 +185,15 @@ class SendAbandonedCartReminders extends Command
 
         if ($product->product_type !== 'physical') {
             return true;
+        }
+
+        if ($cart->variant_id) {
+            $variant = $cart->variant;
+            if ($variant === null) {
+                return false;
+            }
+
+            return (float) $variant->quantity > 0;
         }
 
         return $product->totalStock() > 0;
