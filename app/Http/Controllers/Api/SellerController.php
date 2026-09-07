@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Order;
 use App\Notifications\SellerRejected;
+use App\Models\CommissionRule;
 use App\Notifications\SellerApproved;
 use App\Models\Product;
 use Illuminate\Http\Request;
@@ -620,6 +621,15 @@ class SellerController extends Controller
             ->count();
 
         $tierOrderCount = max((int) ($s->completed_orders_count ?? 0), $deliveredOrdersCount);
+        $tierReferenceId = match ($s->seller_tier) {
+            'gold' => 3,
+            'silver' => 2,
+            default => 1,
+        };
+        $tierCommissionRate = CommissionRule::active()
+            ->where('type', 'account_level')
+            ->where('reference_id', $tierReferenceId)
+            ->value('rate');
 
         $data = [
             // Identity
@@ -710,6 +720,7 @@ class SellerController extends Controller
             'current_step'                => $s->current_step,
             'is_active'                   => (bool) $s->is_active,
             'seller_tier'                 => $s->seller_tier,
+            'seller_tier_commission_rate'  => $tierCommissionRate !== null ? (float) $tierCommissionRate : null,
             'completed_orders_count'      => $tierOrderCount,
             'delivered_orders_count'      => $deliveredOrdersCount,
             'badge_type'                  => $s->badge_type,
