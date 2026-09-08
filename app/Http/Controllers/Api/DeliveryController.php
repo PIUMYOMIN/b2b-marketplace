@@ -14,6 +14,7 @@ use App\Notifications\OrderDeliveredThankYou;
 use App\Notifications\PlatformLogisticsRequested;
 use App\Notifications\SelfDeliveryCompleted;
 use App\Services\ImageOptimizationService;
+use App\Services\PlatformDeliveryFeeCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -109,16 +110,24 @@ class DeliveryController extends Controller
 
             $validated = $request->validate([
                 'delivery_method'       => 'required|in:supplier,platform',
-                'platform_delivery_fee' => 'nullable|numeric|min:0',
+                'package_weight'        => 'nullable|numeric|min:0.01|max:50',
                 'pickup_address'        => 'required_if:delivery_method,platform|nullable|string|max:500',
             ]);
+
+            $packageWeight = $validated['package_weight'] ?? null;
+            $platformDeliveryFee = $validated['delivery_method'] === 'platform'
+                ? app(PlatformDeliveryFeeCalculator::class)->calculate($packageWeight)
+                : 0;
 
             $delivery                       = Delivery::firstOrNew(['order_id' => $order->id]);
             $wasPlatformDelivery            = $delivery->exists && $delivery->delivery_method === 'platform';
             $delivery->order_id             = $order->id;
             $delivery->supplier_id          = $user->id;
             $delivery->delivery_method      = $validated['delivery_method'];
-            $delivery->platform_delivery_fee= $validated['platform_delivery_fee'] ?? 0;
+            $delivery->platform_delivery_fee= $platformDeliveryFee;
+            if ($packageWeight !== null) {
+                $delivery->package_weight = $packageWeight;
+            }
             $delivery->pickup_address       = $validated['pickup_address'] ?? $delivery->pickup_address;
             $addr = $order->shipping_address;
             $delivery->delivery_address = is_array($addr)
@@ -165,6 +174,32 @@ class DeliveryController extends Controller
             Log::error('Failed to set delivery method: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Return the server-calculated Platform Logistics fee before selection.
+     * GET /seller/delivery/{order}/platform-fee-quote
+     */
+    public function platformFeeQuote(Request $request, Order $order)
+    {
+        $user = $request->user();
+        if ((int) $order->seller_id !== (int) $user->id && (int) $order->supplier_id !== (int) $user->id) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'package_weight' => 'nullable|numeric|min:0.01|max:50',
+        ]);
+
+        $fee = app(PlatformDeliveryFeeCalculator::class)->calculate($validated['package_weight'] ?? null);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'platform_delivery_fee' => $fee,
+                'package_weight' => $validated['package_weight'] ?? 5,
+            ],
+        ]);
     }
 
     private function notifyAdminsPlatformLogisticsRequested(Delivery $delivery): void

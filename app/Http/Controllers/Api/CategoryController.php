@@ -22,33 +22,21 @@ class CategoryController extends Controller
      */
     public function index()
     {
-        $payload = Cache::remember('categories_tree', 300, function () {
-            // Get only root categories that are active
+        $payload = Cache::remember('categories_tree_v2', 300, function () {
             $categories = Category::whereNull('parent_id')
                 ->where('is_active', true)
-                ->with('children')
+                ->with(['children' => function ($query) {
+                    $query->where('is_active', true);
+                }])
                 ->get();
 
-            // Per-child product count (drives the animated list on the card)
             foreach ($categories as $category) {
-                foreach ($category->children as $child) {
-                    $child->products_count = Product::where('category_id', $child->id)
-                        ->where('is_active', true)
-                        ->count();
-                    $child->children_count = 0;
-                }
-
-                // Root total = all descendants (any active product counts)
-                $allIds = $category->getDescendantIds();
-                $category->products_count = Product::whereIn('category_id', $allIds)
-                    ->where('is_active', true)
-                    ->count();
-
-                $category->children_count = $category->children->count();
+                $this->attachPublicProductCounts($category);
             }
 
-            // Only return roots that have at least one product in the tree
-            $categories = $categories->filter(fn ($c) => $c->products_count > 0)->values();
+            $categories = $categories
+                ->filter(fn ($category) => (int) $category->products_count > 0)
+                ->values();
 
             return CategoryResource::collection($categories)->resolve();
         });
@@ -407,19 +395,11 @@ class CategoryController extends Controller
     {
         $category->load([
             'children' => function ($query) {
-                $query->with([
-                    'products' => function ($q) {
-                        $q->where('is_active', true);
-                    }
-                ]);
+                $query->where('is_active', true);
             },
-            'products' => function ($q) {
-                $q->where('is_active', true);
-            }
         ]);
 
-        // Set a dynamic attribute for the resource
-        $category->products_count = $category->products()->where('is_active', true)->count();
+        $this->attachPublicProductCounts($category);
 
         return response()->json([
             'success' => true,
@@ -585,9 +565,53 @@ class CategoryController extends Controller
         $category->children_count = $children->count();
     }
 
+    /**
+     * Count products that actually appear on public listing pages
+     * (active + approved/pending + seller store publicly visible).
+     */
+    private function visibleProductCountsByCategoryId($categoryIds)
+    {
+        if ($categoryIds->isEmpty()) {
+            return collect();
+        }
+
+        return Product::publiclyVisible()
+            ->whereIn('category_id', $categoryIds)
+            ->selectRaw('category_id, COUNT(*) as aggregate')
+            ->groupBy('category_id')
+            ->pluck('aggregate', 'category_id');
+    }
+
+    private function attachPublicProductCounts(Category $category): void
+    {
+        $treeIds = $category->getDescendantIds();
+        $counts = $this->visibleProductCountsByCategoryId($treeIds);
+
+        $visibleChildren = collect($category->relationLoaded('children') ? $category->children : [])
+            ->filter(fn ($child) => (bool) $child->is_active)
+            ->map(function ($child) use ($counts) {
+                $childIds = $child->getDescendantIds();
+                $child->products_count = (int) $childIds->sum(
+                    fn ($id) => (int) $counts->get($id, 0)
+                );
+                $child->children_count = 0;
+
+                return $child;
+            })
+            ->filter(fn ($child) => (int) $child->products_count > 0)
+            ->values();
+
+        $category->setRelation('children', $visibleChildren);
+        $category->products_count = (int) $treeIds->sum(
+            fn ($id) => (int) $counts->get($id, 0)
+        );
+        $category->children_count = $visibleChildren->count();
+    }
+
     private function flushPublicCatalogCaches(): void
     {
         Cache::forget('categories_tree');
+        Cache::forget('categories_tree_v2');
         Cache::forget('featured_products');
     }
 }

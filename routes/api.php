@@ -545,6 +545,7 @@ Route::group([
             //Delivery management
             Route::prefix('delivery')->group(function () {
                 // Order delivery method selection
+                Route::get('/{order}/platform-fee-quote', [DeliveryController::class, 'platformFeeQuote']);
                 Route::post('/{order}/delivery-method', [DeliveryController::class, 'chooseDeliveryMethod']);
             });
 

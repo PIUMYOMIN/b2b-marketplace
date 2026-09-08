@@ -1261,6 +1261,7 @@ class ProductController extends Controller
     protected function flushPublicCatalogCaches(): void
     {
         Cache::forget('categories_tree');
+        Cache::forget('categories_tree_v2');
         Cache::forget('featured_products');
     }
 
