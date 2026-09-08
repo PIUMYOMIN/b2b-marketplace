@@ -114,6 +114,9 @@ class DeliveryAreaController extends Controller
                 'postal_code' => 'nullable|string|max:20',
                 'is_deliverable' => 'boolean',
                 'shipping_fee' => 'required|numeric|min:0',
+                'included_weight_kg' => 'nullable|numeric|min:0',
+                'additional_weight_step_kg' => 'nullable|numeric|min:0.1',
+                'additional_weight_fee' => 'nullable|numeric|min:0',
                 'free_shipping_threshold' => 'nullable|numeric|min:0',
                 'estimated_delivery_days_min' => 'nullable|integer|min:0',
                 'estimated_delivery_days_max' => 'nullable|integer|min:0|gte:estimated_delivery_days_min',
@@ -239,6 +242,9 @@ class DeliveryAreaController extends Controller
                 'postal_code' => 'nullable|string|max:20',
                 'is_deliverable' => 'sometimes|boolean',
                 'shipping_fee' => 'sometimes|numeric|min:0',
+                'included_weight_kg' => 'nullable|numeric|min:0',
+                'additional_weight_step_kg' => 'nullable|numeric|min:0.1',
+                'additional_weight_fee' => 'nullable|numeric|min:0',
                 'free_shipping_threshold' => 'nullable|numeric|min:0',
                 'estimated_delivery_days_min' => 'nullable|integer|min:0',
                 'estimated_delivery_days_max' => 'nullable|integer|min:0|gte:estimated_delivery_days_min',
@@ -471,7 +477,10 @@ class DeliveryAreaController extends Controller
                 ]);
             }
 
-            $shippingFee = $matchingArea->getShippingFeeForOrder($validated['order_amount'] ?? 0);
+            $shippingFee = $matchingArea->getShippingFeeForOrder(
+                $validated['order_amount'] ?? 0,
+                $validated['weight_kg'] ?? 0
+            );
 
             return response()->json([
                 'success' => true,
@@ -521,6 +530,9 @@ class DeliveryAreaController extends Controller
                 'zones.*.city'                           => 'nullable|string|max:100',
                 'zones.*.township'                       => 'nullable|string|max:150',
                 'zones.*.shipping_fee'                   => 'required|numeric|min:0',
+                'zones.*.included_weight_kg'             => 'nullable|numeric|min:0',
+                'zones.*.additional_weight_step_kg'      => 'nullable|numeric|min:0.1',
+                'zones.*.additional_weight_fee'          => 'nullable|numeric|min:0',
                 'zones.*.free_shipping_threshold'        => 'nullable|numeric|min:0',
                 'zones.*.estimated_delivery_days_min'    => 'nullable|integer|min:1',
                 'zones.*.estimated_delivery_days_max'    => 'nullable|integer|min:1|gte:zones.*.estimated_delivery_days_min',
@@ -588,6 +600,9 @@ class DeliveryAreaController extends Controller
                         'city' => $zone['city'] ?? null,
                         'township' => $zone['township'] ?? null,
                         'shipping_fee' => $zone['shipping_fee'],
+                        'included_weight_kg' => $zone['included_weight_kg'] ?? 2,
+                        'additional_weight_step_kg' => $zone['additional_weight_step_kg'] ?? 0.5,
+                        'additional_weight_fee' => $zone['additional_weight_fee'] ?? 400,
                         'free_shipping_threshold' => $zone['free_shipping_threshold'] ?? null,
                         'estimated_delivery_days_min' => $zone['estimated_delivery_days_min'] ?? null,
                         'estimated_delivery_days_max' => $zone['estimated_delivery_days_max'] ?? null,

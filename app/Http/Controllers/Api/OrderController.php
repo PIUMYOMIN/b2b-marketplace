@@ -410,9 +410,16 @@ class OrderController extends Controller
         }
 
         // Calculate estimated total to show in the email.
-        // Use the seller's delivery zone fee where available, falling back to 5,000 MMK.
-        $subtotal = collect($request->items)->sum(function ($item) {
+        // Use the seller's delivery zone fee where available, falling back to 8,000 MMK.
+        $otpQuoteItems = collect($request->items)->map(function ($item) {
             $product = Product::find($item['product_id']);
+            return [
+                'product' => $product,
+                'quantity' => $item['quantity'] ?? 0,
+            ];
+        })->all();
+        $subtotal = collect($otpQuoteItems)->sum(function ($item) {
+            $product = $item['product'];
             return $product ? $product->price * $item['quantity'] : 0;
         });
 
@@ -430,7 +437,10 @@ class OrderController extends Controller
             )
             ->orderByDesc('sort_order')
             ->first();
-        $estimatedShipping = $matchedZone ? $matchedZone->getShippingFeeForOrder($subtotal) : 8000;
+        $estimatedWeight = $this->calculateOrderWeight($otpQuoteItems);
+        $estimatedShipping = $matchedZone
+            ? $matchedZone->getShippingFeeForOrder($subtotal, $estimatedWeight)
+            : 8000;
 
         $total = $subtotal + $estimatedShipping + ($subtotal * 0.00); // shipping + 5% tax
         $formattedTotal = number_format($total, 0) . ' MMK';
@@ -724,7 +734,7 @@ class OrderController extends Controller
 
                 // ── Resolve shipping fee from seller's delivery zones ──────────────
                 // Matches the buyer's destination (country → state → city, most specific
-                // zone wins via sort_order DESC). Falls back to 5,000 MMK if the seller
+                // zone wins via sort_order DESC). Falls back to 8,000 MMK if the seller
                 // has not configured any delivery zones or none match the destination.
                 $addr          = $request->shipping_address;
                 $sellerProfile = SellerProfile::where('user_id', $sellerId)->first();
@@ -738,7 +748,10 @@ class OrderController extends Controller
                     ->orderByDesc('sort_order')
                     ->first();
                 $sellerShippingFee = $matchedZone
-                    ? $matchedZone->getShippingFeeForOrder($sellerSubtotal)
+                    ? $matchedZone->getShippingFeeForOrder(
+                        $sellerSubtotal,
+                        $this->calculateOrderWeight($sellerItems)
+                    )
                     : 8000;
                 $sellerTax = $sellerSubtotal * 0.00;
 
@@ -1565,20 +1578,38 @@ class OrderController extends Controller
 
     private function calculateOrderWeight($items)
     {
-        // Calculate total weight from items
         $totalWeight = 0;
         foreach ($items as $item) {
-            $totalWeight += ($item['product']->weight_kg ?? 1) * $item['quantity'];
+            $product = $item['product'] ?? null;
+            if (! $product) {
+                continue;
+            }
+            $weight = (float) ($product->weight_kg ?? 1);
+            if ($weight <= 0) {
+                $weight = 1;
+            }
+            $totalWeight += $weight * ($item['quantity'] ?? 0);
         }
         return $totalWeight;
+    }
+
+    private function parseHandlingDays(?string $shippingTime): int
+    {
+        if (!$shippingTime) {
+            return 0;
+        }
+        if (preg_match_all('/\d+/', $shippingTime, $matches) && !empty($matches[0])) {
+            return max(array_map('intval', $matches[0]));
+        }
+        return 0;
     }
 
     /**
      * GET /orders/checkout-fees
      *
      * Returns the live platform fee rate (resolved from commission_rules table
-     * via CommissionRateResolver) and the flat shipping fee, so the checkout
-     * page can display accurate totals instead of hardcoded constants.
+     * via CommissionRateResolver) and the zone shipping fee (base + weight
+     * surcharge), so the checkout page can display accurate totals.
      *
      * Resolution priority (highest → lowest):
      *   1. Seller tier (account_level rule)
@@ -1636,12 +1667,24 @@ class OrderController extends Controller
 
                 if (! isset($itemsBySeller[$sellerId])) {
                     $itemsBySeller[$sellerId] = [
-                        'subtotal'    => 0.0,
-                        'seller_name' => $product->seller?->sellerProfile?->store_name ?? 'Seller',
+                        'subtotal'       => 0.0,
+                        'weight'         => 0.0,
+                        'handling_days'  => 0,
+                        'seller_name'    => $product->seller?->sellerProfile?->store_name ?? 'Seller',
                     ];
                 }
 
+                $itemWeight = (float) ($product->weight_kg ?? 1);
+                if ($itemWeight <= 0) {
+                    $itemWeight = 1;
+                }
+
                 $itemsBySeller[$sellerId]['subtotal'] += $itemTotal;
+                $itemsBySeller[$sellerId]['weight'] += $itemWeight * $quantity;
+                $itemsBySeller[$sellerId]['handling_days'] = max(
+                    $itemsBySeller[$sellerId]['handling_days'],
+                    $this->parseHandlingDays($product->shipping_time ?? null)
+                );
             }
 
             if (! empty($itemsBySeller)) {
@@ -1668,11 +1711,18 @@ class OrderController extends Controller
 
             $sellers               = [];
             $totalShipping         = 0.0;
+            $overallEtaMin         = null;
+            $overallEtaMax         = null;
+            $allSellersHaveEta     = true;
             $defaultShippingPerSeller = 8000.0;
 
             foreach ($itemsBySeller as $sellerId => $info) {
                 $sellerSubtotal = $info['subtotal'];
+                $sellerWeight   = (float) ($info['weight'] ?? 0);
+                $handlingDays   = (int) ($info['handling_days'] ?? 0);
                 $shippingFee    = $defaultShippingPerSeller;
+                $etaMin         = null;
+                $etaMax         = null;
 
                 if ($hasLocation) {
                     $sellerProfile = SellerProfile::where('user_id', $sellerId)->first();
@@ -1682,17 +1732,36 @@ class OrderController extends Controller
                         ->first();
 
                     $shippingFee = $matchedZone
-                        ? (float) $matchedZone->getShippingFeeForOrder($sellerSubtotal)
+                        ? (float) $matchedZone->getShippingFeeForOrder($sellerSubtotal, $sellerWeight)
                         : $defaultShippingPerSeller;
+
+                    if ($matchedZone) {
+                        [$etaMin, $etaMax] = $matchedZone->getBuyerEtaDays($handlingDays);
+                    }
+                }
+
+                if ($etaMin === null || $etaMax === null) {
+                    $allSellersHaveEta = false;
+                } else {
+                    $overallEtaMin = $overallEtaMin === null ? $etaMin : max($overallEtaMin, $etaMin);
+                    $overallEtaMax = $overallEtaMax === null ? $etaMax : max($overallEtaMax, $etaMax);
                 }
 
                 $totalShipping += $shippingFee;
                 $sellers[] = [
-                    'seller_id'    => $sellerId,
-                    'seller_name'  => $info['seller_name'],
-                    'shipping_fee' => round($shippingFee, 2),
-                    'subtotal'     => round($sellerSubtotal, 2),
+                    'seller_id'          => $sellerId,
+                    'seller_name'        => $info['seller_name'],
+                    'shipping_fee'       => round($shippingFee, 2),
+                    'subtotal'           => round($sellerSubtotal, 2),
+                    'weight_kg'          => round($sellerWeight, 2),
+                    'estimated_days_min' => $etaMin,
+                    'estimated_days_max' => $etaMax,
                 ];
+            }
+
+            if (! $allSellersHaveEta) {
+                $overallEtaMin = null;
+                $overallEtaMax = null;
             }
 
             // Buyer-facing tax is 0% — matches order creation.
@@ -1717,6 +1786,8 @@ class OrderController extends Controller
                     'rule_type'                 => $ruleType,
                     'sellers'                   => $sellers,
                     'shipping_location_summary' => $locationSummary,
+                    'estimated_days_min'        => $overallEtaMin,
+                    'estimated_days_max'        => $overallEtaMax,
                 ],
             ]);
         } catch (\Exception $e) {

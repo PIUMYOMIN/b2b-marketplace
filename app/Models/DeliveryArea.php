@@ -24,6 +24,9 @@ class DeliveryArea extends Model
         'postal_code',
         'is_deliverable',
         'shipping_fee',
+        'included_weight_kg',
+        'additional_weight_step_kg',
+        'additional_weight_fee',
         'free_shipping_threshold',
         'estimated_delivery_days_min',
         'estimated_delivery_days_max',
@@ -44,6 +47,9 @@ class DeliveryArea extends Model
     protected $casts = [
         'is_deliverable' => 'boolean',
         'shipping_fee' => 'decimal:2',
+        'included_weight_kg' => 'decimal:2',
+        'additional_weight_step_kg' => 'decimal:2',
+        'additional_weight_fee' => 'decimal:2',
         'free_shipping_threshold' => 'decimal:2',
         'standard_shipping_available' => 'boolean',
         'express_shipping_available' => 'boolean',
@@ -132,14 +138,41 @@ class DeliveryArea extends Model
         }
     }
 
-    public function getShippingFeeForOrder($orderAmount = 0)
+    public function getShippingFeeForOrder($orderAmount = 0, $weightKg = 0)
     {
-        // Check for free shipping threshold
         if ($this->free_shipping_threshold && $orderAmount >= $this->free_shipping_threshold) {
             return 0;
         }
 
-        return $this->shipping_fee;
+        $base = (float) $this->shipping_fee;
+        $included = (float) ($this->included_weight_kg ?? 2);
+        $step = (float) ($this->additional_weight_step_kg ?? 0.5);
+        $extraFee = (float) ($this->additional_weight_fee ?? 400);
+
+        if ($step <= 0 || $extraFee <= 0) {
+            return $base;
+        }
+
+        $weight = max(0, (float) $weightKg);
+        if ($weight <= $included) {
+            return $base;
+        }
+
+        $extraSteps = (int) ceil(($weight - $included) / $step);
+
+        return $base + ($extraSteps * $extraFee);
+    }
+
+    public function getBuyerEtaDays(int $handlingDays = 0): array
+    {
+        $transitMin = (int) ($this->estimated_delivery_days_min ?: 3);
+        $transitMax = (int) ($this->estimated_delivery_days_max ?: max($transitMin, 5));
+        $handling = max(0, $handlingDays);
+
+        return [
+            $transitMin + $handling,
+            max($transitMin + $handling, $transitMax + $handling),
+        ];
     }
 
     public function getEstimatedDeliveryAttribute()
