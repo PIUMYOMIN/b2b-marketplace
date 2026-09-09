@@ -440,7 +440,7 @@ class OrderController extends Controller
         $estimatedWeight = $this->calculateOrderWeight($otpQuoteItems);
         $estimatedShipping = $matchedZone
             ? $matchedZone->getShippingFeeForOrder($subtotal, $estimatedWeight)
-            : 8000;
+            : 0;
 
         $total = $subtotal + $estimatedShipping + ($subtotal * 0.00); // shipping + 5% tax
         $formattedTotal = number_format($total, 0) . ' MMK';
@@ -733,9 +733,8 @@ class OrderController extends Controller
                 $sellerSubtotal = collect($sellerItems)->sum('subtotal');
 
                 // ── Resolve shipping fee from seller's delivery zones ──────────────
-                // Matches the buyer's destination (country → state → city, most specific
-                // zone wins via sort_order DESC). Falls back to 8,000 MMK if the seller
-                // has not configured any delivery zones or none match the destination.
+                // Matches the buyer's destination. If no zone matches, the order is rejected
+                // instead of applying a dummy shipping fee.
                 $addr          = $request->shipping_address;
                 $sellerProfile = SellerProfile::where('user_id', $sellerId)->first();
                 $matchedZone   = $sellerProfile?->activeDeliveryAreas()
@@ -752,7 +751,12 @@ class OrderController extends Controller
                         $sellerSubtotal,
                         $this->calculateOrderWeight($sellerItems)
                     )
-                    : 8000;
+                    : null;
+                if ($sellerShippingFee === null) {
+                    throw new \Exception(
+                        'This seller does not deliver to the selected address. Please choose another delivery location.'
+                    );
+                }
                 $sellerTax = $sellerSubtotal * 0.00;
 
                 // Distribute coupon discount proportionally across seller orders.
@@ -956,10 +960,14 @@ class OrderController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            $noDelivery = str_contains($e->getMessage(), 'does not deliver');
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create order: ' . $e->getMessage(),
-            ], 500);
+                'message' => $noDelivery
+                    ? $e->getMessage()
+                    : 'Failed to create order: ' . $e->getMessage(),
+            ], $noDelivery ? 422 : 500);
         }
     }
 
@@ -1714,13 +1722,14 @@ class OrderController extends Controller
             $overallEtaMin         = null;
             $overallEtaMax         = null;
             $allSellersHaveEta     = true;
-            $defaultShippingPerSeller = 8000.0;
+            $defaultShippingPerSeller = 0.0;
 
             foreach ($itemsBySeller as $sellerId => $info) {
                 $sellerSubtotal = $info['subtotal'];
                 $sellerWeight   = (float) ($info['weight'] ?? 0);
                 $handlingDays   = (int) ($info['handling_days'] ?? 0);
                 $shippingFee    = $defaultShippingPerSeller;
+                $shippingQuoted = false;
                 $etaMin         = null;
                 $etaMax         = null;
 
@@ -1731,11 +1740,9 @@ class OrderController extends Controller
                         ->orderByDesc('sort_order')
                         ->first();
 
-                    $shippingFee = $matchedZone
-                        ? (float) $matchedZone->getShippingFeeForOrder($sellerSubtotal, $sellerWeight)
-                        : $defaultShippingPerSeller;
-
                     if ($matchedZone) {
+                        $shippingFee = (float) $matchedZone->getShippingFeeForOrder($sellerSubtotal, $sellerWeight);
+                        $shippingQuoted = true;
                         [$etaMin, $etaMax] = $matchedZone->getBuyerEtaDays($handlingDays);
                     }
                 }
@@ -1752,6 +1759,7 @@ class OrderController extends Controller
                     'seller_id'          => $sellerId,
                     'seller_name'        => $info['seller_name'],
                     'shipping_fee'       => round($shippingFee, 2),
+                    'shipping_quoted'    => $shippingQuoted,
                     'subtotal'           => round($sellerSubtotal, 2),
                     'weight_kg'          => round($sellerWeight, 2),
                     'estimated_days_min' => $etaMin,
@@ -1778,6 +1786,7 @@ class OrderController extends Controller
                 'data'    => [
                     'subtotal'                  => round($subtotal, 2),
                     'shipping_fee'              => round($totalShipping, 2),
+                    'shipping_quoted'          => count($sellers) > 0 && collect($sellers)->every(fn ($seller) => $seller['shipping_quoted']),
                     'tax_rate'                  => $taxRate,
                     'tax'                       => $tax,
                     'total'                     => $total,
@@ -1798,10 +1807,11 @@ class OrderController extends Controller
                 'success' => true,
                 'data'    => [
                     'subtotal'                  => 0,
-                    'shipping_fee'              => 8000,
+                    'shipping_fee'              => 0,
+                    'shipping_quoted'         => false,
                     'tax_rate'                  => 0,
                     'tax'                       => 0,
-                    'total'                     => 8000,
+                    'total'                     => 0,
                     'platform_fee_rate'         => 0.05,
                     'platform_fee_pct'          => 5.0,
                     'rule_type'                 => 'fallback',
