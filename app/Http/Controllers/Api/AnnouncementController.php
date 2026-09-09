@@ -131,7 +131,7 @@ class AnnouncementController extends Controller
             'show_once'       => 'boolean',
             'delay_seconds'   => 'nullable|integer|min:0|max:30',
             'starts_at'       => 'nullable|date',
-            'ends_at'         => 'nullable|date',
+            'ends_at'         => 'nullable|date|after_or_equal:starts_at',
             'sort_order'      => 'nullable|integer|min:0',
             'send_push'       => 'sometimes|boolean',
         ]);

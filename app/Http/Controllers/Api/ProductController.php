@@ -393,7 +393,7 @@ class ProductController extends Controller
  
         $data['seller_id'] = $sellerId;
         $data['slug_en']   = $this->generateSlug($data['name_en']);
-        $data['slug_mm']   = isset($data['name_mm'])
+        $data['slug_mm']   = filled($data['name_mm'] ?? null)
             ? $this->generateSlug($data['name_mm'], 'products', 'slug_mm')
             : null;
         $data['status']    = 'pending';
@@ -599,6 +599,12 @@ class ProductController extends Controller
  
         if (isset($data['name_en']) && $data['name_en'] !== $product->name_en) {
             $data['slug_en'] = $this->generateSlug($data['name_en'], 'products', 'slug_en', $product->id);
+        }
+
+        if (array_key_exists('name_mm', $data) && $data['name_mm'] !== $product->name_mm) {
+            $data['slug_mm'] = filled($data['name_mm'])
+                ? $this->generateSlug($data['name_mm'], 'products', 'slug_mm', $product->id)
+                : null;
         }
  
         // Changing product_type — reset type-specific fields
@@ -1741,9 +1747,18 @@ class ProductController extends Controller
         ?int $excludeId = null
         ): string {
         $base = Str::slug($text);
+        if ($base === '') {
+            $ascii = trim((string) preg_replace('/[^A-Za-z0-9]+/u', '-', $text), '-');
+            $base = Str::lower($ascii);
+        }
+        // Burmese-only names have no Latin letters; keep a stable ASCII URL for sitemap/SEO.
+        if ($base === '') {
+            $base = 'p-' . substr(sha1($text), 0, 10);
+        }
+
         $slug = $base;
         $i    = 1;
- 
+
         while (
             DB::table($table)
                 ->where($column, $slug)
@@ -1753,7 +1768,7 @@ class ProductController extends Controller
             $slug = "{$base}-{$i}";
             $i++;
         }
- 
+
         return $slug;
     }
 }
