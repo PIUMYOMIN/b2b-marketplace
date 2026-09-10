@@ -873,7 +873,8 @@ class OrderController extends Controller
                 Delivery::create([
                     'order_id' => $order->id,
                     'supplier_id' => $sellerId,
-                    'delivery_method' => 'supplier', // Default to supplier delivery
+                    'delivery_method' => 'supplier', // Unchosen until seller picks a method (status stays pending)
+                    'pickup_address' => $this->getSupplierAddress($sellerId),
                     'pickup_address' => $this->getSupplierAddress($sellerId),
                     'delivery_address' => $this->formatShippingAddress($request->shipping_address),
                     'status' => 'pending',
