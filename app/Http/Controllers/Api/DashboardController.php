@@ -1322,7 +1322,7 @@ class DashboardController extends Controller
      * Comprehensive financial report for the FinancialReports admin component.
      * Returns summary stats, per-order details, and time-series trend data.
      *
-     * period: day | week | month | quarter | year | custom
+     * period: today|yesterday|week|last_week|month|last_month|quarter|year|custom
      * group_by: day | week | month
      * from / to: ISO date strings (required when period=custom)
      */
@@ -1330,95 +1330,134 @@ class DashboardController extends Controller
     {
         $period  = $request->input('period', 'month');
         $groupBy = $request->input('group_by', 'day');
+        $now     = Carbon::now();
 
-        // ── Date range ────────────────────────────────────────────────────
         switch ($period) {
+            case 'today':
             case 'day':
-                $start = Carbon::today()->startOfDay();
-                $end   = Carbon::today()->endOfDay();
+                $start = $now->copy()->startOfDay();
+                $end   = $now->copy()->endOfDay();
+                break;
+            case 'yesterday':
+                $start = $now->copy()->subDay()->startOfDay();
+                $end   = $now->copy()->subDay()->endOfDay();
                 break;
             case 'week':
-                $start = Carbon::now()->startOfWeek();
-                $end   = Carbon::now()->endOfWeek();
+                $start = $now->copy()->startOfWeek();
+                $end   = $now->copy()->endOfWeek();
+                break;
+            case 'last_week':
+                $start = $now->copy()->subWeek()->startOfWeek();
+                $end   = $now->copy()->subWeek()->endOfWeek();
                 break;
             case 'month':
-                $start = Carbon::now()->startOfMonth();
-                $end   = Carbon::now()->endOfMonth();
+                $start = $now->copy()->startOfMonth();
+                $end   = $now->copy()->endOfMonth();
+                break;
+            case 'last_month':
+                $start = $now->copy()->subMonth()->startOfMonth();
+                $end   = $now->copy()->subMonth()->endOfMonth();
                 break;
             case 'quarter':
-                $start = Carbon::now()->startOfQuarter();
-                $end   = Carbon::now()->endOfQuarter();
+                $start = $now->copy()->startOfQuarter();
+                $end   = $now->copy()->endOfQuarter();
                 break;
             case 'year':
-                $start = Carbon::now()->startOfYear();
-                $end   = Carbon::now()->endOfYear();
+                $start = $now->copy()->startOfYear();
+                $end   = $now->copy()->endOfYear();
                 break;
             case 'custom':
-                $start = Carbon::parse($request->input('from', Carbon::now()->subMonth()))->startOfDay();
-                $end   = Carbon::parse($request->input('to',   Carbon::now()))->endOfDay();
+                $start = Carbon::parse($request->input('from', $now->copy()->subMonth()))->startOfDay();
+                $end   = Carbon::parse($request->input('to', $now))->endOfDay();
                 break;
             default:
-                $start = Carbon::now()->startOfMonth();
-                $end   = Carbon::now()->endOfMonth();
+                $start = $now->copy()->startOfMonth();
+                $end   = $now->copy()->endOfMonth();
         }
 
-        // ── Orders in range (for summary + detail table) ─────────────────
         $orders = Order::with([
                 'buyer:id,name,email',
                 'seller.sellerProfile:user_id,store_name',
                 'items',
-                'commission:id,order_id,status',   // needed for commission_status column
+                'commission:id,order_id,status,seller_payout,amount',
             ])
             ->whereBetween('created_at', [$start, $end])
             ->get();
 
-        $delivered = $orders->where('status', 'delivered');
+        $delivered = $orders->where('status', Order::STATUS_DELIVERED);
+        $revenueOrders = $orders->reject(fn ($order) => in_array($order->status, [
+            Order::STATUS_CANCELLED,
+            Order::STATUS_REFUNDED,
+        ], true));
 
-        // ── Summary ───────────────────────────────────────────────────────
-        $totalCommission = (float) $delivered->sum('commission_amount');
-        $pendingCommission = (float) Commission::whereBetween('created_at', [$start, $end])
-            ->where('status', 'pending')->sum('amount');
-        $confirmedCommission = $totalCommission - $pendingCommission;
-
-        $delivFeeBase = \App\Models\Delivery::where('delivery_method', 'platform')
-            ->whereBetween('created_at', [$start, $end]);
-        $totalDelivFees     = (float) (clone $delivFeeBase)->sum('platform_delivery_fee');
-        $confirmedDelivFees = (float) (clone $delivFeeBase)->where('delivery_fee_status', 'collected')->sum('platform_delivery_fee');
-
-        $summary = [
-            'from'                        => $start->toDateString(),
-            'to'                          => $end->toDateString(),
-            // Orders
-            'total_orders'                => $orders->count(),
-            'delivered_orders'            => $delivered->count(),
-            'pending_orders'              => $orders->whereIn('status', ['pending', 'processing', 'confirmed'])->count(),
-            'cancelled_orders'            => $orders->where('status', 'cancelled')->count(),
-            // GMV
-            'total_gmv'                   => (float) $orders->sum('total_amount'),
-            'total_subtotal'              => (float) $orders->sum('subtotal_amount'),
-            'total_shipping'              => (float) $orders->sum('shipping_fee'),
-            'total_tax'                   => (float) $orders->sum('tax_amount'),
-            'total_coupon_discount'       => (float) $orders->sum('coupon_discount'),
-            // Commission
-            'total_commission'            => $totalCommission,
-            'total_commission_confirmed'  => $confirmedCommission,
-            'total_commission_pending'    => $pendingCommission,
-            'total_seller_payout'         => (float) $delivered->sum(fn($o) =>
-                ($o->subtotal_amount ?? 0) - ($o->commission_amount ?? 0)),
-            // Delivery fees
-            'total_delivery_fees'         => $totalDelivFees,
-            'total_delivery_fees_confirmed' => $confirmedDelivFees,
-            'total_delivery_fees_pending' => $totalDelivFees - $confirmedDelivFees,
-            // Platform revenue
-            'platform_revenue'            => $totalCommission + $confirmedDelivFees,
-            'platform_revenue_pending'    => $pendingCommission + ($totalDelivFees - $confirmedDelivFees),
-        ];
-
-        // ── Delivery fee map (platform delivery only) ──────────────────────
         $deliveryMap = Delivery::whereIn('order_id', $orders->pluck('id'))
             ->where('delivery_method', 'platform')
             ->get(['order_id', 'platform_delivery_fee', 'delivery_fee_status'])
             ->keyBy('order_id');
+
+        $totalCommission = 0.0;
+        $confirmedCommission = 0.0;
+        $pendingCommission = 0.0;
+        $totalSellerPayout = 0.0;
+        $totalDelivFees = 0.0;
+        $confirmedDelivFees = 0.0;
+        $pendingDelivFees = 0.0;
+
+        foreach ($revenueOrders as $order) {
+            $commissionAmount = (float) ($order->commission_amount ?? 0);
+            $commissionStatus = $order->commission?->status ?? 'pending';
+            $totalCommission += $commissionAmount;
+
+            if (in_array($commissionStatus, ['collected', 'paid'], true)) {
+                $confirmedCommission += $commissionAmount;
+            } elseif ($commissionStatus !== 'waived') {
+                $pendingCommission += $commissionAmount;
+            }
+
+            $sellerPayout = $order->commission?->seller_payout;
+            $totalSellerPayout += $sellerPayout !== null
+                ? (float) $sellerPayout
+                : ((float) ($order->subtotal_amount ?? 0) - $commissionAmount);
+
+            $delivery = $deliveryMap[$order->id] ?? null;
+            $deliveryFee = (float) ($delivery?->platform_delivery_fee ?? 0);
+            $feeStatus = $delivery?->delivery_fee_status ?? 'not_applicable';
+            $totalDelivFees += $deliveryFee;
+            if ($feeStatus === 'collected') {
+                $confirmedDelivFees += $deliveryFee;
+            } elseif ($feeStatus === 'outstanding') {
+                $pendingDelivFees += $deliveryFee;
+            }
+        }
+
+        $summary = [
+            'from'                        => $start->toDateString(),
+            'to'                          => $end->toDateString(),
+            'total_orders'                => $orders->count(),
+            'delivered_orders'            => $delivered->count(),
+            'pending_orders'              => $orders->whereIn('status', [
+                Order::STATUS_PENDING,
+                Order::STATUS_CONFIRMED,
+                Order::STATUS_PROCESSING,
+                Order::STATUS_SHIPPED,
+            ])->count(),
+            'cancelled_orders'            => $orders->where('status', Order::STATUS_CANCELLED)->count(),
+            // GMV is merchandise (subtotal), not checkout total.
+            'total_gmv'                   => (float) $revenueOrders->sum('subtotal_amount'),
+            'total_subtotal'              => (float) $revenueOrders->sum('subtotal_amount'),
+            'total_shipping'              => (float) $revenueOrders->sum('shipping_fee'),
+            'total_tax'                   => (float) $revenueOrders->sum('tax_amount'),
+            'total_coupon_discount'       => (float) $revenueOrders->sum('coupon_discount_amount'),
+            'total_commission'            => $totalCommission,
+            'total_commission_confirmed'  => $confirmedCommission,
+            'total_commission_pending'    => $pendingCommission,
+            'total_seller_payout'         => $totalSellerPayout,
+            'total_delivery_fees'         => $totalDelivFees,
+            'total_delivery_fees_confirmed' => $confirmedDelivFees,
+            'total_delivery_fees_pending' => $pendingDelivFees,
+            'platform_revenue'            => $confirmedCommission + $confirmedDelivFees,
+            'platform_revenue_pending'    => $pendingCommission + $pendingDelivFees,
+        ];
 
         // ── Per-order detail rows ─────────────────────────────────────────
         $orderRows = $orders->map(function ($o) use ($deliveryMap) {
@@ -1438,6 +1477,12 @@ class DashboardController extends Controller
             $delivery    = $deliveryMap[$o->id] ?? null;
             $delivFee    = (float) ($delivery?->platform_delivery_fee ?? 0);
             $feeStatus   = $delivery?->delivery_fee_status ?? 'not_applicable';
+            $commStatus  = $o->commission?->status ?? 'pending';
+            $commAmount  = (float) $o->commission_amount;
+            $commPending = in_array($commStatus, ['pending', 'due'], true) ? $commAmount : 0;
+            $commConfirmed = in_array($commStatus, ['collected', 'paid'], true) ? $commAmount : 0;
+            $delivPending = $feeStatus === 'outstanding' ? $delivFee : 0;
+            $delivConfirmed = $feeStatus === 'collected' ? $delivFee : 0;
 
             return [
                 // IDs
@@ -1463,10 +1508,15 @@ class DashboardController extends Controller
                 // Commission
                 'commission_rate'   => (float) $o->commission_rate,
                 'commission_amount' => (float) $o->commission_amount, // was 'commission' — fixed
-                'commission_status' => $o->commission?->status ?? 'pending',
-                // Delivery fees
+                'commission_status' => $commStatus,
+                'commission_pending' => $commPending,
+                'commission_confirmed' => $commConfirmed,
+                'seller_payout' => (float) ($o->commission?->seller_payout
+                    ?? (($o->subtotal_amount ?? 0) - $commAmount)),
                 'delivery_fee'        => $delivFee,
                 'delivery_fee_status' => $feeStatus,
+                'delivery_fee_pending' => $delivPending,
+                'delivery_fee_confirmed' => $delivConfirmed,
                 // Order meta
                 'payment_method'    => $o->payment_method,
                 'escrow_status'     => $o->escrow_status,
@@ -1482,10 +1532,10 @@ class DashboardController extends Controller
         };
 
         $trendOrders = Order::whereBetween('created_at', [$start, $end])
-            ->where('status', 'delivered')
+            ->whereNotIn('status', [Order::STATUS_CANCELLED, Order::STATUS_REFUNDED])
             ->selectRaw("DATE_FORMAT(created_at, '{$groupFmt}') as period,
                 COUNT(*) as orders,
-                SUM(total_amount) as gmv,
+                SUM(subtotal_amount) as gmv,
                 SUM(tax_amount) as tax,
                 SUM(commission_amount) as commission,
                 SUM(subtotal_amount) as subtotal")
@@ -1494,9 +1544,8 @@ class DashboardController extends Controller
             ->get()
             ->keyBy('period');
 
-        $trendDelivery = \App\Models\Delivery::where('delivery_method', 'platform')
-            ->where('status', 'delivered')
-            ->whereBetween('created_at', [$start, $end])
+        $trendDelivery = Delivery::where('delivery_method', 'platform')
+            ->whereIn('order_id', $orders->pluck('id'))
             ->selectRaw("DATE_FORMAT(created_at, '{$groupFmt}') as period,
                 SUM(platform_delivery_fee) as delivery_fee")
             ->groupBy('period')
