@@ -14,6 +14,7 @@ class Conversation extends Model
     public const CONTEXT_PRODUCT = 'product';
     public const CONTEXT_RFQ = 'rfq';
     public const CONTEXT_ORDER = 'order';
+    public const CONTEXT_GENERAL = 'general';
 
     public const STATUS_OPEN = 'open';
     public const STATUS_CLOSED = 'closed';
@@ -96,6 +97,11 @@ class Conversation extends Model
             self::CONTEXT_PRODUCT => $this->productContext(),
             self::CONTEXT_RFQ => $this->rfqContext(),
             self::CONTEXT_ORDER => $this->orderContext(),
+            self::CONTEXT_GENERAL => [
+                'type' => self::CONTEXT_GENERAL,
+                'id' => $this->context_id,
+                'label' => 'General',
+            ],
             default => ['type' => $this->context_type, 'id' => $this->context_id],
         };
     }

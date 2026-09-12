@@ -60,7 +60,7 @@ class ConversationController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'context_type' => 'required|in:product,rfq,order',
+            'context_type' => 'required|in:product,rfq,order,general',
             'context_id' => 'required|integer|min:1',
             'seller_id' => 'nullable|integer|exists:users,id',
             'message' => 'nullable|string|max:5000',

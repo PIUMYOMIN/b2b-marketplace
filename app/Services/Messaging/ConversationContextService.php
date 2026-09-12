@@ -30,6 +30,7 @@ class ConversationContextService
             Conversation::CONTEXT_PRODUCT => $this->fromProduct($contextId, $actor),
             Conversation::CONTEXT_RFQ => $this->fromRfq($contextId, $actor, $sellerId),
             Conversation::CONTEXT_ORDER => $this->fromOrder($contextId, $actor),
+            Conversation::CONTEXT_GENERAL => $this->fromGeneral($contextId, $actor, $sellerId),
             default => throw new InvalidArgumentException('Invalid conversation context type.'),
         };
     }
@@ -177,6 +178,34 @@ class ConversationContextService
         }
 
         throw new AuthorizationException('You cannot access this order conversation.');
+    }
+
+    /**
+     * Store-level thread (seller profile), keyed by the seller user id.
+     *
+     * @return array{buyer: User, seller: User, subject: ?string}
+     */
+    private function fromGeneral(int $sellerUserId, User $actor, ?int $sellerId): array
+    {
+        if (!$actor->hasRole('buyer')) {
+            throw new AuthorizationException('Only buyers can start general conversations.');
+        }
+
+        $targetId = $sellerId ?: $sellerUserId;
+        if ((int) $targetId === (int) $actor->id) {
+            throw new AuthorizationException('You cannot message yourself.');
+        }
+
+        $seller = User::query()->findOrFail($targetId);
+        if (!$seller->hasRole('seller')) {
+            throw new AuthorizationException('Target user is not a seller.');
+        }
+
+        return [
+            'buyer' => $actor,
+            'seller' => $seller,
+            'subject' => $seller->name,
+        ];
     }
 
     public function inboxFor(User $user): Collection
