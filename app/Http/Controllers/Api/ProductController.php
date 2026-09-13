@@ -540,30 +540,34 @@ class ProductController extends Controller
             ? json_decode($product->images, true) ?? []
             : ($product->images ?? []);
 
-        $data['images'] = array_map(function ($img) {
-            $stored = $img['url'] ?? '';
+        if (! is_array($rawImages)) {
+            $rawImages = [];
+        }
+
+        $data['images'] = array_values(array_map(function ($img) {
+            $stored = is_string($img)
+                ? $img
+                : (is_array($img) ? ($img['path'] ?? $img['url'] ?? $img['image'] ?? '') : '');
 
             // Normalise to a clean relative path regardless of whether the DB
             // holds a relative path (products/…) or a legacy absolute URL.
             if ($stored && str_starts_with($stored, 'http')) {
                 $relativePath = preg_replace('#^https?://[^/]+/storage/#', '', $stored);
             } else {
-                $relativePath = ltrim($stored, '/');
+                $relativePath = ltrim((string) $stored, '/');
             }
 
-            // Use Storage::url() so the generated URL respects the configured
-            // disk driver (local, S3, etc.) rather than hardcoding app origin.
             $absoluteUrl = $relativePath
                 ? \Illuminate\Support\Facades\Storage::disk('public')->url($relativePath)
                 : '';
 
             return [
-                'url'        => $absoluteUrl,   // absolute URL for <img> preview
-                'path'       => $relativePath,  // relative path sent back on update
-                'angle'      => $img['angle']      ?? 'default',
-                'is_primary' => $img['is_primary'] ?? false,
+                'url'        => $absoluteUrl,
+                'path'       => $relativePath,
+                'angle'      => is_array($img) ? ($img['angle'] ?? 'default') : 'default',
+                'is_primary' => is_array($img) ? (bool) ($img['is_primary'] ?? false) : false,
             ];
-        }, $rawImages);
+        }, $rawImages));
 
         return response()->json([
             'success' => true,
