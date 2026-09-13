@@ -205,8 +205,10 @@ class ConversationService
             $body = $message->type === Message::TYPE_ATTACHMENT ? 'Sent an attachment' : 'Sent you a message';
         }
 
+        $sender->loadMissing('sellerProfile');
+        $senderRole = $conversation->participantFor($sender->id)?->role;
         $message = [
-            'title' => $sender->name,
+            'title' => Conversation::participantDisplayName($sender, $senderRole),
             'body' => $body,
             'channelId' => 'messages',
             'data' => [

@@ -132,12 +132,12 @@ class ConversationController extends Controller
                     fn ($participant) => $participant->where('user_id', $request->user()->id)
                 );
             })
-            ->with(['sender:id,name,email', 'attachments'])
+            ->with(['sender:id,name,email', 'sender.sellerProfile:user_id,store_name', 'attachments'])
             ->orderByDesc('created_at')
             ->paginate(min(50, max(1, (int) $request->query('per_page', 30))));
 
         $messages->getCollection()->transform(
-            fn (Message $message) => $this->transformMessage($message)
+            fn (Message $message) => $this->transformMessage($message, $conversation)
         );
 
         return response()->json(['success' => true, 'data' => $messages]);
@@ -168,7 +168,7 @@ class ConversationController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->transformMessage($message),
+            'data' => $this->transformMessage($message, $conversation),
         ], 201);
     }
 
@@ -204,11 +204,16 @@ class ConversationController extends Controller
         }
 
         $user = $request->user();
+        $user->loadMissing('sellerProfile');
+        $typingName = Conversation::participantDisplayName(
+            $user,
+            $conversation->participantFor($user->id)?->role,
+        );
         try {
             broadcast(new ConversationTyping(
                 $conversation->id,
                 $user->id,
-                $user->name,
+                $typingName,
                 (bool) $validated['is_typing'],
             ))->toOthers();
         } catch (Throwable $e) {
@@ -279,7 +284,7 @@ class ConversationController extends Controller
             'participants' => $conversation->participants->map(fn ($p) => [
                 'user_id' => $p->user_id,
                 'role' => $p->role,
-                'name' => $p->user?->name,
+                'name' => Conversation::participantDisplayName($p->user, $p->role),
                 'store_name' => $p->user?->sellerProfile?->store_name,
                 'last_read_at' => $p->last_read_at,
             ]),
@@ -294,21 +299,26 @@ class ConversationController extends Controller
 
         return [
             'id' => $user->id,
-            'name' => $user->name,
+            'name' => Conversation::participantDisplayName($user, $role),
             'role' => $role,
             'store_name' => $user->sellerProfile?->store_name,
         ];
     }
 
-    private function transformMessage(Message $message): array
+    private function transformMessage(Message $message, Conversation $conversation): array
     {
+        $message->sender?->loadMissing('sellerProfile');
+        $senderRole = $conversation->participantFor($message->sender_id)?->role;
+
         return [
             'id' => $message->id,
             'conversation_id' => $message->conversation_id,
             'sender_id' => $message->sender_id,
             'sender' => $message->sender ? [
                 'id' => $message->sender->id,
-                'name' => $message->sender->name,
+                'name' => Conversation::participantDisplayName($message->sender, $senderRole),
+                'role' => $senderRole,
+                'store_name' => $message->sender->sellerProfile?->store_name,
             ] : null,
             'type' => $message->type,
             'body' => $message->body,

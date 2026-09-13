@@ -236,6 +236,7 @@ class ConversationContextService
             ->where('user_id', $user->id)
             ->with([
                 'conversation.participants.user:id,name,email',
+                'conversation.participants.user.sellerProfile:user_id,store_name',
                 'conversation.lastMessageSender:id,name',
             ])
             ->whereHas('conversation')

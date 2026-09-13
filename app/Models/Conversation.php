@@ -91,6 +91,23 @@ class Conversation extends Model
             ->count();
     }
 
+    /** Sellers appear as their store name in buyer/seller threads. */
+    public static function participantDisplayName(?User $user, ?string $role): string
+    {
+        if (!$user) {
+            return '';
+        }
+
+        if ($role === ConversationParticipant::ROLE_SELLER) {
+            $storeName = trim((string) ($user->sellerProfile?->store_name ?? ''));
+            if ($storeName !== '') {
+                return $storeName;
+            }
+        }
+
+        return (string) $user->name;
+    }
+
     public function contextSummary(): array
     {
         return match ($this->context_type) {
