@@ -28,16 +28,22 @@ class ConversationService
      */
     public function startOrGet(User $actor, array $input): Conversation
     {
+        $contextType = (string) $input['context_type'];
+        $contextId = (int) $input['context_id'];
         $resolved = $this->contextService->resolveParticipants(
-            $input['context_type'],
-            (int) $input['context_id'],
+            $contextType,
+            $contextId,
             $actor,
             isset($input['seller_id']) ? (int) $input['seller_id'] : null,
         );
 
+        if ($contextType === Conversation::CONTEXT_GENERAL) {
+            $contextId = (int) $resolved['seller']->id;
+        }
+
         $existing = $this->contextService->findExisting(
-            $input['context_type'],
-            (int) $input['context_id'],
+            $contextType,
+            $contextId,
             $resolved['buyer']->id,
             $resolved['seller']->id,
         );
@@ -51,11 +57,11 @@ class ConversationService
             return $this->loadConversation($existing->id);
         }
 
-        return DB::transaction(function () use ($input, $resolved, $actor) {
+        return DB::transaction(function () use ($input, $resolved, $actor, $contextType, $contextId) {
             $conversation = Conversation::create([
                 'conversation_number' => Conversation::generateConversationNumber(),
-                'context_type' => $input['context_type'],
-                'context_id' => (int) $input['context_id'],
+                'context_type' => $contextType,
+                'context_id' => $contextId,
                 'subject' => $resolved['subject'],
                 'status' => Conversation::STATUS_OPEN,
             ]);

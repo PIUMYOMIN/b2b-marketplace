@@ -7,6 +7,7 @@ use App\Models\ConversationParticipant;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Rfq;
+use App\Models\SellerProfile;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -191,21 +192,38 @@ class ConversationContextService
             throw new AuthorizationException('Only buyers can start general conversations.');
         }
 
-        $targetId = $sellerId ?: $sellerUserId;
-        if ((int) $targetId === (int) $actor->id) {
+        $seller = $this->resolveSellerUser($sellerId ?: $sellerUserId);
+        if ((int) $seller->id === (int) $actor->id) {
             throw new AuthorizationException('You cannot message yourself.');
-        }
-
-        $seller = User::query()->findOrFail($targetId);
-        if (!$seller->hasRole('seller')) {
-            throw new AuthorizationException('Target user is not a seller.');
         }
 
         return [
             'buyer' => $actor,
             'seller' => $seller,
-            'subject' => $seller->name,
+            'subject' => $seller->sellerProfile?->store_name ?: $seller->name,
         ];
+    }
+
+    /**
+     * Accepts a users.id or seller_profiles.id (storefront APIs often expose the profile id).
+     */
+    private function resolveSellerUser(int $id): User
+    {
+        $user = User::query()->find($id);
+        if ($user?->hasRole('seller')) {
+            return $user;
+        }
+
+        $fromProfile = SellerProfile::query()->with('user')->find($id)?->user;
+        if ($fromProfile?->hasRole('seller')) {
+            return $fromProfile;
+        }
+
+        if ($user) {
+            throw new AuthorizationException('Target user is not a seller.');
+        }
+
+        throw (new ModelNotFoundException())->setModel(User::class, [$id]);
     }
 
     public function inboxFor(User $user): Collection
