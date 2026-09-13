@@ -209,6 +209,10 @@ class ConversationContextService
      */
     private function resolveSellerUser(int $id): User
     {
+        if ($id <= 0) {
+            throw new InvalidArgumentException('A valid seller id is required to start a seller chat.');
+        }
+
         $user = User::query()->find($id);
         if ($user?->hasRole('seller')) {
             return $user;

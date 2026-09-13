@@ -75,6 +75,17 @@ class ConversationController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage()], 403);
         } catch (ModelNotFoundException) {
             return response()->json(['success' => false, 'message' => 'Context not found.'], 404);
+        } catch (Throwable $e) {
+            Log::error('Conversation creation failed.', [
+                'user_id' => $request->user()?->id,
+                'payload' => $validated,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to start the conversation right now.',
+            ], 500);
         }
 
         return response()->json([

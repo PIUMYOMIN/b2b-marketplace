@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->string('conversation_number', 24)->unique();
 
-            $table->enum('context_type', ['product', 'rfq', 'order']);
+            $table->enum('context_type', ['product', 'rfq', 'order', 'general']);
             $table->unsignedBigInteger('context_id');
 
             $table->string('subject')->nullable();
