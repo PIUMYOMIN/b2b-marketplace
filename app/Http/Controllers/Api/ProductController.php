@@ -572,7 +572,7 @@ class ProductController extends Controller
         return response()->json([
             'success' => true,
             'data' => $data
-        ]);
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     /**
