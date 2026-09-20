@@ -19,6 +19,7 @@ class UserResource extends JsonResource
             'is_active' => $this->is_active,
             'social_id' => $this->social_id,
             'social_provider' => $this->social_provider,
+            'has_password' => $this->hasLocalPassword(),
             // Expose whether signup still needs role/phone (client resumes /social/role).
             'registration_incomplete' => $this->type === 'pending',
             // Profile fields — all exist in the users table

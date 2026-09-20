@@ -20,6 +20,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'email',
         'password',
+        'has_password',
         'phone',
         'type',
         'user_id',
@@ -64,6 +65,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'deletion_requested_at' => 'datetime',
             'date_of_birth' => 'date',
             'is_active' => 'boolean',
+            'has_password' => 'boolean',
             'password' => 'hashed',
             'notification_preferences' => 'array',
         ];
@@ -114,6 +116,19 @@ class User extends Authenticatable implements MustVerifyEmail
     public function sendEmailVerificationNotification()
     {
         $this->notify(new \App\Notifications\VerifyEmailApi());
+    }
+
+    /**
+     * Whether the user chose a password they can type at login / change-password.
+     * Social signups get a random hash and has_password = false until they set one.
+     */
+    public function hasLocalPassword(): bool
+    {
+        if ($this->has_password === false) {
+            return false;
+        }
+
+        return filled($this->getRawOriginal('password'));
     }
 
     public function sellerProfile()

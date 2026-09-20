@@ -495,6 +495,7 @@ class AuthController extends Controller
             'email'           => $email,
             'phone'           => $tempPhone,
             'password'        => Hash::make(Str::random(32)),
+            'has_password'    => false,
             'social_id'       => $socialId,
             'social_provider' => $provider,
             'profile_photo'   => $avatar,

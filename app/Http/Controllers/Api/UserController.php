@@ -326,21 +326,25 @@ class UserController extends Controller
     public function changePassword(Request $request)
     {
         $user = $request->user();
+        $requiresCurrent = $user->hasLocalPassword();
 
         $validated = $request->validate([
-            'current_password' => [
-                'required',
-                function ($attribute, $value, $fail) use ($user) {
-                    if (!Hash::check($value, $user->password)) {
-                        $fail('The current password is incorrect.');
-                    }
-                }
-            ],
+            'current_password' => $requiresCurrent
+                ? [
+                    'required',
+                    function ($attribute, $value, $fail) use ($user) {
+                        if (!Hash::check($value, $user->password)) {
+                            $fail('The current password is incorrect.');
+                        }
+                    },
+                ]
+                : ['sometimes', 'nullable', 'string'],
             'new_password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
         $user->update([
-            'password' => Hash::make($validated['new_password'])
+            'password' => $validated['new_password'],
+            'has_password' => true,
         ]);
 
         return response()->json([
