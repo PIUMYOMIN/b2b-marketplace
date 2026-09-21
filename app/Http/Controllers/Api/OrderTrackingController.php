@@ -21,6 +21,7 @@ class OrderTrackingController extends Controller
         try {
             $order = Order::with([
                 'items.product:id,name_en,name_mm,sku,images',
+                'items.variant.optionValues.option',
                 'delivery.deliveryUpdates',
                 'seller:id,name',
                 'seller.sellerProfile:user_id,store_name,store_logo,store_slug',
@@ -107,6 +108,9 @@ class OrderTrackingController extends Controller
                     }
                 }
 
+                $selectedOptions = $item->resolvedSelectedOptions();
+                $productSku = $item->variant_sku ?: ($item->product_sku ?? $item->product?->sku);
+
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
@@ -114,7 +118,10 @@ class OrderTrackingController extends Controller
                         ?? $item->product?->name_en
                         ?? $item->product?->name_mm
                         ?? 'Product',
-                    'product_sku' => $item->product_sku ?? $item->product?->sku,
+                    'product_sku' => $productSku,
+                    'variant_sku' => $item->variant_sku,
+                    'selected_options' => $selectedOptions ?: $item->selected_options,
+                    'variant_options' => $selectedOptions ?: null,
                     'price' => (float) $item->price,
                     'original_price' => is_array($productData)
                         ? ($productData['original_price'] ?? null)

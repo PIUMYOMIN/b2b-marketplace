@@ -1378,7 +1378,7 @@ class DashboardController extends Controller
         $orders = Order::with([
                 'buyer:id,name,email',
                 'seller.sellerProfile:user_id,store_name',
-                'items',
+                'items.variant.optionValues.option',
                 'commission:id,order_id,status,seller_payout,amount',
             ])
             ->whereBetween('created_at', [$start, $end])
@@ -1466,13 +1466,22 @@ class DashboardController extends Controller
             )->join(', ');
 
             // Flatten items for the expanded row
-            $itemsArray = $o->items->map(fn($i) => [
-                'id'       => $i->id,
-                'name'     => $i->product_data['name'] ?? $i->product_name ?? 'Product',
-                'qty'      => $i->quantity,
-                'price'    => (float) $i->price,
-                'subtotal' => (float) ($i->price * $i->quantity),
-            ])->values();
+            $itemsArray = $o->items->map(function ($i) {
+                $resolved = $i->resolvedSelectedOptions();
+
+                return [
+                    'id'               => $i->id,
+                    'name'             => $i->product_data['name'] ?? $i->product_name ?? 'Product',
+                    'qty'              => $i->quantity,
+                    'price'            => (float) $i->price,
+                    'subtotal'         => (float) ($i->price * $i->quantity),
+                    'sku'              => $i->variant_sku ?: $i->product_sku,
+                    'variant_sku'      => $i->variant_sku,
+                    'product_sku'      => $i->product_sku,
+                    'selected_options' => $resolved ?: $i->selected_options,
+                    'variant_options'  => $resolved ?: null,
+                ];
+            })->values();
 
             $delivery    = $deliveryMap[$o->id] ?? null;
             $delivFee    = (float) ($delivery?->platform_delivery_fee ?? 0);

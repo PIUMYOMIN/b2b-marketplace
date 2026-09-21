@@ -30,6 +30,10 @@ class OrderItem extends Model
         'product_data'     => 'array',
     ];
 
+    protected $appends = [
+        'variant_options',
+    ];
+
     // -------------------------------------------------------------------------
     // Relationships
     // -------------------------------------------------------------------------
@@ -59,6 +63,8 @@ class OrderItem extends Model
      */
     public static function buildSnapshot(Product $product, ?ProductVariant $variant): array
     {
+        $variant?->loadMissing('optionValues.option');
+
         return [
             'product_id'       => $product->id,
             'name_en'          => $product->name_en,
@@ -71,11 +77,133 @@ class OrderItem extends Model
             'variant_sku'      => $variant?->sku,
             'variant_price'    => $variant?->price,
             'variant_unit'     => $variant?->effectiveUnit(),
-            'variant_options'  => $variant?->optionValues->map(fn($v) => [
-                'option' => $v->option->name,
-                'label'  => $v->label,
-                'value'  => $v->value,
-            ]),
+            'variant_options'  => $variant
+                ? $variant->optionValues->map(fn ($v) => [
+                    'option' => $v->option?->name ?? 'Option',
+                    'label'  => $v->label ?: ($v->value ?? ''),
+                    'value'  => $v->value,
+                ])->values()->all()
+                : [],
         ];
+    }
+
+    /**
+     * Flatten stored option payloads (object maps, snapshot arrays, JSON strings)
+     * into a name => label map for receipts and order details.
+     */
+    public static function normalizeOptionMap(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $value = $decoded;
+            } else {
+                $trimmed = trim($value);
+                return $trimmed !== '' ? ['Variant' => $trimmed] : [];
+            }
+        }
+
+        if (! is_array($value) || $value === []) {
+            return [];
+        }
+
+        $out = [];
+        $isList = array_is_list($value);
+
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $name = trim((string) (
+                    $item['option']
+                    ?? $item['option_name']
+                    ?? $item['name']
+                    ?? ($isList ? 'Option' : $key)
+                ));
+                $label = trim((string) (
+                    $item['label']
+                    ?? $item['value']
+                    ?? $item['option_value']
+                    ?? ''
+                ));
+                if ($name === '') {
+                    $name = 'Option';
+                }
+                if ($label !== '') {
+                    $out[$name] = $label;
+                }
+                continue;
+            }
+
+            if (is_string($item) || is_numeric($item)) {
+                $label = trim((string) $item);
+                if ($label !== '') {
+                    $out[(string) $key] = $label;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    public static function optionsFromVariant(?ProductVariant $variant): array
+    {
+        if (! $variant) {
+            return [];
+        }
+
+        $variant->loadMissing('optionValues.option');
+        $fromValues = self::normalizeOptionMap(
+            $variant->optionValues
+                ->mapWithKeys(function ($value) {
+                    $optionName = $value->option?->name ?? 'Option';
+                    $label = $value->label ?: ($value->value ?? '');
+
+                    return [$optionName => $label];
+                })
+                ->all()
+        );
+
+        if ($fromValues) {
+            return $fromValues;
+        }
+
+        $label = trim((string) $variant->label());
+
+        return $label !== '' ? ['Variant' => $label] : [];
+    }
+
+    public static function mergeSelectedOptions(?ProductVariant $variant, mixed $buyerOptions): array
+    {
+        return array_filter(
+            array_merge(
+                self::optionsFromVariant($variant),
+                self::normalizeOptionMap($buyerOptions),
+            ),
+            fn ($label) => trim((string) $label) !== ''
+        );
+    }
+
+    public function resolvedSelectedOptions(): array
+    {
+        $fromSelected = self::normalizeOptionMap($this->selected_options);
+        if ($fromSelected) {
+            return $fromSelected;
+        }
+
+        $productData = is_array($this->product_data) ? $this->product_data : [];
+        $fromSnapshot = self::normalizeOptionMap(
+            $productData['variant_options'] ?? $productData['selected_options'] ?? null
+        );
+        if ($fromSnapshot) {
+            return $fromSnapshot;
+        }
+
+        return self::optionsFromVariant($this->variant);
+    }
+
+    public function getVariantOptionsAttribute(): ?array
+    {
+        $resolved = $this->resolvedSelectedOptions();
+
+        return $resolved ?: null;
     }
 }

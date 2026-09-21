@@ -65,7 +65,7 @@ class RevenueExportController extends Controller
             'buyer:id,name,email,phone',
             'seller:id,name,email',
             'seller.sellerProfile:user_id,store_name',
-            'items:id,order_id,product_id,product_name,quantity,price,subtotal',
+            'items',
             'commission:id,order_id,amount,commission_rate,status,platform_revenue,seller_payout,tax_amount',
         ])
         ->whereBetween('created_at', [$start, $end])
@@ -103,12 +103,23 @@ class RevenueExportController extends Controller
                 "{$i->product_name} ×{$i->quantity} @ " . number_format($i->price) . " MMK"
             )->implode(' | ');
 
-            $itemsArray = $order->items->map(fn($i) => [
-                'name'     => $i->product_name,
-                'qty'      => $i->quantity,
-                'price'    => (float) $i->price,
-                'subtotal' => (float) $i->subtotal,
-            ])->values()->toArray();
+            $itemsArray = $order->items->map(function ($i) {
+                $resolved = $i->resolvedSelectedOptions();
+                $variantText = collect($resolved)
+                    ->map(fn ($label, $name) => "{$name}: {$label}")
+                    ->implode(', ');
+
+                return [
+                    'name'             => $i->product_name,
+                    'qty'              => $i->quantity,
+                    'price'            => (float) $i->price,
+                    'subtotal'         => (float) $i->subtotal,
+                    'sku'              => $i->variant_sku ?: $i->product_sku,
+                    'selected_options' => $resolved ?: $i->selected_options,
+                    'variant_options'  => $resolved ?: null,
+                    'variant'          => $variantText ?: null,
+                ];
+            })->values()->toArray();
 
             $rows[] = [
                 // Identifiers

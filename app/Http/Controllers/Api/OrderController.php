@@ -127,7 +127,7 @@ class OrderController extends Controller
         if ($user->hasRole('seller')) {
             // For sellers, show orders where they are the seller
             $orders = Order::with([
-                    'items',
+                    'items.variant.optionValues.option',
                     'delivery.deliveryUpdates',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
@@ -139,7 +139,7 @@ class OrderController extends Controller
         } else if ($user->hasRole('buyer')) {
             // For buyers, show their own orders with seller store name
             $orders = Order::with([
-                    'items',
+                    'items.variant.optionValues.option',
                     'delivery.deliveryUpdates',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
@@ -151,7 +151,7 @@ class OrderController extends Controller
         } else if ($this->isAdmin($user)) {
             // For admins, show all orders
             $orders = Order::with([
-                    'items',
+                    'items.variant.optionValues.option',
                     'delivery.deliveryUpdates',
                     'buyer:id,name,email,phone',
                     'seller:id,name,email,phone',
@@ -286,6 +286,8 @@ class OrderController extends Controller
     {
         $productData = is_array($item->product_data) ? $item->product_data : [];
         $productData = $this->normalizeProductDataImageUrls($productData, $baseUrl);
+        $selectedOptions = $item->resolvedSelectedOptions();
+        $productSku = $item->variant_sku ?: $item->product_sku;
 
         return [
             'id' => $item->id,
@@ -293,9 +295,10 @@ class OrderController extends Controller
             'product_id' => $item->product_id,
             'variant_id' => $item->variant_id,
             'product_name' => $this->jsonSafeString($item->product_name),
-            'product_sku' => $this->jsonSafeString($item->product_sku),
+            'product_sku' => $this->jsonSafeString($productSku),
             'variant_sku' => $this->jsonSafeString($item->variant_sku),
-            'selected_options' => $this->jsonSafeValue($item->selected_options),
+            'selected_options' => $this->jsonSafeValue($selectedOptions ?: $item->selected_options),
+            'variant_options' => $this->jsonSafeValue($selectedOptions ?: null),
             'quantity_unit' => $this->jsonSafeString($item->quantity_unit),
             'price' => $item->price,
             'original_price' => $productData['original_price'] ?? null,
@@ -575,6 +578,8 @@ class OrderController extends Controller
             $request->validate([
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',
+                'items.*.variant_id' => 'nullable|exists:product_variants,id',
+                'items.*.selected_options' => 'nullable|array',
                 'items.*.quantity' => 'required|integer|min:1',
                 'shipping_address' => 'required|array',
                 'shipping_address.full_name' => 'required|string',
@@ -589,6 +594,7 @@ class OrderController extends Controller
 
             // Get cart items or use provided items
             $cartItems = $request->items;
+            $userCart = Cart::where('user_id', $user->id)->get();
 
             // Resolve and re-validate coupon server-side so the discount
             // cannot be spoofed by sending an inflated coupon_discount_amount.
@@ -715,12 +721,18 @@ class OrderController extends Controller
                     $itemsBySeller[$sellerId] = [];
                 }
 
+                $cartMatch = $userCart->first(function ($row) use ($product, $variant) {
+                    return (int) $row->product_id === (int) $product->id
+                        && (int) ($row->variant_id ?? 0) === (int) ($variant?->id ?? 0);
+                });
+
                 $itemsBySeller[$sellerId][] = [
-                    'product'    => $product,
-                    'variant'    => $variant,
-                    'quantity'   => $item['quantity'],
-                    'price'      => $itemPrice,
-                    'subtotal'   => $itemTotal,
+                    'product'           => $product,
+                    'variant'           => $variant,
+                    'quantity'          => $item['quantity'],
+                    'price'             => $itemPrice,
+                    'subtotal'          => $itemTotal,
+                    'selected_options'  => $item['selected_options'] ?? $cartMatch?->selected_options,
                 ];
             }
 
@@ -820,6 +832,12 @@ class OrderController extends Controller
 
                 // Create order items
                 foreach ($sellerItems as $item) {
+                    $selectedOptions = OrderItem::mergeSelectedOptions(
+                        $item['variant'],
+                        $item['selected_options'] ?? null,
+                    );
+                    $snapshot = OrderItem::buildSnapshot($item['product'], $item['variant']);
+
                     OrderItem::create([
                         'order_id'         => $order->id,
                         'product_id'       => $item['product']->id,
@@ -827,33 +845,22 @@ class OrderController extends Controller
                         'product_name'     => $item['product']->name_en,
                         'product_sku'      => $item['product']->sku,
                         'variant_sku'      => $item['variant']?->sku,
-                        'selected_options' => $item['variant']
-                            ? $item['variant']->optionValues
-                                ->mapWithKeys(function ($value) {
-                                    $optionName = $value->option?->name ?? 'Option';
-                                    return [$optionName => $value->label ?? ''];
-                                })
-                                ->toArray()
-                            : null,
+                        'selected_options' => $selectedOptions ?: null,
                         'quantity_unit'    => $item['variant']
                             ? $item['variant']->effectiveUnit()
                             : $item['product']->effectiveUnit(),
                         'price'            => $item['price'],
                         'quantity'         => $item['quantity'],
                         'subtotal'         => $item['subtotal'],
-                        'product_data'     => [
-                            'name'         => $item['product']->name_en,
-                            'description'  => $item['product']->description_en,
-                            'images'       => $item['product']->images,
+                        'product_data'     => array_merge($snapshot, [
+                            'name'           => $item['product']->name_en,
+                            'description'    => $item['product']->description_en,
                             'specifications' => $item['product']->specifications,
-                            'category'     => $item['product']->category?->name_en ?? 'Uncategorized',
-                            'seller_name'  => $item['product']->seller?->name ?? 'Unknown Seller',
-                            // List price before sale / wholesale tier so receipts can show discounts.
-                            'original_price' => $item['variant']
-                                ? (float) $item['variant']->price
-                                : (float) $item['product']->price,
+                            'category'       => $item['product']->category?->name_en ?? 'Uncategorized',
+                            'seller_name'    => $item['product']->seller?->name ?? 'Unknown Seller',
                             'charged_price'  => (float) $item['price'],
-                        ],
+                            'selected_options' => $selectedOptions ?: null,
+                        ]),
                     ]);
 
                     // Deduct stock from the selected variant or from product-level stock
@@ -983,10 +990,22 @@ class OrderController extends Controller
         }
 
         // Load relations with delivery
-        $order->load(['items.product', 'buyer', 'seller', 'delivery.deliveryUpdates']);
+        $order->load([
+            'items.product',
+            'items.variant.optionValues.option',
+            'buyer',
+            'seller',
+            'delivery.deliveryUpdates',
+        ]);
 
         // ✅ Transform images in order items
         foreach ($order->items as $item) {
+            $resolvedOptions = $item->resolvedSelectedOptions();
+            if ($resolvedOptions) {
+                $item->selected_options = $resolvedOptions;
+                $item->setAttribute('variant_options', $resolvedOptions);
+            }
+
             // Update product_data images
             $productData = $item->product_data;
             if (!empty($productData['images']) && is_array($productData['images'])) {
