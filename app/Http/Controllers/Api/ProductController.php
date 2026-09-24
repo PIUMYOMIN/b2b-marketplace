@@ -207,6 +207,7 @@ class ProductController extends Controller
                 'current_page' => $products->currentPage(),
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
+                'last_page' => $products->lastPage(),
             ]
         ]);
     }
