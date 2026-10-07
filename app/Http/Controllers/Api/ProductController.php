@@ -33,8 +33,10 @@ class ProductController extends Controller
      */
     public function indexPublic(Request $request): JsonResponse
     {
+        $featuredPerPage = (int) $request->get('per_page', 20);
+
         if ($this->isFeaturedProductsCacheableRequest($request)) {
-            $payload = Cache::remember('featured_products', 120, function () {
+            $payload = Cache::remember("featured_products:{$featuredPerPage}", 120, function () use ($featuredPerPage) {
                 $products = Product::approved()
                     ->with([
                         'seller.sellerProfile',
@@ -44,7 +46,7 @@ class ProductController extends Controller
                     ->withListAggregates()
                     ->where('is_featured', true)
                     ->orderByDesc('listed_at')
-                    ->paginate(20);
+                    ->paginate($featuredPerPage);
 
                 return [
                     'success' => true,
@@ -1243,7 +1245,7 @@ class ProductController extends Controller
             return false;
         }
 
-        if ((int) $request->get('per_page', 20) !== 20 || (int) $request->get('page', 1) !== 1) {
+        if (! in_array((int) $request->get('per_page', 20), [20, 80], true) || (int) $request->get('page', 1) !== 1) {
             return false;
         }
 
@@ -1274,6 +1276,8 @@ class ProductController extends Controller
         Cache::forget('categories_tree');
         Cache::forget('categories_tree_v2');
         Cache::forget('featured_products');
+        Cache::forget('featured_products:20');
+        Cache::forget('featured_products:80');
     }
 
     protected function applyPublicProductSearch($query, string $searchTerm): void
