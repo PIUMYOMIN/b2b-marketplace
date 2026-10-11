@@ -769,6 +769,23 @@ class OrderController extends Controller
                         'This seller does not deliver to the selected address. Please choose another delivery location.'
                     );
                 }
+
+                $physicalItems = array_filter(
+                    $sellerItems,
+                    fn ($item) => ($item['product']->product_type ?? null) === 'physical'
+                );
+                $estimatedDeliveryDate = null;
+                if ($matchedZone && $physicalItems) {
+                    $handlingDays = max(array_map(
+                        fn ($item) => $this->parseHandlingDays($item['product']->shipping_time ?? null),
+                        $physicalItems
+                    ));
+                    [, $etaMax] = $matchedZone->getBuyerEtaDays($handlingDays);
+                    if ($etaMax > 0) {
+                        $estimatedDeliveryDate = now()->addDays($etaMax)->startOfDay();
+                    }
+                }
+
                 $sellerTax = $sellerSubtotal * 0.00;
 
                 // Distribute coupon discount proportionally across seller orders.
@@ -804,6 +821,7 @@ class OrderController extends Controller
                     'status' => self::STATUS_PENDING,
                     'payment_method' => $request->payment_method,
                     'payment_status' => self::PAYMENT_STATUS_PENDING,
+                    'estimated_delivery' => $estimatedDeliveryDate,
                     'shipping_address' => $request->shipping_address,
                     'order_notes' => $request->notes,
                     'commission_rate' => $commissionRate,
@@ -885,7 +903,7 @@ class OrderController extends Controller
                     'delivery_address' => $this->formatShippingAddress($request->shipping_address),
                     'status' => 'pending',
                     'package_weight' => $this->calculateOrderWeight($sellerItems),
-                    'estimated_delivery_date' => now()->addDays(5),
+                    'estimated_delivery_date' => $estimatedDeliveryDate,
                 ]);
 
                 $orders[] = $order;
