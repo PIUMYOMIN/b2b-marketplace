@@ -19,8 +19,13 @@ class UpdateProductRequest extends FormRequest
             return false;
         }
 
-        return $user->hasRole('admin')
-            || ($user->hasRole('seller') && (int) $product->seller_id === (int) $user->id);
+        if ($user->hasRole('admin')) {
+            return true;
+        }
+
+        return ! $user->hasRole('buyer')
+            && $user->hasRole('seller')
+            && (int) $product->seller_id === (int) $user->id;
     }
 
     public function rules(): array

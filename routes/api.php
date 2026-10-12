@@ -474,7 +474,8 @@ Route::group([
             Route::prefix('products')->group(function () {
 
                 // Seller Product Management
-                Route::post('/', [ProductController::class, 'store'])->middleware('plan.product_limit');
+                Route::post('/', [ProductController::class, 'store'])
+                    ->middleware(['role:seller', 'plan.product_limit']);
                 Route::get('/', [ProductController::class, 'myProducts']);
 
                 // Bulk Import — Enterprise & Pro only
@@ -510,7 +511,7 @@ Route::group([
 
                 // Image Management
                 Route::post('/upload-image', [ProductController::class, 'uploadImage'])
-                    ->middleware('throttle:30,1');
+                    ->middleware(['role:seller', 'throttle:30,1']);
                 Route::post('/{product}/upload-image', [ProductController::class, 'uploadImageToProduct'])
                     ->middleware('throttle:30,1');
                 Route::delete('/{product}/images/{imageIndex}', [ProductController::class, 'deleteImage']);

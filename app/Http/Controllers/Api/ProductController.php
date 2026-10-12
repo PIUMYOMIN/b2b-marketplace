@@ -529,10 +529,17 @@ class ProductController extends Controller
      */
     public function getProductForEdit($id)
     {
+        $user = Auth::user();
+        abort_unless(
+            $user
+                && ($user->hasRole('admin') || (! $user->hasRole('buyer') && $user->hasRole('seller'))),
+            403
+        );
+
         $query = Product::query();
 
-        if (!Auth::user()?->hasRole('admin')) {
-            $query->where('seller_id', Auth::id());
+        if (! $user->hasRole('admin')) {
+            $query->where('seller_id', $user->id);
         }
 
         $product = $query->findOrFail($id);
