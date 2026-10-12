@@ -625,24 +625,6 @@ class OrderController extends Controller
                         'message' => 'You have already used this coupon',
                     ], 422);
                 }
-
-                // Calculate the real server-side discount (ignore client value)
-                $applicableSubtotal = 0;
-                foreach ($cartItems as $item) {
-                    $product = \App\Models\Product::find($item['product_id']);
-                    if ($product && $coupon->appliesToProduct($product)) {
-                        $applicableSubtotal += $product->price * $item['quantity'];
-                    }
-                }
-
-                if ($applicableSubtotal <= 0) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'This coupon does not apply to any of your selected products',
-                    ], 422);
-                }
-
-                $totalCouponDiscount = $coupon->calculateDiscount($applicableSubtotal);
             }
 
             // Group items by seller to create separate orders
@@ -736,9 +718,29 @@ class OrderController extends Controller
                 ];
             }
 
+            // Compute the coupon against the same resolved line subtotals used
+            // for checkout, including sale and wholesale pricing.
+            if ($coupon) {
+                $couponSellerItems = $itemsBySeller[$coupon->seller_id] ?? [];
+                $applicableSubtotal = collect($couponSellerItems)
+                    ->filter(fn ($item) => $coupon->appliesToProduct($item['product']))
+                    ->sum('subtotal');
+
+                if ($applicableSubtotal <= 0) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This coupon does not apply to any of your selected products',
+                    ], 422);
+                }
+
+                $totalCouponDiscount = $coupon->calculateDiscount((float) $applicableSubtotal);
+            }
+
             // Create orders for each seller
             $orders = [];
-            $grandSubtotal = collect($itemsBySeller)->flatten(1)->sum('subtotal');
+            $couponOrder = null;
 
             foreach ($itemsBySeller as $sellerId => $sellerItems) {
                 // Calculate seller-specific totals
@@ -788,11 +790,8 @@ class OrderController extends Controller
 
                 $sellerTax = $sellerSubtotal * 0.00;
 
-                // Distribute coupon discount proportionally across seller orders.
-                // e.g. if this seller's products are 60% of the cart, they absorb 60% of the discount.
-                $sellerCouponDiscount = $grandSubtotal > 0
-                    ? round($totalCouponDiscount * ($sellerSubtotal / $grandSubtotal), 2)
-                    : 0;
+                $isCouponSellerOrder = $coupon && (int) $sellerId === (int) $coupon->seller_id;
+                $sellerCouponDiscount = $isCouponSellerOrder ? $totalCouponDiscount : 0;
 
                 $sellerTotal = max(0, $sellerSubtotal + $sellerShippingFee + $sellerTax - $sellerCouponDiscount);
 
@@ -827,10 +826,13 @@ class OrderController extends Controller
                     'commission_rate' => $commissionRate,
                     'commission_amount' => $commissionAmount,
                     // Coupon columns (populated when a coupon was applied)
-                    'coupon_id' => $coupon?->id,
-                    'coupon_code' => $coupon?->code,
+                    'coupon_id' => $isCouponSellerOrder ? $coupon->id : null,
+                    'coupon_code' => $isCouponSellerOrder ? $coupon->code : null,
                     'coupon_discount_amount' => $sellerCouponDiscount,
                 ]);
+                if ($isCouponSellerOrder) {
+                    $couponOrder = $order;
+                }
 
                 // Record commission in commissions table for admin revenue tracking
                 Commission::create([
@@ -926,9 +928,9 @@ class OrderController extends Controller
                 }
             }
 
-            // Record coupon usage once, against the first order (usage tracks the buyer, not per-order)
-            if ($coupon && !empty($orders)) {
-                $coupon->recordUsage($user->id, $orders[0]->id, $totalCouponDiscount);
+            // Record usage against the order that actually received the coupon.
+            if ($coupon && $couponOrder) {
+                $coupon->recordUsage($user->id, $couponOrder->id, $totalCouponDiscount);
             }
 
             // Clear cart immediately only for COD. Online payments keep the cart

@@ -171,12 +171,16 @@ class Coupon extends Model
      */
     public function calculateDiscount(float $subtotal): float
     {
-        if ($this->type === 'percentage') {
-            return round($subtotal * ($this->value / 100), 2);
+        if ($subtotal <= 0) {
+            return 0.0;
         }
 
-        // Fixed — never discount more than the order total
-        return min((float) $this->value, $subtotal);
+        if ($this->type === 'percentage') {
+            return min($subtotal, round($subtotal * ($this->value / 100), 2));
+        }
+
+        // Fixed — never discount more than the eligible subtotal
+        return min(max(0, (float) $this->value), $subtotal);
     }
 
     /**

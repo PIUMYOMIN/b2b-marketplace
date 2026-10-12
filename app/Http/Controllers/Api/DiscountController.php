@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Discount;
 use App\Models\Product;
+use App\Support\ProductAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -87,6 +89,8 @@ class DiscountController extends Controller
 
     public function store(Request $request)
     {
+        abort_unless(ProductAccess::canManageCatalog($request->user()), 403);
+
         $isSeller = Auth::user()->hasRole('seller');
 
         $request->validate([
@@ -147,10 +151,14 @@ class DiscountController extends Controller
         }
 
         try {
-            $discount = Discount::create($data);
-            if ($discount->is_active) {
-                $this->applyDiscountToProducts($discount);
-            }
+            $discount = DB::transaction(function () use ($data) {
+                $discount = Discount::create($data);
+                if ($discount->is_active) {
+                    $this->applyDiscountToProducts($discount);
+                }
+
+                return $discount;
+            });
 
             return response()->json([
                 'success' => true,
@@ -158,6 +166,11 @@ class DiscountController extends Controller
                 'message' => 'Discount created successfully',
             ], 201);
 
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             \Log::error('Discount creation error: ' . $e->getMessage());
             return response()->json([
@@ -169,6 +182,8 @@ class DiscountController extends Controller
 
     public function update(Request $request, Discount $discount)
     {
+        abort_unless(ProductAccess::canManageCatalog($request->user()), 403);
+
         // FIX: use integer cast for type-safe comparison
         if ((int) Auth::id() !== (int) $discount->created_by && !Auth::user()->hasRole('admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized to update this discount'], 403);
@@ -225,14 +240,20 @@ class DiscountController extends Controller
             $updateData['applicable_seller_ids'] = $request->applicable_seller_ids;
         }
 
+        $previousDiscount = clone $discount;
         try {
-            $previousIds = $this->resolveTargetProductIds($discount);
-            $discount->update($updateData);
-            $fresh = $discount->fresh();
-            $this->clearDiscountFromProductIds($previousIds);
-            if ($fresh && $fresh->is_active) {
-                $this->applyDiscountToProducts($fresh);
-            }
+            $fresh = DB::transaction(function () use ($discount, $updateData, $previousDiscount) {
+                $previousIds = $this->resolveTargetProductIds($previousDiscount);
+                $this->claimLegacyDiscountProducts($previousDiscount, $previousIds);
+                $discount->update($updateData);
+                $fresh = $discount->fresh();
+                $this->clearDiscountFromProductIds($previousDiscount, $previousIds);
+                if ($fresh && $fresh->is_active) {
+                    $this->applyDiscountToProducts($fresh);
+                }
+
+                return $fresh;
+            });
 
             return response()->json([
                 'success' => true,
@@ -240,6 +261,11 @@ class DiscountController extends Controller
                 'message' => 'Discount updated successfully',
             ]);
 
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -250,13 +276,20 @@ class DiscountController extends Controller
 
     public function destroy(Discount $discount)
     {
+        abort_unless(ProductAccess::canManageCatalog(Auth::user()), 403);
+
         if ((int) Auth::id() !== (int) $discount->created_by && !Auth::user()->hasRole('admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized to delete this discount'], 403);
         }
 
         try {
-            $this->clearDiscountFromProductIds($this->resolveTargetProductIds($discount));
-            $discount->delete();
+            DB::transaction(function () use ($discount) {
+                $targetIds = $this->resolveTargetProductIds($discount);
+                $this->claimLegacyDiscountProducts($discount, $targetIds);
+                $discount->delete();
+                $this->clearDiscountFromProductIds($discount, $targetIds);
+            });
+
             return response()->json(['success' => true, 'message' => 'Discount deleted successfully']);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Failed to delete discount: ' . $e->getMessage()], 500);
@@ -265,18 +298,27 @@ class DiscountController extends Controller
 
     public function toggleStatus(Discount $discount)
     {
+        abort_unless(ProductAccess::canManageCatalog(Auth::user()), 403);
+
         if ((int) Auth::id() !== (int) $discount->created_by && !Auth::user()->hasRole('admin')) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        $discount->update(['is_active' => !$discount->is_active]);
-        $fresh = $discount->fresh();
+        $previousDiscount = clone $discount;
+        $fresh = DB::transaction(function () use ($discount, $previousDiscount) {
+            $targetIds = $this->resolveTargetProductIds($previousDiscount);
+            $discount->update(['is_active' => !$discount->is_active]);
+            $fresh = $discount->fresh();
 
-        if ($fresh && $fresh->is_active) {
-            $this->applyDiscountToProducts($fresh);
-        } else {
-            $this->clearDiscountFromProductIds($this->resolveTargetProductIds($discount));
-        }
+            if ($fresh && $fresh->is_active) {
+                $this->applyDiscountToProducts($fresh);
+            } else {
+                $this->claimLegacyDiscountProducts($previousDiscount, $targetIds);
+                $this->clearDiscountFromProductIds($previousDiscount, $targetIds);
+            }
+
+            return $fresh;
+        });
 
         return response()->json([
             'success'   => true,
@@ -307,7 +349,10 @@ class DiscountController extends Controller
                             ->whereJsonContains('applicable_seller_ids', $product->seller_id);
                     });
             })
-            ->get();
+            ->with('creator')
+            ->get()
+            ->filter(fn (Discount $discount) => $discount->isOwnedByProductSeller($product))
+            ->values();
 
         return response()->json(['success' => true, 'data' => $discounts]);
     }
@@ -333,10 +378,24 @@ class DiscountController extends Controller
 
     private function resolveTargetProductIds(Discount $discount): array
     {
-        $sellerId = Auth::user()?->hasRole('seller') ? (int) Auth::id() : null;
+        $creator = $discount->creator;
+        if (! $creator) {
+            return [];
+        }
+
+        $sellerId = $creator->hasRole('admin') ? null : (int) $creator->id;
 
         if ($discount->applicable_to === 'specific_products') {
-            return array_values(array_unique(array_map('intval', $discount->applicable_product_ids ?? [])));
+            $productIds = array_values(array_unique(array_map('intval', $discount->applicable_product_ids ?? [])));
+            if ($sellerId) {
+                return Product::whereIn('id', $productIds)
+                    ->where('seller_id', $sellerId)
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+            }
+
+            return $productIds;
         }
 
         if ($discount->applicable_to === 'specific_categories') {
@@ -357,6 +416,11 @@ class DiscountController extends Controller
             return Product::where('seller_id', $sellerId)->pluck('id')->map(fn ($id) => (int) $id)->all();
         }
 
+        if ($discount->applicable_to === 'specific_sellers') {
+            $sellerIds = array_map('intval', $discount->applicable_seller_ids ?? []);
+            return Product::whereIn('seller_id', $sellerIds)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        }
+
         return [];
     }
 
@@ -366,52 +430,165 @@ class DiscountController extends Controller
             return;
         }
 
-        $products = Product::whereIn('id', $this->resolveTargetProductIds($discount))->get();
+        $products = Product::whereIn('id', $this->resolveTargetProductIds($discount))
+            ->lockForUpdate()
+            ->get();
 
-        foreach ($products as $product) {
-            $update = [
-                'discount_start' => $discount->starts_at,
-                'discount_end'   => $discount->expires_at,
-                'is_on_sale'     => true,
-                'discount_type'  => $discount->type,
-            ];
-
-            if ($discount->type === 'percentage') {
-                $update['discount_percentage'] = $discount->value;
-                $update['discount_price'] = null;
-            } else {
+        if ($discount->type === 'fixed') {
+            $invalidProducts = $products->filter(function (Product $product) use ($discount) {
                 $price = (float) $product->price;
                 $salePrice = (float) $discount->value;
-                if ($price <= 0 || $salePrice <= 0 || $salePrice >= $price) {
-                    continue;
-                }
-                $update['discount_price'] = $salePrice;
-                $update['discount_percentage'] = null;
+
+                return $price <= 0 || $salePrice <= 0 || $salePrice >= $price;
+            });
+
+            if ($invalidProducts->isNotEmpty()) {
+                throw new \InvalidArgumentException(
+                    'Sale price must be lower than each selected product regular price.'
+                );
+            }
+        }
+
+        foreach ($products as $product) {
+            if ((int) $product->discount_rule_id === (int) $discount->id) {
+                continue;
             }
 
-            $product->update($update);
+            if ($product->discount_rule_id !== null) {
+                continue;
+            }
+
+            if ($product->hasDiscountValue()) {
+                $legacyOwner = $this->findLegacyDiscountOwner($product, (int) $discount->id);
+                if (! $legacyOwner) {
+                    throw new \InvalidArgumentException(
+                        'A product with an independently managed sale cannot be overwritten by a discount rule.'
+                    );
+                }
+
+                $product->update(['discount_rule_id' => $legacyOwner->id]);
+            }
+        }
+
+        foreach ($products as $product) {
+            $this->applyDiscountToProduct($product, $discount);
         }
 
         $this->flushPublicCatalogCaches();
     }
 
-    private function clearDiscountFromProductIds(array $productIds): void
+    private function applyDiscountToProduct(Product $product, Discount $discount): void
+    {
+        $update = [
+            'discount_start' => $discount->starts_at,
+            'discount_end' => $discount->expires_at,
+            'is_on_sale' => true,
+            'discount_type' => $discount->type,
+            'discount_rule_id' => $discount->id,
+        ];
+
+        if ($discount->type === 'percentage') {
+            $update['discount_percentage'] = $discount->value;
+            $update['discount_price'] = null;
+        } else {
+            $update['discount_price'] = (float) $discount->value;
+            $update['discount_percentage'] = null;
+        }
+
+        $product->update($update);
+    }
+
+    private function clearDiscountFromProductIds(Discount $discount, array $productIds): void
     {
         $ids = array_values(array_filter(array_map('intval', $productIds)));
         if (! $ids) {
             return;
         }
 
-        Product::whereIn('id', $ids)->update([
-            'discount_price'      => null,
-            'discount_percentage' => null,
-            'discount_start'      => null,
-            'discount_end'        => null,
-            'discount_type'       => 'none',
-            'is_on_sale'          => false,
-        ]);
+        foreach (Product::whereIn('id', $ids)->lockForUpdate()->get() as $product) {
+            if ((int) $product->discount_rule_id !== (int) $discount->id) {
+                continue;
+            }
+
+            $product->update([
+                'discount_price' => null,
+                'discount_percentage' => null,
+                'discount_start' => null,
+                'discount_end' => null,
+                'discount_type' => 'none',
+                'discount_rule_id' => null,
+                'is_on_sale' => false,
+            ]);
+
+            $replacement = $this->findReplacementDiscount($product);
+            if ($replacement) {
+                $this->applyDiscountToProduct($product, $replacement);
+            }
+        }
 
         $this->flushPublicCatalogCaches();
+    }
+
+    private function claimLegacyDiscountProducts(Discount $discount, array $productIds): void
+    {
+        foreach (Product::whereIn('id', $productIds)
+            ->whereNull('discount_rule_id')
+            ->lockForUpdate()
+            ->get() as $product) {
+            if ($this->productMatchesDiscount($product, $discount)) {
+                $product->update(['discount_rule_id' => $discount->id]);
+            }
+        }
+    }
+
+    private function findLegacyDiscountOwner(Product $product, int $exceptDiscountId): ?Discount
+    {
+        return Discount::query()
+            ->where('is_active', true)
+            ->where('id', '!=', $exceptDiscountId)
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (Discount $candidate) =>
+                $candidate->isApplicableToProduct($product->id, $product->category_id, $product->seller_id)
+                && $this->productMatchesDiscount($product, $candidate)
+            );
+    }
+
+    private function findReplacementDiscount(Product $product): ?Discount
+    {
+        return Discount::query()
+            ->where('is_active', true)
+            ->where('type', '!=', 'free_shipping')
+            ->where('starts_at', '<=', now())
+            ->where('expires_at', '>=', now())
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (Discount $candidate) =>
+                $candidate->isApplicableToProduct($product->id, $product->category_id, $product->seller_id)
+                && $this->isValidFixedPrice($candidate, $product)
+            );
+    }
+
+    private function isValidFixedPrice(Discount $discount, Product $product): bool
+    {
+        return $discount->type !== 'fixed'
+            || ((float) $discount->value > 0 && (float) $discount->value < (float) $product->price);
+    }
+
+    private function productMatchesDiscount(Product $product, Discount $discount): bool
+    {
+        if ($discount->type === 'percentage') {
+            return $product->discount_type === 'percentage'
+                && (float) $product->discount_percentage === (float) $discount->value
+                && $product->discount_start?->toDateString() === $discount->starts_at?->toDateString()
+                && $product->discount_end?->toDateString() === $discount->expires_at?->toDateString();
+        }
+
+        return $discount->type === 'fixed'
+            && $product->discount_type === 'fixed'
+            && (float) $product->discount_price === (float) $discount->value
+            && $product->discount_start?->toDateString() === $discount->starts_at?->toDateString()
+            && $product->discount_end?->toDateString() === $discount->expires_at?->toDateString();
     }
 
     private function flushPublicCatalogCaches(): void

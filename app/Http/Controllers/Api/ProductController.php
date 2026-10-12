@@ -25,6 +25,7 @@ use Illuminate\Support\Str;
 use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
 use App\Notifications\ProductLimitWarning;
+use App\Support\ProductAccess;
 
 class ProductController extends Controller
 {
@@ -451,7 +452,7 @@ class ProductController extends Controller
      */
     public function uploadImage(Request $request)
     {
-        if (! $request->user()?->hasRole('seller')) {
+        if (! ProductAccess::canCreate($request->user())) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update'),
@@ -530,19 +531,18 @@ class ProductController extends Controller
     public function getProductForEdit($id)
     {
         $user = Auth::user();
-        abort_unless(
-            $user
-                && ($user->hasRole('admin') || (! $user->hasRole('buyer') && $user->hasRole('seller'))),
-            403
-        );
-
         $query = Product::query();
 
-        if (! $user->hasRole('admin')) {
+        if ($user?->hasRole('admin') !== true) {
+            abort_unless(
+                $user && $user->hasRole('seller') && ! $user->hasRole('buyer'),
+                403
+            );
             $query->where('seller_id', $user->id);
         }
 
         $product = $query->findOrFail($id);
+        abort_unless(ProductAccess::canManage($user, $product), 403);
 
         $data = $product->toArray();
 
@@ -594,13 +594,18 @@ class ProductController extends Controller
             fn($q) => $q->where('slug_en', $slugOrId)->orWhere('id', $slugOrId)
         )->firstOrFail();
  
-        if (! $request->user()?->hasRole('admin')
-            && (int) $product->seller_id !== (int) $request->user()->id
-        ) {
+        if (! ProductAccess::canManage($request->user(), $product)) {
             return response()->json(['success' => false, 'message' => __('messages.products.unauthorized_update')], 403);
         }
  
         $data = $request->validated();
+        if (array_intersect(
+            array_keys($data),
+            ['discount_type', 'discount_price', 'discount_percentage', 'discount_start', 'discount_end', 'is_on_sale']
+        )) {
+            $data['discount_rule_id'] = null;
+        }
+
         if (isset($data['images']) && is_array($data['images'])) {
             $data['images'] = $this->sanitizeProductImages($data['images'], (int) $product->seller_id, (int) $product->id);
             $data['images'] = $this->moveTempProductImages($data['images'], (int) $product->seller_id, (int) $product->id);
@@ -726,11 +731,7 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        // Allow admins to delete any product; sellers can only delete their own
-        if (
-            ! Auth::user()?->hasRole('admin') &&
-            (int) Auth::id() !== (int) $product->seller_id
-        ) {
+        if (! ProductAccess::canManage(Auth::user(), $product)) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_delete')
@@ -1144,10 +1145,7 @@ class ProductController extends Controller
         // look up by slug. Admin sends numeric IDs — resolve by primary key directly.
         $product = Product::withoutGlobalScopes()->findOrFail($id);
 
-        $user = Auth::user();
-        $isAdmin = $user && method_exists($user, 'hasRole') && $user->hasRole('admin');
-
-        if (!$isAdmin && (int) Auth::id() !== (int) $product->seller_id) {
+        if (! ProductAccess::canManage(Auth::user(), $product)) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update'),
@@ -1380,8 +1378,7 @@ class ProductController extends Controller
      */
     public function uploadImageToProduct(Request $request, Product $product)
     {
-        // Authorization check
-        if (! Auth::user()?->hasRole('admin') && (int) Auth::id() !== (int) $product->seller_id) {
+        if (! ProductAccess::canManage(Auth::user(), $product)) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update')
@@ -1444,8 +1441,7 @@ class ProductController extends Controller
      */
     public function deleteImage(Product $product, $imageIndex)
     {
-        // Authorization check
-        if ((int) Auth::id() !== (int) $product->seller_id) {
+        if (! ProductAccess::canManage(Auth::user(), $product)) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update')
@@ -1502,8 +1498,7 @@ class ProductController extends Controller
      */
     public function setPrimaryImage(Product $product, $imageIndex)
     {
-        // Authorization check
-        if ((int) Auth::id() !== (int) $product->seller_id) {
+        if (! ProductAccess::canManage(Auth::user(), $product)) {
             return response()->json([
                 'success' => false,
                 'message' => __('messages.products.unauthorized_update')
@@ -1562,7 +1557,7 @@ class ProductController extends Controller
         // FIX: was checking hasRole('seller') as the fallback, which allowed any
         // seller to apply discounts to other sellers' products. Should check
         // ownership first, then allow admins as the override.
-        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if (! ProductAccess::canManage(Auth::user(), $product)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to apply discount to this product'
@@ -1596,6 +1591,7 @@ class ProductController extends Controller
             $updateData = [
                 'is_on_sale' => $request->get('is_on_sale', true),
                 'discount_type' => $request->discount_type,
+                'discount_rule_id' => null,
                 'discount_start' => $request->discount_start,
                 'discount_end' => $request->discount_end,
                 'compare_at_price' => $request->compare_at_price,
@@ -1647,7 +1643,7 @@ class ProductController extends Controller
             ], 404);
         }
         // Authorization check - only seller or admin can update
-        if ((int) Auth::id() !== (int) $product->seller_id && !Auth::user()->hasRole('admin')) {
+        if (! ProductAccess::canManage(Auth::user(), $product)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized to remove discount from this product'
@@ -1659,6 +1655,7 @@ class ProductController extends Controller
                 'discount_price' => null,
                 'discount_percentage' => null,
                 'discount_type' => 'none',
+                'discount_rule_id' => null,
                 'discount_start' => null,
                 'discount_end' => null,
                 'compare_at_price' => null,
@@ -1687,7 +1684,7 @@ class ProductController extends Controller
      */
     public function productDiscounts($id)
     {
-        $product = Product::find($id);
+        $product = Product::findOrFail($id);
         $discounts = Discount::where('is_active', true)
             ->where('starts_at', '<=', now())
             ->where('expires_at', '>=', now())
@@ -1697,7 +1694,10 @@ class ProductController extends Controller
                     ->orWhereJsonContains('applicable_category_ids', $product->category_id)
                     ->orWhereJsonContains('applicable_seller_ids', $product->seller_id);
             })
-            ->get();
+            ->with('creator')
+            ->get()
+            ->filter(fn (Discount $discount) => $discount->isOwnedByProductSeller($product))
+            ->values();
 
         return response()->json([
             'success' => true,

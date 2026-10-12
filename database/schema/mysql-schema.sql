@@ -960,6 +960,7 @@ CREATE TABLE `products` (
   `origin` varchar(191) DEFAULT NULL,
   `discount_price` decimal(12,2) DEFAULT NULL,
   `discount_type` enum('percentage','fixed','none') NOT NULL DEFAULT 'none',
+  `discount_rule_id` bigint(20) unsigned DEFAULT NULL,
   `discount_percentage` decimal(5,2) DEFAULT NULL,
   `sale_badge` varchar(191) DEFAULT 'Sale',
   `compare_at_price` decimal(12,2) DEFAULT NULL,
@@ -1013,6 +1014,7 @@ CREATE TABLE `products` (
   KEY `products_created_at_index` (`created_at`),
   KEY `products_is_on_sale_index` (`is_on_sale`),
   KEY `products_discount_end_index` (`discount_end`),
+  KEY `products_discount_rule_id_foreign` (`discount_rule_id`),
   KEY `products_product_type_index` (`product_type`),
   KEY `products_category_active_idx` (`category_id`,`is_active`),
   KEY `products_seller_active_idx` (`seller_id`,`is_active`),
@@ -1020,6 +1022,7 @@ CREATE TABLE `products` (
   FULLTEXT KEY `products_name_en_description_en_fulltext` (`name_en`,`description_en`),
   FULLTEXT KEY `products_name_mm_description_mm_fulltext` (`name_mm`,`description_mm`),
   CONSTRAINT `products_category_id_foreign` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `products_discount_rule_id_foreign` FOREIGN KEY (`discount_rule_id`) REFERENCES `discounts` (`id`) ON DELETE SET NULL,
   CONSTRAINT `products_seller_id_foreign` FOREIGN KEY (`seller_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

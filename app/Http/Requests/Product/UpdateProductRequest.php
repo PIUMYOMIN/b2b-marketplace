@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Product;
 
 use App\Models\Product;
+use App\Support\ProductAccess;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateProductRequest extends FormRequest
@@ -15,17 +16,7 @@ class UpdateProductRequest extends FormRequest
             ->orWhere('id', $slugOrId)
             ->first();
 
-        if (!$user || !$product) {
-            return false;
-        }
-
-        if ($user->hasRole('admin')) {
-            return true;
-        }
-
-        return ! $user->hasRole('buyer')
-            && $user->hasRole('seller')
-            && (int) $product->seller_id === (int) $user->id;
+        return $product !== null && ProductAccess::canManage($user, $product);
     }
 
     public function rules(): array

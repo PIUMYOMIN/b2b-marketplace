@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\ProductWholesaleTier;
+use App\Support\ProductAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -350,7 +351,7 @@ class WholesaleTierController extends Controller
     private function authorizeProduct(Product $product): void
     {
         $user = request()->user();
-        if ((int) $product->seller_id !== (int) $user->id) {
+        if (! ProductAccess::canManage($user, $product)) {
             abort(403, 'You do not own this product.');
         }
     }

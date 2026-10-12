@@ -2,19 +2,14 @@
 
 namespace App\Http\Requests\Product;
 
+use App\Support\ProductAccess;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreProductRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Seller-only: product ownership is tied to authenticated seller_id.
-        $user = $this->user();
-
-        return $user !== null
-            && $user->hasRole('seller')
-            && ! $user->hasRole('admin')
-            && ! $user->hasRole('buyer');
+        return ProductAccess::canCreate($this->user());
     }
 
     public function rules(): array

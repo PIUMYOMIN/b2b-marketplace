@@ -57,9 +57,22 @@ class Discount extends Model
         return $this->belongsToMany(Product::class, 'discount_product');
     }
 
+    public function isOwnedByProductSeller(Product $product): bool
+    {
+        $creator = $this->creator;
+
+        return $creator !== null
+            && ($creator->hasRole('admin') || (int) $creator->id === (int) $product->seller_id);
+    }
+
     public function isApplicableToProduct($productId, $categoryId, $sellerId)
     {
         if (!$this->is_active) {
+            return false;
+        }
+
+        $creator = $this->creator;
+        if (! $creator || (! $creator->hasRole('admin') && (int) $creator->id !== (int) $sellerId)) {
             return false;
         }
 

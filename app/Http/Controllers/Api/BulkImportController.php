@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
+use App\Support\ProductAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +52,8 @@ class BulkImportController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        abort_unless(ProductAccess::canCreate($request->user()), 403);
+
         // 1. Validate the uploaded file.
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:5120', // 5 MB

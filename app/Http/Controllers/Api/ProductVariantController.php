@@ -9,6 +9,7 @@ use App\Http\Requests\ProductVariant\UpdateProductVariantRequest;
 use App\Http\Resources\ProductVariantResource;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Support\ProductAccess;
 use App\Services\ProductVariantService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -164,8 +165,7 @@ class ProductVariantController extends Controller
     private function authorizeProduct(Product $product): void
     {
         $user = request()->user();
-        // Seller-only ownership check (no admin bypass on seller endpoints)
-        if ((int) $product->seller_id !== (int) $user->id) {
+        if (! ProductAccess::canManage($user, $product)) {
             abort(403, __('messages.products.unauthorized_update'));
         }
     }

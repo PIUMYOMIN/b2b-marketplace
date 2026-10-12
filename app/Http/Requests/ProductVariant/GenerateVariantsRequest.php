@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\ProductVariant;
 
+use App\Models\Product;
+use App\Support\ProductAccess;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -14,8 +16,7 @@ class GenerateVariantsRequest extends FormRequest
     public function authorize(): bool
     {
         $product = $this->route('product');
-        return $this->user()?->hasRole('seller') === true
-            && (int) ($product?->seller_id) === (int) $this->user()->id;
+        return $product instanceof Product && ProductAccess::canManage($this->user(), $product);
     }
 
     public function rules(): array

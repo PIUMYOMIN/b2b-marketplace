@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\ProductVariant;
 
+use App\Models\Product;
+use App\Support\ProductAccess;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Log;
 
@@ -10,12 +12,9 @@ class UpdateProductVariantRequest extends FormRequest
     public function authorize(): bool
     {
         $user = $this->user();
-        $productParam = $this->route('product'); // can be Product model OR raw value depending on binding
-        $product = $productParam instanceof \App\Models\Product ? $productParam : null;
-
-        // Seller-only: only the authenticated seller who owns the product can update.
-        $allowed = $user?->hasRole('seller')
-            && (int) ($product?->seller_id) === (int) $user->id;
+        $productParam = $this->route('product');
+        $product = $productParam instanceof Product ? $productParam : null;
+        $allowed = ProductAccess::canManage($user, $product);
 
         if (!$allowed) {
             Log::warning('variant_update_unauthorized', [

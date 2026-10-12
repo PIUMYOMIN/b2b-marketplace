@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Coupon;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -242,21 +243,20 @@ class CouponController extends Controller
             // items format (preferred)
             'items' => 'nullable|array',
             'items.*.product_id' => 'required_with:items|integer|exists:products,id',
+            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required_with:items|integer|min:1',
             // legacy flat format
             'product_ids' => 'nullable|array',
             'product_ids.*' => 'integer|exists:products,id',
         ]);
 
-        // Normalise to a quantity-keyed map: [product_id => quantity]
-        $itemsMap = [];
+        // Keep cart lines separate because variants can have different prices.
+        $items = [];
         if ($request->filled('items')) {
-            foreach ($request->items as $item) {
-                $itemsMap[(int) $item['product_id']] = (int) ($item['quantity'] ?? 1);
-            }
+            $items = $request->items;
         } elseif ($request->filled('product_ids')) {
             foreach ($request->product_ids as $id) {
-                $itemsMap[(int) $id] = 1;
+                $items[] = ['product_id' => (int) $id, 'quantity' => 1];
             }
         } else {
             return response()->json([
@@ -301,18 +301,39 @@ class CouponController extends Controller
             ], 422);
         }
 
-        // Find applicable products and calculate subtotal respecting quantities
-        $productIds = array_keys($itemsMap);
+        // Calculate from the same sale and wholesale-resolved prices used by checkout.
+        $productIds = array_column($items, 'product_id');
         $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        $variantIds = array_filter(array_column($items, 'variant_id'));
+        $variants = ProductVariant::whereIn('id', $variantIds)->get()->keyBy('id');
 
         $applicableProducts = collect();
         $applicableSubtotal = 0;
 
-        foreach ($itemsMap as $productId => $qty) {
-            $product = $products->get($productId);
+        foreach ($items as $item) {
+            $product = $products->get((int) $item['product_id']);
+            $qty = (int) $item['quantity'];
+            $variant = !empty($item['variant_id'])
+                ? $variants->get((int) $item['variant_id'])
+                : null;
+
+            if (!empty($item['variant_id']) && (!$variant || (int) $variant->product_id !== (int) $product?->id)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('messages.coupons.not_applicable'),
+                ], 422);
+            }
+
             if ($product && $coupon->appliesToProduct($product)) {
                 $applicableProducts->push($product);
-                $applicableSubtotal += $product->price * $qty;
+
+                $baseItemPrice = $variant ? (float) $variant->price : (float) $product->price;
+                $resolved = $variant
+                    ? $variant->resolveWholesalePrice((float) $qty)
+                    : $product->resolveWholesalePrice((float) $qty);
+                $tierPrice = $resolved['price'] !== $baseItemPrice ? $resolved['price'] : null;
+                $itemPrice = $product->resolveBuyerUnitPrice($baseItemPrice, $tierPrice)['selling_price'];
+                $applicableSubtotal += $itemPrice * $qty;
             }
         }
 
@@ -323,7 +344,7 @@ class CouponController extends Controller
             ], 422);
         }
 
-        $discountAmount = $coupon->calculateDiscount(min($applicableSubtotal, $request->subtotal));
+        $discountAmount = $coupon->calculateDiscount((float) $applicableSubtotal);
 
         return response()->json([
             'success' => true,
@@ -335,7 +356,7 @@ class CouponController extends Controller
                     'type' => $coupon->type,
                     'value' => (float) $coupon->value,
                 ],
-                'applicable_product_ids' => $applicableProducts->pluck('id')->values(),
+                'applicable_product_ids' => $applicableProducts->pluck('id')->unique()->values(),
                 'discount_amount' => $discountAmount,
                 'final_amount' => max(0, $request->subtotal - $discountAmount),
             ],

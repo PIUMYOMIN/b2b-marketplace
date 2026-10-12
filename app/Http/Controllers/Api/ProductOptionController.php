@@ -7,6 +7,7 @@ use App\Http\Requests\ProductOption\StoreProductOptionRequest;
 use App\Http\Resources\ProductOptionResource;
 use App\Models\Product;
 use App\Models\ProductOption;
+use App\Support\ProductAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -105,8 +106,7 @@ class ProductOptionController extends Controller
     private function authorizeProduct(Product $product): void
     {
         $user = request()->user();
-        // Seller-only ownership check (no admin bypass on seller endpoints)
-        if ((int) $product->seller_id !== (int) $user->id) {
+        if (! ProductAccess::canManage($user, $product)) {
             abort(403, __('messages.products.unauthorized_update'));
         }
     }
