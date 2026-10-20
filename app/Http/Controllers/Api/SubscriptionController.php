@@ -329,6 +329,14 @@ class SubscriptionController extends Controller
             ], 422);
         }
 
+        if ($current && (float) $current->plan?->price_mmk > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your current paid plan remains active until it expires. You can select another plan after expiry.',
+                'error'   => 'active_plan_change_unavailable',
+            ], 422);
+        }
+
         // Paid plan but no payment reference supplied
         if ($plan->price_mmk > 0 && empty($request->payment_reference)) {
             return response()->json([
