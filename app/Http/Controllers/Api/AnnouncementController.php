@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
+use App\Models\BlogPost;
 use App\Services\AnnouncementPushService;
 use App\Services\ImageOptimizationService;
 use Illuminate\Http\Request;
@@ -19,9 +20,9 @@ class AnnouncementController extends Controller
     public function index(Request $request)
     {
         $userType = null;
-        if ($request->bearerToken()) {
+        if ($request->bearerToken() || $request->user()) {
             try {
-                $user = Auth::guard('sanctum')->user();
+                $user = Auth::guard('sanctum')->user() ?? $request->user();
                 $userType = $user?->type;
             } catch (\Throwable) {}
         }
@@ -58,11 +59,11 @@ class AnnouncementController extends Controller
             'content'         => 'nullable|string|max:2000',
             'type'            => 'required|in:announcement,promotion,newsletter,advertisement,sponsorship',
             'display_style'   => 'nullable|in:popup_card,popup_banner,page_banner',
-            'banner_link_url' => 'nullable|string|max:500',
+            'banner_link_url' => $this->announcementLinkRules(),
             'banner_aspect_ratio' => 'nullable|in:16:9,4:3,3:1,1:1',
             'image'           => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
             'cta_label'       => 'nullable|string|max:80',
-            'cta_url'         => 'nullable|string|max:500',
+            'cta_url'         => $this->announcementLinkRules(),
             'cta_style'       => 'nullable|in:primary,outline',
             'badge_label'     => 'nullable|string|max:40',
             'badge_color'     => 'nullable|in:green,red,blue,yellow,purple,orange',
@@ -118,11 +119,11 @@ class AnnouncementController extends Controller
             'content'         => 'nullable|string|max:2000',
             'type'            => 'sometimes|in:announcement,promotion,newsletter,advertisement,sponsorship',
             'display_style'   => 'nullable|in:popup_card,popup_banner,page_banner',
-            'banner_link_url' => 'nullable|string|max:500',
+            'banner_link_url' => $this->announcementLinkRules(),
             'banner_aspect_ratio' => 'nullable|in:16:9,4:3,3:1,1:1',
             'image'           => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
             'cta_label'       => 'nullable|string|max:80',
-            'cta_url'         => 'nullable|string|max:500',
+            'cta_url'         => $this->announcementLinkRules(),
             'cta_style'       => 'nullable|in:primary,outline',
             'badge_label'     => 'nullable|string|max:40',
             'badge_color'     => 'nullable|in:green,red,blue,yellow,purple,orange',
@@ -199,6 +200,37 @@ class AnnouncementController extends Controller
             'is_active' => $announcement->is_active,
             'push'      => $pushResult,
         ]);
+    }
+
+    private function announcementLinkRules(): array
+    {
+        return [
+            'nullable',
+            'string',
+            'max:500',
+            function (string $attribute, mixed $value, \Closure $fail) {
+                $value = trim((string) $value);
+                if ($value === '') {
+                    return;
+                }
+
+                if (str_starts_with($value, '/')) {
+                    if (preg_match('#^/blog/([^/?#]+)#', $value, $matches)) {
+                        $slug = urldecode($matches[1]);
+                        $exists = BlogPost::query()->visible()->where('slug', $slug)->exists();
+                        if (! $exists) {
+                            $fail('That blog post is not published. Use a live /blog/{slug} path or another in-app link.');
+                        }
+                    }
+
+                    return;
+                }
+
+                if (! filter_var($value, FILTER_VALIDATE_URL)) {
+                    $fail('Use an in-app path like /blog/my-post or a full http(s) URL.');
+                }
+            },
+        ];
     }
 
     private function format(Announcement $a): array
