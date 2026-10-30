@@ -176,33 +176,24 @@ class ProductController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        $perPage = $request->input('per_page', 15);
-        $query = Product::with(['category', 'seller'])
-                        ->withSum('activeVariants', 'quantity');
+        $perPage = min(50, max(1, (int) $request->input('per_page', 10)));
 
-        // Apply filters
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-        if ($request->has('seller_id')) {
-            $query->where('seller_id', $request->seller_id);
-        }
-        if ($request->has('is_active')) {
-            $query->where('is_active', $request->boolean('is_active'));
-        }
-        if ($request->filled('category_id')) {
-            $query->where('category_id', $request->category_id);
-        }
-        if ($request->has('search')) {
-            $query->where(function ($q) use ($request) {
-                $q->where('name_en', 'like', '%' . $request->search . '%')
-                    ->orWhere('name_mm', 'like', '%' . $request->search . '%');
-            });
-        }
+        $query = Product::with(['category', 'seller'])
+            ->withSum('activeVariants', 'quantity');
+        $this->applyAdminProductFilters($query, $request, true);
+
+        $summaryQuery = Product::query();
+        $this->applyAdminProductFilters($summaryQuery, $request, false);
 
         $products = $query->latest()->paginate($perPage);
+        $formatted = $products->getCollection()->map(
+            fn ($product) => $this->formatAdminProductListItem($product)
+        );
 
-        $formatted = $products->getCollection()->map(fn ($product) => $this->formatAdminProduct($product));
+        $statusCounts = (clone $summaryQuery)
+            ->select('status', DB::raw('COUNT(*) as aggregate'))
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
 
         return response()->json([
             'success' => true,
@@ -212,7 +203,13 @@ class ProductController extends Controller
                 'per_page' => $products->perPage(),
                 'total' => $products->total(),
                 'last_page' => $products->lastPage(),
-            ]
+                'summary' => [
+                    'total' => (int) $statusCounts->sum(),
+                    'pending' => (int) ($statusCounts['pending'] ?? 0),
+                    'approved' => (int) ($statusCounts['approved'] ?? 0),
+                    'inactive' => (clone $summaryQuery)->where('is_active', false)->count(),
+                ],
+            ],
         ]);
     }
 
@@ -1178,6 +1175,93 @@ class ProductController extends Controller
             'message' => $nextFeatured ? 'Product marked as featured' : 'Product removed from featured',
             'is_featured' => (bool) $product->is_featured,
         ]);
+    }
+
+    protected function applyAdminProductFilters($query, Request $request, bool $includeStatusFilters): void
+    {
+        if ($includeStatusFilters && $request->filled('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('seller_id')) {
+            $query->where('seller_id', $request->seller_id);
+        }
+        if ($includeStatusFilters && $request->has('is_active') && $request->input('is_active') !== '' && $request->input('is_active') !== 'all') {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+        if ($request->filled('category_id') && $request->category_id !== 'all') {
+            $query->where('category_id', $request->category_id);
+        }
+        if ($request->filled('search')) {
+            $term = '%' . trim((string) $request->search) . '%';
+            $query->where(function ($q) use ($term) {
+                $q->where('name_en', 'like', $term)
+                    ->orWhere('name_mm', 'like', $term)
+                    ->orWhere('sku', 'like', $term);
+            });
+        }
+    }
+
+    protected function formatAdminProductListItem(Product $product): array
+    {
+        $primary = $this->formatPrimaryAdminImage($product->images);
+
+        return [
+            'id' => $product->id,
+            'name_en' => $product->name_en,
+            'name_mm' => $product->name_mm,
+            'sku' => $product->sku,
+            'moq' => $product->moq,
+            'min_order' => $product->moq,
+            'min_order_unit' => $product->min_order_unit,
+            'price' => (float) $product->price,
+            'selling_price' => $product->getSellingPrice(),
+            'effective_discount_pct' => $product->getEffectiveDiscountPercentage(),
+            'is_currently_on_sale' => $product->isCurrentlyOnSale(),
+            'total_stock' => $product->totalStock(),
+            'product_type' => $product->product_type,
+            'status' => $product->status,
+            'discount_price' => $product->discount_price ? (float) $product->discount_price : null,
+            'discount_percentage' => $product->discount_percentage ? (float) $product->discount_percentage : null,
+            'is_new' => (bool) $product->is_new,
+            'is_on_sale' => (bool) $product->is_on_sale,
+            'is_featured' => (bool) $product->is_featured,
+            'discount_start' => $product->discount_start,
+            'discount_end' => $product->discount_end,
+            'is_active' => (bool) $product->is_active,
+            'approved_at' => $product->approved_at,
+            'rejection_reason' => $product->rejection_reason,
+            'category' => $product->category ? [
+                'id' => $product->category->id,
+                'name_en' => $product->category->name_en,
+            ] : null,
+            'seller' => $product->seller ? [
+                'id' => $product->seller->id,
+                'name' => $product->seller->name,
+            ] : null,
+            'image' => $primary[0]['url'] ?? null,
+            'images' => $primary,
+            'created_at' => $product->created_at?->toISOString(),
+            'updated_at' => $product->updated_at?->toISOString(),
+        ];
+    }
+
+    protected function formatPrimaryAdminImage($images): array
+    {
+        if (empty($images)) {
+            return [];
+        }
+
+        if (is_string($images)) {
+            return $this->formatImages($images);
+        }
+
+        if (! is_array($images)) {
+            return [];
+        }
+
+        $first = $images[0] ?? null;
+
+        return $first === null ? [] : $this->formatImages([$first]);
     }
 
     protected function formatAdminProduct(Product $product): array

@@ -196,6 +196,22 @@ class Product extends Model
             return null;
         }
 
+        if (array_key_exists('active_variants_sum_quantity', $this->attributes)) {
+            $sum = $this->attributes['active_variants_sum_quantity'];
+
+            return $sum === null
+                ? (float) ($this->quantity ?? 0)
+                : (float) $sum;
+        }
+
+        if ($this->relationLoaded('activeVariants')) {
+            $variants = $this->activeVariants;
+
+            return $variants->isNotEmpty()
+                ? (float) $variants->sum('quantity')
+                : (float) ($this->quantity ?? 0);
+        }
+
         if ($this->activeVariants()->exists()) {
             return (float) $this->activeVariants()->sum('quantity');
         }
