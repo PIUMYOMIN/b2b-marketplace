@@ -13,6 +13,8 @@ use App\Notifications\SubscriptionApproved;
 use App\Notifications\SubscriptionRejected;
 use App\Notifications\SubscriptionRequestSubmitted;
 use App\Services\Payment\PaymentService;
+use App\Services\SellerProductLimit;
+use App\Services\SellerProductLimitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -22,6 +24,8 @@ use Illuminate\Support\Facades\Log;
 class SubscriptionController extends Controller
 {
     private const ONLINE_SUBSCRIPTION_PAYMENT_METHODS = ['mmqr', 'kbz_pay', 'wave_pay'];
+
+    public function __construct(private SellerProductLimitService $limits) {}
 
     // ══════════════════════════════════════════════════════════════════════
     //  SELLER ROUTES
@@ -36,7 +40,8 @@ class SubscriptionController extends Controller
         $seller = $request->user();
         $current = $this->activeSubscription($seller->id);
         $pending = $this->pendingSubscriptionRequest($seller->id);
-        $productCount = Product::where('seller_id', $seller->id)->whereNull('deleted_at')->count();
+        $productCount = $this->limits->productCount((int) $seller->id);
+        $quota = $this->limits->forSeller((int) $seller->id);
 
         $plans = SubscriptionPlan::active()->get()->map(function (SubscriptionPlan $plan) use ($current, $pending, $productCount) {
             return [
@@ -63,8 +68,8 @@ class SubscriptionController extends Controller
         return response()->json([
             'success'              => true,
             'data'                 => $plans,
-            'current_subscription' => $current ? $this->formatSubscription($current) : null,
-            'pending_request'      => $pending ? $this->formatSubscription($pending) : null,
+            'current_subscription' => $current ? $this->formatSubscription($current, $productCount, $quota) : null,
+            'pending_request'      => $pending ? $this->formatSubscription($pending, $productCount, $quota) : null,
         ]);
     }
 
@@ -82,17 +87,17 @@ class SubscriptionController extends Controller
             $subscription = $this->assignBasicPlan($request->user()->id);
         }
 
-        $productCount = Product::where('seller_id', $request->user()->id)
-            ->whereNull('deleted_at')
-            ->count();
+        $productCount = $this->limits->productCount((int) $request->user()->id);
+        $quota = $this->limits->forSeller((int) $request->user()->id);
 
         return response()->json([
             'success' => true,
             'data'    => array_merge(
-                $this->formatSubscription($subscription),
+                $this->formatSubscription($subscription, $productCount, $quota),
                 [
                     'products_used' => $productCount,
-                    'pending_request' => $pending ? $this->formatSubscription($pending) : null,
+                    'subscription_usage' => $quota->toUsageArray($productCount),
+                    'pending_request' => $pending ? $this->formatSubscription($pending, $productCount, $quota) : null,
                 ]
             ),
         ]);
@@ -126,7 +131,7 @@ class SubscriptionController extends Controller
 
         $seller = $request->user();
         $current = $this->activeSubscription($seller->id);
-        if ($current && $current->plan_id === $plan->id) {
+        if ($current && $current->plan_id === $plan->id && ! $this->limits->isProfessionalRenewal($current, $plan)) {
             return response()->json([
                 'success' => false,
                 'message' => "You are already on the {$plan->name} plan.",
@@ -148,16 +153,17 @@ class SubscriptionController extends Controller
         }
 
         if ($plan->product_limit !== -1) {
-            $productCount = Product::where('seller_id', $seller->id)->whereNull('deleted_at')->count();
-            if ($productCount > $plan->product_limit) {
+            $productCount = $this->limits->productCount((int) $seller->id);
+            $projected = $this->limits->projectedForPlan((int) $seller->id, $plan);
+            if ($projected->exceeds($productCount)) {
                 return response()->json([
                     'success' => false,
-                    'message' => "You have {$productCount} products, which exceeds the {$plan->name} plan limit of {$plan->product_limit}. "
-                        . 'Please remove products before downgrading.',
+                    'message' => "You have {$productCount} products, which exceeds the {$plan->name} plan limit of {$projected->total}. "
+                        . 'Please remove products before changing plans.',
                     'error'   => 'product_count_exceeds_plan_limit',
                     'data'    => [
                         'current_count' => $productCount,
-                        'plan_limit'    => $plan->product_limit,
+                        'plan_limit'    => $projected->total,
                     ],
                 ], 422);
             }
@@ -319,9 +325,10 @@ class SubscriptionController extends Controller
 
         $seller = $request->user();
 
-        // Prevent re-subscribing to the same active plan (would reset billing cycle for free)
         $current = $this->activeSubscription($seller->id);
-        if ($current && $current->plan_id === $plan->id) {
+        $isProfessionalRenewal = $this->limits->isProfessionalRenewal($current, $plan);
+
+        if ($current && $current->plan_id === $plan->id && ! $isProfessionalRenewal) {
             return response()->json([
                 'success' => false,
                 'message' => "You are already on the {$plan->name} plan.",
@@ -329,7 +336,7 @@ class SubscriptionController extends Controller
             ], 422);
         }
 
-        if ($current && (float) $current->plan?->price_mmk > 0) {
+        if ($current && (float) $current->plan?->price_mmk > 0 && ! $isProfessionalRenewal) {
             return response()->json([
                 'success' => false,
                 'message' => 'Your current paid plan remains active until it expires. You can select another plan after expiry.',
@@ -388,18 +395,20 @@ class SubscriptionController extends Controller
             }
         }
 
-        // Check downgrade: if moving to a lower plan, ensure current product count is within new limit
         if ($plan->product_limit !== -1) {
-            $productCount = Product::where('seller_id', $seller->id)->whereNull('deleted_at')->count();
-            if ($productCount > $plan->product_limit) {
+            $productCount = $this->limits->productCount((int) $seller->id);
+            $projected = strtolower((string) $plan->slug) === 'professional'
+                ? $this->limits->projectedForPlan((int) $seller->id, $plan)
+                : $this->limits->forSeller((int) $seller->id);
+            if ($projected->exceeds($productCount)) {
                 return response()->json([
                     'success' => false,
-                    'message' => "You have {$productCount} products, which exceeds the {$plan->name} plan limit of {$plan->product_limit}. "
-                        . 'Please remove products before downgrading.',
+                    'message' => "You have {$productCount} products, which exceeds the {$plan->name} plan limit of {$projected->total}. "
+                        . 'Please remove products before changing plans.',
                     'error'   => 'product_count_exceeds_plan_limit',
                     'data'    => [
                         'current_count' => $productCount,
-                        'plan_limit'    => $plan->product_limit,
+                        'plan_limit'    => $projected->total,
                     ],
                 ], 422);
             }
@@ -758,6 +767,28 @@ class SubscriptionController extends Controller
             ->first();
     }
 
+    /**
+     * GET /seller/subscription/history
+     * Paid and expired subscription rows so the app can stack Professional periods.
+     */
+    public function history(Request $request): JsonResponse
+    {
+        $rows = SellerSubscription::with('plan')
+            ->where('user_id', $request->user()->id)
+            ->latest('id')
+            ->get();
+
+        $productCount = $this->limits->productCount((int) $request->user()->id);
+        $quota = $this->limits->forSeller((int) $request->user()->id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows->map(fn (SellerSubscription $subscription) => $this->formatSubscription($subscription, $productCount, $quota)),
+            'paid_period_count' => $quota->paidPeriods,
+            'product_limit_total' => $quota->unlimited ? -1 : $quota->total,
+        ]);
+    }
+
     private function pendingSubscriptionRequest(int $userId): ?SellerSubscription
     {
         return SellerSubscription::with('plan')
@@ -816,8 +847,15 @@ class SubscriptionController extends Controller
         });
     }
 
-    private function formatSubscription(SellerSubscription $s): array
-    {
+    private function formatSubscription(
+        SellerSubscription $s,
+        ?int $productCount = null,
+        ?SellerProductLimit $quota = null,
+    ): array {
+        $quota ??= $this->limits->forSeller((int) $s->user_id);
+        $used = $productCount ?? $this->limits->productCount((int) $s->user_id);
+        $usage = $quota->toUsageArray($used);
+
         return [
             'id'                => $s->id,
             'user_id'           => $s->user_id,
@@ -831,6 +869,14 @@ class SubscriptionController extends Controller
             'payment_reference' => $s->payment_reference,
             'payment_method'    => $s->payment_method,
             'notes'             => $s->notes,
+            'products_used'     => $used,
+            'product_limit_total' => $usage['product_limit_total'],
+            'stacked_product_limit' => $usage['stacked_product_limit'],
+            'base_product_limit' => $usage['base_product_limit'],
+            'period_product_limit' => $usage['period_product_limit'],
+            'paid_period_count' => $usage['paid_period_count'],
+            'professional_period_count' => $usage['professional_period_count'],
+            'subscription_usage' => $usage,
             'plan'              => $s->plan ? [
                 'id'                 => $s->plan->id,
                 'slug'               => $s->plan->slug,

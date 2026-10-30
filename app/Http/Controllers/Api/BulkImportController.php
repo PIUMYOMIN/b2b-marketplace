@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Product;
-use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
 use App\Support\ProductAccess;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Notifications\ProductLimitWarning;
+use App\Services\SellerProductLimitService;
 
 class BulkImportController extends Controller
 {
@@ -294,26 +294,29 @@ class BulkImportController extends Controller
      */
     private function checkProductLimit(int $sellerId, int $newCount): ?array
     {
-        $plan = $this->resolveSellerPlan($sellerId);
+        $quota = app(SellerProductLimitService::class)->forSeller($sellerId);
 
-        if ($plan->product_limit === -1) return null; // unlimited
+        if ($quota->unlimited) {
+            return null;
+        }
 
-        $currentCount = Product::where('seller_id', $sellerId)->whereNull('deleted_at')->count();
-        $available    = $plan->product_limit - $currentCount;
+        $currentCount = app(SellerProductLimitService::class)->productCount($sellerId);
+        $available    = $quota->total - $currentCount;
 
         if ($newCount > $available) {
             return [
                 'success' => false,
-                'message' => "Your {$plan->name} plan allows {$plan->product_limit} products total. "
+                'message' => "Your {$quota->planName} plan allows {$quota->total} products total. "
                     . "You currently have {$currentCount}, so you can only import {$available} more. "
                     . "Your file has {$newCount} rows.",
                 'error' => 'product_limit_reached',
                 'data'  => [
-                    'plan_limit'    => $plan->product_limit,
+                    'plan_limit'    => $quota->total,
                     'current_count' => $currentCount,
                     'available'     => max(0, $available),
                     'requested'     => $newCount,
                     'upgrade_url'   => '/seller/dashboard?tab=subscription',
+                    ...$quota->toUsageArray($currentCount),
                 ],
             ];
         }
@@ -323,22 +326,21 @@ class BulkImportController extends Controller
 
     private function resolveSellerPlan(int $sellerId): SubscriptionPlan
     {
-        $subscription = SellerSubscription::with('plan')
-            ->where('user_id', $sellerId)
-            ->active()
-            ->first();
+        $quota = app(SellerProductLimitService::class)->forSeller($sellerId);
 
-        return $subscription?->plan
+        return $quota->plan
             ?? SubscriptionPlan::where('slug', 'basic')->first()
-            ?? new SubscriptionPlan(['product_limit' => 20, 'name' => 'Basic', 'slug' => 'basic']);
+            ?? new SubscriptionPlan(['product_limit' => 40, 'name' => 'Basic', 'slug' => 'basic']);
     }
 
     private function notifyProductLimitWarningIfNeeded($seller, SubscriptionPlan $plan, int $beforeCount, int $currentCount): void
     {
-        $planSlug = $plan->slug;
-        $warningAt = $plan->product_limit - 1;
+        $quota = app(SellerProductLimitService::class)->forSeller((int) $seller->id);
+        $planSlug = $quota->planSlug;
+        $limit = $quota->unlimited ? -1 : $quota->total;
+        $warningAt = $limit - 1;
 
-        if ($plan->product_limit === -1 || $beforeCount >= $warningAt || $currentCount < $warningAt) {
+        if ($limit === -1 || $beforeCount >= $warningAt || $currentCount < $warningAt) {
             return;
         }
 
@@ -353,7 +355,7 @@ class BulkImportController extends Controller
         }
 
         try {
-            $seller->notify(new ProductLimitWarning($warningAt, $plan));
+            $seller->notify(new ProductLimitWarning($warningAt, $plan, $limit));
         } catch (\Throwable $e) {
             Log::warning('Product limit warning notification failed: ' . $e->getMessage(), [
                 'seller_id' => $seller->id,

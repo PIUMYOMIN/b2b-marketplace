@@ -16,7 +16,7 @@ class SubscriptionPlanSeeder extends Seeder
                 'description'          => 'For small businesses getting started',
                 'price_mmk'            => 0,
                 'billing_cycle'        => 'monthly',
-                'product_limit'        => 20,
+                'product_limit'        => 40,
                 'commission_rate'      => 0.05,
                 'analytics_enabled'    => false,
                 'bulk_import_enabled'  => false,

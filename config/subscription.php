@@ -25,4 +25,19 @@ return [
         'alert_on_failure' => (bool) env('SUBSCRIPTION_EXPIRY_ALERT', true),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Product listing allotment
+    |--------------------------------------------------------------------------
+    |
+    | Basic slots never expire. Each paid Professional period adds extra slots.
+    | Enterprise is unlimited (-1 on the plan row).
+    |
+    */
+
+    'product_limits' => [
+        'basic_lifetime' => 40,
+        'professional_period' => 100,
+    ],
+
 ];

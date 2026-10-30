@@ -1024,7 +1024,7 @@ class SellerProfile extends Model
  
         return $plan
             ?? \App\Models\SubscriptionPlan::where('slug', 'basic')->first()
-            ?? new \App\Models\SubscriptionPlan(['name' => 'Basic', 'product_limit' => 20, 'commission_rate' => 0.05]);
+            ?? new \App\Models\SubscriptionPlan(['name' => 'Basic', 'product_limit' => 40, 'commission_rate' => 0.05]);
     }
 
 }

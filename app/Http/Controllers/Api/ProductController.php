@@ -22,9 +22,10 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use App\Models\SellerSubscription;
 use App\Models\SubscriptionPlan;
 use App\Notifications\ProductLimitWarning;
+use App\Services\SellerProductLimit;
+use App\Services\SellerProductLimitService;
 use App\Support\ProductAccess;
 
 class ProductController extends Controller
@@ -353,35 +354,28 @@ class ProductController extends Controller
         $seller   = $request->user();
         $sellerId = $seller->id;
  
-        // ── 1. Resolve the seller's active plan ───────────────────────────
-        $subscription = SellerSubscription::with('plan')
-            ->where('user_id', $sellerId)
-            ->active()
-            ->first();
- 
-        // Fall back to the Basic plan limits when no subscription record exists.
-        $plan = $subscription?->plan
+        $limits = app(SellerProductLimitService::class);
+        $quota = $limits->forSeller((int) $sellerId);
+        $plan = $quota->plan
             ?? SubscriptionPlan::where('slug', 'basic')->first()
-            ?? new SubscriptionPlan(['product_limit' => 20, 'name' => 'Basic']);
- 
-        // ── 2. Enforce the product limit (-1 = unlimited) ─────────────────
-        if ($plan->product_limit !== -1) {
-            $activeCount = Product::where('seller_id', $sellerId)
-                ->whereNull('deleted_at')
-                ->count();
- 
-            if ($activeCount >= $plan->product_limit) {
+            ?? new SubscriptionPlan(['product_limit' => 40, 'name' => 'Basic', 'slug' => 'basic']);
+
+        if (! $quota->unlimited) {
+            $activeCount = $limits->productCount((int) $sellerId);
+
+            if ($quota->hasReached($activeCount)) {
                 return response()->json([
                     'success' => false,
-                    'message' => "You have reached the product limit ({$plan->product_limit}) "
-                        . "for your {$plan->name} plan. "
+                    'message' => "You have reached the product limit ({$quota->total}) "
+                        . "for your {$quota->planName} plan. "
                         . 'Please upgrade your subscription to add more products.',
                     'error'   => 'product_limit_reached',
                     'data'    => [
                         'current_count' => $activeCount,
-                        'plan_limit'    => $plan->product_limit,
-                        'plan_name'     => $plan->name,
-                        'plan_slug'     => $plan->slug ?? 'basic',
+                        'plan_limit'    => $quota->total,
+                        'plan_name'     => $quota->planName,
+                        'plan_slug'     => $quota->planSlug,
+                        ...$quota->toUsageArray($activeCount),
                     ],
                 ], 422);
             }
@@ -415,10 +409,8 @@ class ProductController extends Controller
             }
         }
 
-        $currentCount = Product::where('seller_id', $sellerId)
-            ->whereNull('deleted_at')
-            ->count();
-        $this->notifyProductLimitWarningIfNeeded($seller, $plan, $currentCount);
+        $currentCount = $limits->productCount((int) $sellerId);
+        $this->notifyProductLimitWarningIfNeeded($seller, $plan, $currentCount, $quota);
  
         return response()->json([
             'success' => true,
@@ -806,13 +798,10 @@ class ProductController extends Controller
             }
 
             $perPage = $request->input('per_page', 15);
-            $subscription = SellerSubscription::with('plan')
-                ->where('user_id', $user->id)
-                ->active()
-                ->first();
-            $plan = $subscription?->plan
+            $quota = app(SellerProductLimitService::class)->forSeller((int) $user->id);
+            $plan = $quota->plan
                 ?? SubscriptionPlan::where('slug', 'basic')->first()
-                ?? new SubscriptionPlan(['product_limit' => 20, 'name' => 'Basic', 'slug' => 'basic']);
+                ?? new SubscriptionPlan(['product_limit' => 40, 'name' => 'Basic', 'slug' => 'basic']);
 
             $products = Product::where('seller_id', $user->id)
                 ->with(['category', 'seller.sellerProfile'])
@@ -863,17 +852,7 @@ class ProductController extends Controller
                     'per_page'     => $products->perPage(),
                     'total'        => $products->total(),
                     'last_page'    => $products->lastPage(),
-                    'subscription_usage' => [
-                        'plan_name' => $plan->name,
-                        'plan_slug' => $plan->slug ?? 'basic',
-                        'product_limit' => $plan->product_limit,
-                        'products_used' => $products->total(),
-                        'remaining' => $plan->product_limit === -1
-                            ? null
-                            : max(0, $plan->product_limit - $products->total()),
-                        'is_near_limit' => $plan->product_limit !== -1
-                            && $products->total() >= max(0, $plan->product_limit - 1),
-                    ],
+                    'subscription_usage' => $quota->toUsageArray((int) $products->total()),
                 ]
             ]);
         } catch (\Exception $e) {
@@ -885,10 +864,15 @@ class ProductController extends Controller
         }
     }
 
-    private function notifyProductLimitWarningIfNeeded($seller, SubscriptionPlan $plan, int $currentCount): void
-    {
-        $planSlug = $plan->slug;
-        if ($plan->product_limit === -1 || $currentCount !== $plan->product_limit - 1) {
+    private function notifyProductLimitWarningIfNeeded(
+        $seller,
+        SubscriptionPlan $plan,
+        int $currentCount,
+        ?SellerProductLimit $quota = null,
+    ): void {
+        $planSlug = $quota?->planSlug ?? $plan->slug;
+        $limit = $quota?->unlimited ? -1 : ($quota->total ?? $plan->product_limit);
+        if ($limit === -1 || $currentCount !== $limit - 1) {
             return;
         }
 
@@ -903,7 +887,7 @@ class ProductController extends Controller
         }
 
         try {
-            $seller->notify(new ProductLimitWarning($currentCount, $plan));
+            $seller->notify(new ProductLimitWarning($currentCount, $plan, $limit));
         } catch (\Throwable $e) {
             \Log::warning('Product limit warning notification failed: ' . $e->getMessage(), [
                 'seller_id' => $seller->id,

@@ -396,6 +396,7 @@ Route::group([
         });
 
         Route::prefix('seller')->middleware('role:seller|admin')->group(function () {
+            Route::get('/subscriptions', [SubscriptionController::class, 'history']);
 
             // Logo & Banner endpoints (outside onboarding)
             Route::post('/logo', [SellerController::class, 'updateLogo']);
@@ -580,6 +581,7 @@ Route::group([
 
             Route::prefix('subscription')->group(function () {
                 Route::get('/plans', [SubscriptionController::class, 'plans']);
+                Route::get('/history', [SubscriptionController::class, 'history']);
                 Route::get('/', [SubscriptionController::class, 'current']);
                 Route::post('/payment-session', [SubscriptionController::class, 'initiatePayment']);
                 Route::post('/payment-session/verify', [SubscriptionController::class, 'verifyPayment'])->middleware('throttle:30,1');
