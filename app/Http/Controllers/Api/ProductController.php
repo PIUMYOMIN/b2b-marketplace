@@ -1272,6 +1272,15 @@ class ProductController extends Controller
     protected function applyPublicProductSearch($query, string $searchTerm): void
     {
         $query->where(function ($q) use ($searchTerm) {
+            if (preg_match('/[\x{1000}-\x{109F}\x{A9E0}-\x{A9FF}\x{AA60}-\x{AA7F}]/u', $searchTerm) === 1) {
+                $likeTerm = '%' . $searchTerm . '%';
+
+                $q->where('name_mm', 'like', $likeTerm)
+                    ->orWhere('description_mm', 'like', $likeTerm);
+
+                return;
+            }
+
             $q->whereFullText(['name_en', 'description_en'], $searchTerm)
                 ->orWhereFullText(['name_mm', 'description_mm'], $searchTerm);
         });
