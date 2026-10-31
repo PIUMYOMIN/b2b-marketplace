@@ -70,4 +70,13 @@ return [
         'redirect' => env('FACEBOOK_REDIRECT_URI'),
     ],
 
+    'huawei' => [
+        'client_id' => env('HUAWEI_CLIENT_ID', env('HUAWEI_APP_ID')),
+        'client_secret' => env('HUAWEI_CLIENT_SECRET'),
+        'app_id' => env('HUAWEI_APP_ID'),
+        'project_id' => env('HUAWEI_PROJECT_ID'),
+        'redirect' => env('HUAWEI_REDIRECT_URI', 'https://pyonea.com/auth/huawei'),
+        'redirect_native' => env('HUAWEI_NATIVE_REDIRECT_URI', 'pyoneaapp://auth/huawei'),
+    ],
+
 ];

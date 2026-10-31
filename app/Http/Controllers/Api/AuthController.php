@@ -406,7 +406,7 @@ class AuthController extends Controller
     // requires a new private verify*Token() method below. Routes, middleware,
     // the registration flow, and the frontend button all stay identical.
     //
-    // Supported providers: google | facebook (coming soon)
+    // Supported providers: google | facebook (coming soon) | huawei
     //
     // Routes:
     //   POST /auth/{provider}           → handleSocialToken()
@@ -425,13 +425,19 @@ class AuthController extends Controller
 
         $request->validate([
             'credential' => 'required|string',
-            'token_type' => 'nullable|in:id_token,access_token',
+            'token_type' => 'nullable|in:id_token,access_token,authorization_code',
+            'redirect_uri' => 'nullable|string|max:512',
+            'code_verifier' => 'nullable|string|max:128',
         ]);
 
         $socialUser = $this->verifySocialToken(
             $provider,
             $request->credential,
-            $request->input('token_type', 'id_token')
+            $request->input('token_type', 'id_token'),
+            [
+                'redirect_uri' => $request->input('redirect_uri'),
+                'code_verifier' => $request->input('code_verifier'),
+            ]
         );
 
         if (!$socialUser) {
@@ -628,7 +634,7 @@ class AuthController extends Controller
     /** Reject unsupported providers early with a clear error. */
     private function validateProvider(string $provider): void
     {
-        $supported = ['google', 'facebook'];
+        $supported = ['google', 'facebook', 'huawei'];
         if (!in_array($provider, $supported)) {
             abort(404, "Provider [{$provider}] is not supported.");
         }
@@ -638,11 +644,12 @@ class AuthController extends Controller
      * Route to the correct token verifier based on provider.
      * Adding Facebook = add verifyFacebookToken() here and below.
      */
-    private function verifySocialToken(string $provider, string $token, string $tokenType): ?array
+    private function verifySocialToken(string $provider, string $token, string $tokenType, array $extras = []): ?array
     {
         return match ($provider) {
             'google'   => $this->verifyGoogleToken($token, $tokenType),
             'facebook' => $this->verifyFacebookToken($token),
+            'huawei'   => $this->verifyHuaweiToken($token, $tokenType, $extras),
             default    => null,
         };
     }
@@ -699,6 +706,180 @@ class AuthController extends Controller
             'email_verified'  => $emailVerified,
             'name'            => $payload['name'] ?? null,
             'picture'         => $payload['picture'] ?? null,
+        ];
+    }
+
+    /**
+     * Verify Huawei ID via authorization code (preferred) or access/id token.
+     * The OAuth client secret stays on the server; the app never exchanges the code.
+     *
+     * @param  array{redirect_uri?: string, code_verifier?: string}  $extras
+     */
+    private function verifyHuaweiToken(string $token, string $tokenType, array $extras = []): ?array
+    {
+        try {
+            if ($tokenType === 'authorization_code') {
+                $tokens = $this->exchangeHuaweiAuthorizationCode(
+                    $token,
+                    (string) ($extras['redirect_uri'] ?? ''),
+                    isset($extras['code_verifier']) ? (string) $extras['code_verifier'] : null
+                );
+                if (!$tokens) {
+                    return null;
+                }
+
+                if (!empty($tokens['id_token'])) {
+                    $fromId = $this->verifyHuaweiIdToken((string) $tokens['id_token']);
+                    if ($fromId) {
+                        return $fromId;
+                    }
+                }
+
+                if (!empty($tokens['access_token'])) {
+                    return $this->fetchHuaweiUserinfo((string) $tokens['access_token']);
+                }
+
+                return null;
+            }
+
+            if ($tokenType === 'access_token') {
+                return $this->fetchHuaweiUserinfo($token);
+            }
+
+            return $this->verifyHuaweiIdToken($token);
+        } catch (\Exception $e) {
+            Log::error('Huawei token verification error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function exchangeHuaweiAuthorizationCode(string $code, string $redirectUri, ?string $codeVerifier): ?array
+    {
+        $clientId = (string) config('services.huawei.client_id');
+        $clientSecret = (string) config('services.huawei.client_secret');
+
+        if ($clientId === '' || $clientSecret === '') {
+            Log::warning('Huawei OAuth is missing HUAWEI_CLIENT_ID or HUAWEI_CLIENT_SECRET.');
+            return null;
+        }
+
+        $allowed = $this->huaweiAllowedRedirectUris();
+        if ($redirectUri === '' || !in_array($redirectUri, $allowed, true)) {
+            Log::warning('Huawei OAuth redirect_uri is not allowed', ['redirect_uri' => $redirectUri]);
+            return null;
+        }
+
+        $form = [
+            'grant_type' => 'authorization_code',
+            'code' => $code,
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'redirect_uri' => $redirectUri,
+        ];
+
+        if ($codeVerifier) {
+            $form['code_verifier'] = $codeVerifier;
+        }
+
+        $response = Http::asForm()->timeout(8)->post(
+            'https://oauth-login.cloud.huawei.com/oauth2/v3/token',
+            $form
+        );
+
+        if (!$response->successful()) {
+            Log::warning('Huawei token exchange failed', ['status' => $response->status()]);
+            return null;
+        }
+
+        $payload = $response->json();
+        return is_array($payload) ? $payload : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function huaweiAllowedRedirectUris(): array
+    {
+        return array_values(array_unique(array_filter([
+            (string) config('services.huawei.redirect_native'),
+            (string) config('services.huawei.redirect'),
+            'pyoneaapp://auth/huawei',
+            'https://pyonea.com/auth/huawei',
+            'https://www.pyonea.com/auth/huawei',
+        ])));
+    }
+
+    private function verifyHuaweiIdToken(string $idToken): ?array
+    {
+        $response = Http::timeout(5)->get(
+            'https://oauth-login.cloud.huawei.com/oauth2/v3/tokeninfo',
+            ['id_token' => $idToken]
+        );
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        $payload = $response->json();
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $clientId = (string) config('services.huawei.client_id');
+        if ($clientId !== '' && ($payload['aud'] ?? '') !== $clientId) {
+            Log::warning('Huawei token audience mismatch', ['aud' => $payload['aud'] ?? null]);
+            return null;
+        }
+
+        if (($payload['exp'] ?? 0) < time()) {
+            return null;
+        }
+
+        return $this->normalizeHuaweiUserinfo($payload);
+    }
+
+    private function fetchHuaweiUserinfo(string $accessToken): ?array
+    {
+        $response = Http::timeout(5)
+            ->withToken($accessToken)
+            ->get('https://account.cloud.huawei.com/rest.php', [
+                'nsp_fmt' => 'JSON',
+                'nsp_svc' => 'GOpen.User.getInfo',
+            ]);
+
+        if (!$response->successful()) {
+            return null;
+        }
+
+        $payload = $response->json();
+        return is_array($payload) ? $this->normalizeHuaweiUserinfo($payload) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function normalizeHuaweiUserinfo(array $payload): ?array
+    {
+        $socialId = $payload['unionID']
+            ?? $payload['union_id']
+            ?? $payload['openID']
+            ?? $payload['open_id']
+            ?? $payload['sub']
+            ?? null;
+
+        if (!$socialId) {
+            return null;
+        }
+
+        return [
+            'sub' => (string) $socialId,
+            'email' => $payload['email'] ?? null,
+            'email_verified' => true,
+            'name' => $payload['displayName'] ?? $payload['display_name'] ?? $payload['name'] ?? null,
+            'picture' => $payload['headPictureURL'] ?? $payload['picture'] ?? null,
         ];
     }
 

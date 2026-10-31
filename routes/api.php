@@ -161,11 +161,11 @@ Route::group([
     Route::prefix('auth')->group(function () {
         // Step 1: verify token → login OR return temp token for role selection
         Route::post('/{provider}', [AuthController::class, 'handleSocialToken'])
-            ->whereIn('provider', ['google', 'facebook']);
+            ->whereIn('provider', ['google', 'facebook', 'huawei']);
 
         // Step 2: complete registration (choose buyer/seller) using temp token abilities
         Route::post('/{provider}/complete', [AuthController::class, 'completeSocialRegistration'])
-            ->whereIn('provider', ['google', 'facebook'])
+            ->whereIn('provider', ['google', 'facebook', 'huawei'])
             ->middleware(['auth:sanctum', 'abilities:social-pending']);
     });
     //Facebook OAuth Routes
