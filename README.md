@@ -161,7 +161,44 @@ Seller:
 - delivery area configuration
 - wallet and COD invoice submission
 
-## 8) Delivery and fee management (important)
+## 8) Security notes and production verification
+
+Seller verification documents are stored on Laravel's private `local` disk for new uploads. The API returns temporary signed download URLs that expire after 10 minutes. Keep signed URLs private: anyone who obtains one can use it until it expires. Legacy document files may still exist on the public disk; `public/.htaccess` denies direct requests to `/storage/sellers/<id>/documents/`. Retain this rule when deploying to Apache/LiteSpeed. For servers that do not honor `.htaccess`, configure an equivalent web-server deny rule and migrate legacy documents to private storage.
+
+Public seller list/detail responses use an explicit field allowlist and must not expose verification document paths, identity numbers, account numbers, or internal notes. Wishlist API failures return generic messages; exception details belong in server logs, not client responses.
+
+Production checks reported on 2026-11-03:
+
+- `.env`, `.env.production`, and `.env.example` returned `403` on the frontend and API hosts.
+- A legacy seller-document URL returned `403`.
+- The public seller list and a seller detail endpoint returned `200`.
+- HTTP requests to the API health endpoint redirected to HTTPS with `301`.
+- The signed-download valid/expired-link behavior and other roles/endpoints were not fully audited. These checks do not certify the whole application as secure.
+- Wishlist exception-detail redaction is in the current source update; deploy it before considering that change active in production.
+
+Safe, status-only checks (replace the example seller slug with a real public slug):
+
+```bash
+# Check that HTTP redirects to HTTPS without printing response cookies or bodies.
+curl -sS -o /dev/null -w 'HTTP %{http_code} -> %{redirect_url}\n' \
+  --max-time 15 'http://api.pyonea.com/up'
+
+# Confirm public seller endpoints respond; use a real public store slug for the detail check.
+curl -sS -o /dev/null -w 'Seller list -> %{http_code}\n' \
+  --max-time 15 'https://api.pyonea.com/api/v1/sellers?per_page=1'
+curl -sS -o /dev/null -w 'Seller detail -> %{http_code}\n' \
+  --max-time 15 'https://api.pyonea.com/api/v1/sellers/REAL_PUBLIC_SLUG'
+
+# These should return 403 or 404, never 200.
+for path in /.env /.env.production /.env.example; do
+  curl -sS -o /dev/null -w "$path -> %{http_code}\n" \
+    --max-time 15 "https://api.pyonea.com$path"
+done
+```
+
+Do not paste credentials, cookies, authorization headers, signed URLs, document paths, or private response bodies into chat or public logs. Use a test account and harmless test documents for any upload/download verification.
+
+## 9) Delivery and fee management (important)
 
 Delivery model supports:
 
@@ -188,20 +225,20 @@ New adjustment endpoint:
   - blocked after fee marked collected
 - Creates an internal tracking update note for auditability.
 
-## 9) Checkout, commission, and visibility policy
+## 10) Checkout, commission, and visibility policy
 
 - Checkout fees are resolved server-side (`/orders/checkout-fees`) using shipping-zone and commission/tax logic.
 - Buyer-facing UI can present combined shipping/handling without exposing internal platform settlement details.
 - Commission and settlement details are still persisted for seller/platform financial reporting.
 
-## 10) RFQ flow summary
+## 11) RFQ flow summary
 
 - Buyers create RFQs with item/specification requirements.
 - Sellers submit quotes per RFQ.
 - Buyers accept/reject quotes.
 - Read endpoints are scoped to sent/received plus record-level auth checks.
 
-## 11) Testing and quality
+## 12) Testing and quality
 
 Run test suite:
 
@@ -219,7 +256,7 @@ Formatting/linting:
 
 - Laravel Pint is available in dev dependencies.
 
-## 12) Deployment checklist
+## 13) Deployment checklist
 
 - Set `APP_ENV=production`, `APP_DEBUG=false`
 - Use strong DB credentials and restricted CORS origins
@@ -229,7 +266,7 @@ Formatting/linting:
 - Configure payment and webhook secrets
 - Ensure HTTPS and secure cookie/session settings
 
-## 13) Troubleshooting
+## 14) Troubleshooting
 
 - 401/419 auth issues:
   - validate token/session handling and frontend credentials mode

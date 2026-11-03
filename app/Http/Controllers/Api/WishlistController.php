@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
 
+// Keep internal exception details in server logs; API error responses stay generic.
 class WishlistController extends Controller
 {
     /**
@@ -108,7 +109,6 @@ class WishlistController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve wishlist',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -153,10 +153,10 @@ class WishlistController extends Controller
             ], 201);
             
         } catch (\Exception $e) {
+            \Log::error('Wishlist addition error:', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to add to wishlist',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -188,10 +188,10 @@ class WishlistController extends Controller
             ]);
             
         } catch (\Exception $e) {
+            \Log::error('Wishlist removal error:', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to remove from wishlist',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -215,10 +215,10 @@ class WishlistController extends Controller
             ]);
             
         } catch (\Exception $e) {
+            \Log::error('Wishlist status check error:', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to check wishlist status',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -242,10 +242,10 @@ class WishlistController extends Controller
             ]);
             
         } catch (\Exception $e) {
+            \Log::error('Wishlist count error:', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get wishlist count',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
