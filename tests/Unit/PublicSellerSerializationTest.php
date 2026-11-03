@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\Api\SellerController;
+use App\Models\Product;
 use App\Models\SellerProfile;
 use App\Models\User;
 use Illuminate\Database\Schema\Blueprint;
@@ -104,6 +105,39 @@ class PublicSellerSerializationTest extends TestCase
             ->assertOk()
             ->assertHeader('content-disposition');
     }
+
+    public function test_public_product_serialization_keeps_checkout_checks_before_seller_allowlisting(): void
+    {
+        $profile = new SellerProfile;
+        $profile->forceFill([
+            'id' => 12,
+            'status' => SellerProfile::STATUS_ACTIVE,
+            'store_name' => 'Public Store',
+            'identity_document_front' => 'sellers/12/documents/private.png',
+        ]);
+
+        $seller = new User;
+        $seller->forceFill(['id' => 34, 'name' => 'Public Seller']);
+        $seller->setRelation('sellerProfile', $profile);
+
+        $product = new Product;
+        $product->forceFill([
+            'id' => 56,
+            'status' => 'approved',
+            'is_active' => true,
+        ]);
+        $product->setRelation('seller', $seller);
+
+        $formatted = (new PublicSellerSerializationController)->serializeProduct($product);
+
+        $this->assertTrue($formatted->getAttribute('can_checkout'));
+        $this->assertNull($formatted->getAttribute('checkout_blocked_reason'));
+        $this->assertSame('Public Seller', $formatted->getRelation('seller')['name']);
+        $this->assertArrayNotHasKey(
+            'identity_document_front',
+            $formatted->getRelation('seller')['seller_profile']
+        );
+    }
 }
 
 final class PublicSellerSerializationController extends SellerController
@@ -111,5 +145,10 @@ final class PublicSellerSerializationController extends SellerController
     public function serializePublicSeller(SellerProfile $seller): array
     {
         return $this->formatPublicSeller($seller);
+    }
+
+    public function serializeProduct(Product $product): Product
+    {
+        return $this->formatPublicStorefrontProduct($product);
     }
 }

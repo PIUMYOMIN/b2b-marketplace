@@ -235,6 +235,39 @@ class SellerController extends Controller
         return $sellerData;
     }
 
+    protected function formatPublicStorefrontProduct(Product $product): Product
+    {
+        if (isset($product->images)) {
+            $images = is_string($product->images) ? json_decode($product->images, true) : $product->images;
+            if (is_array($images)) {
+                foreach ($images as &$image) {
+                    if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
+                        $image['url'] = url('storage/' . ltrim($image['url'], '/'));
+                    }
+                }
+                $product->images = $images;
+            }
+        }
+
+        $product->setAttribute('approval_status', $product->status);
+        $product->setAttribute('is_pending_review', $product->isPendingReview());
+        $product->setAttribute('can_checkout', $product->canCheckout());
+        $product->setAttribute('checkout_blocked_reason', $product->checkoutBlockedReason());
+
+        if ($product->relationLoaded('seller') && $product->seller) {
+            $seller = $product->seller;
+            $profile = $seller->sellerProfile;
+
+            $product->setRelation('seller', [
+                'id' => $seller->id,
+                'name' => $seller->name,
+                'seller_profile' => $profile ? $this->formatPublicSeller($profile) : null,
+            ]);
+        }
+
+        return $product;
+    }
+
     public function dashboard(Request $request)
     {
         try {
@@ -989,36 +1022,9 @@ class SellerController extends Controller
 
         // Convert product images to full URLs and expose trust fields for the storefront.
         if ($products->count() > 0) {
-            $products->getCollection()->transform(function ($product) {
-                if ($product->relationLoaded('seller') && $product->seller) {
-                    $profile = $product->seller->sellerProfile;
-
-                    $product->setRelation('seller', [
-                        'id' => $product->seller->id,
-                        'name' => $product->seller->name,
-                        'seller_profile' => $profile ? $this->formatPublicSeller($profile) : null,
-                    ]);
-                }
-
-                if (isset($product->images)) {
-                    $images = is_string($product->images) ? json_decode($product->images, true) : $product->images;
-                    if (is_array($images)) {
-                        foreach ($images as &$image) {
-                            if (isset($image['url']) && !str_starts_with($image['url'], 'http')) {
-                                $image['url'] = url('storage/' . ltrim($image['url'], '/'));
-                            }
-                        }
-                        $product->images = $images;
-                    }
-                }
-
-                $product->setAttribute('approval_status', $product->status);
-                $product->setAttribute('is_pending_review', $product->isPendingReview());
-                $product->setAttribute('can_checkout', $product->canCheckout());
-                $product->setAttribute('checkout_blocked_reason', $product->checkoutBlockedReason());
-
-                return $product;
-            });
+            $products->getCollection()->transform(
+                fn ($product) => $this->formatPublicStorefrontProduct($product)
+            );
         }
 
         // ── Follow status & count ────────────────────────────────────────────
