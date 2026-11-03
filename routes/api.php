@@ -123,6 +123,10 @@ Route::group([
     // Public Routes
     // --------------------
 
+    Route::get('/seller-documents/{sellerProfile}/{documentType}', [SellerController::class, 'downloadDocument'])
+        ->middleware(['signed', 'throttle:10,1'])
+        ->name('seller.documents.download');
+
     // Seller Routes (Public)
     Route::prefix('sellers')->group(function () {
         Route::get('/', [SellerController::class, 'index']);

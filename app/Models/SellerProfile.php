@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Support\Facades\URL;
 
 class SellerProfile extends Model
 {
@@ -635,20 +636,42 @@ class SellerProfile extends Model
      */
     public function getDocumentUrl($field)
     {
-        if (empty($this->$field)) {
-            return null;
+        $documentFields = [
+            'certificate',
+            'business_registration_document',
+            'business_certificate',
+            'tax_registration_document',
+            'identity_document_front',
+            'identity_document_back',
+        ];
+
+        $parameters = [
+            'sellerProfile' => $this->getKey(),
+            'documentType' => $field,
+        ];
+
+        if (in_array($field, $documentFields, true) && filled($this->getAttribute($field))) {
+            return URL::temporarySignedRoute(
+                'seller.documents.download',
+                now()->addMinutes(10),
+                $parameters
+            );
         }
 
-        // Handle different URL formats
-        if (str_starts_with($this->$field, 'http')) {
-            return $this->$field;
+        foreach ($this->additional_documents ?? [] as $index => $document) {
+            if (($document['path'] ?? null) === $field) {
+                $parameters['documentType'] = 'additional_documents';
+                $parameters['index'] = $index;
+
+                return URL::temporarySignedRoute(
+                    'seller.documents.download',
+                    now()->addMinutes(10),
+                    $parameters
+                );
+            }
         }
 
-        if (str_starts_with($this->$field, 'storage/')) {
-            return url($this->$field);
-        }
-
-        return url('storage/' . $this->$field);
+        return null;
     }
 
     /**

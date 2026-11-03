@@ -12,6 +12,9 @@
 
     RewriteEngine On
 
+    # Legacy seller verification documents must only be served through signed API URLs.
+    RewriteRule ^storage/sellers/[0-9]+/documents/ - [F,NC,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

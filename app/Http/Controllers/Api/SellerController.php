@@ -70,37 +70,9 @@ class SellerController extends Controller
                 ->take((int) $request->input('limit', 6))
                 ->get();
 
-            // Helper: sanitise a string value to valid UTF-8 before json_encode.
-            // Malformed Myanmar Unicode characters cause "Malformed UTF-8" errors.
-            $utf8 = fn($v) => $v !== null
-                ? mb_convert_encoding((string) $v, 'UTF-8', 'UTF-8')
-                : null;
-
-            // Convert store logo and banner to full URLs for top sellers
-            $topSellers->transform(function ($seller) use ($utf8) {
-                $sellerData = $seller->toArray();
-                // Sanitize all string values to prevent malformed UTF-8
-                array_walk_recursive($sellerData, function (&$value) use ($utf8) {
-                    if (is_string($value)) {
-                        $value = $utf8($value);
-                    }
-                });
-
-                $toPublicStorageUrl = static function (?string $path): ?string {
-                    if ($path === null || $path === '') {
-                        return null;
-                    }
-                    if (filter_var($path, FILTER_VALIDATE_URL)) {
-                        return $path;
-                    }
-                    return url('storage/' . ltrim($path, '/'));
-                };
-
-                $sellerData['store_logo'] = $toPublicStorageUrl($sellerData['store_logo'] ?? null);
-                $sellerData['store_banner'] = $toPublicStorageUrl($sellerData['store_banner'] ?? null);
-
-                return $sellerData;
-            });
+            // Return only storefront fields; model serialization also includes
+            // private verification documents and the loaded user/review relations.
+            $topSellers->transform(fn ($seller) => $this->formatPublicSeller($seller));
 
             return response()->json([
                 'success' => true,
@@ -170,31 +142,9 @@ class SellerController extends Controller
 
         $sellers = $query->paginate($perPage);
 
-        // Helper: sanitise a string value to valid UTF-8 before json_encode.
-        // Malformed Myanmar Unicode characters cause "Malformed UTF-8" errors.
-        $utf8 = fn($v) => $v !== null
-            ? mb_convert_encoding((string) $v, 'UTF-8', 'UTF-8')
-            : null;
-
-        // Convert store logo and banner to full URLs for paginated results
-        $sellers->getCollection()->transform(function ($seller) use ($utf8) {
-            $sellerData = $seller->toArray();
-            // Sanitize all string values to prevent malformed UTF-8
-            array_walk_recursive($sellerData, function (&$value) use ($utf8) {
-                if (is_string($value)) {
-                    $value = $utf8($value);
-                }
-            });
-            $sellerData['store_logo'] = !empty($sellerData['store_logo'])
-                ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
-                : null;
-
-            $sellerData['store_banner'] = !empty($sellerData['store_banner'])
-                ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
-                : null;
-
-            return $sellerData;
-        });
+        // Return only storefront fields; model serialization also includes
+        // private verification documents and the loaded user/review relations.
+        $sellers->getCollection()->transform(fn ($seller) => $this->formatPublicSeller($seller));
 
         return response()->json([
             'success' => true,
@@ -206,6 +156,83 @@ class SellerController extends Controller
                 'last_page' => $sellers->lastPage(),
             ]
         ]);
+    }
+
+    /**
+     * Serialize only fields intended for public storefront responses.
+     */
+    protected function formatPublicSeller(SellerProfile $seller): array
+    {
+        $sellerData = $seller->only([
+            'id',
+            'store_name',
+            'store_slug',
+            'store_description',
+            'business_type',
+            'contact_email',
+            'contact_phone',
+            'website',
+            'social_facebook',
+            'social_twitter',
+            'social_instagram',
+            'social_linkedin',
+            'social_youtube',
+            'address',
+            'city',
+            'township',
+            'state',
+            'country',
+            'postal_code',
+            'store_logo',
+            'store_banner',
+            'shipping_enabled',
+            'is_verified',
+            'return_policy',
+            'shipping_policy',
+            'warranty_policy',
+            'privacy_policy',
+            'terms_of_service',
+            'vacation_mode',
+            'vacation_message',
+            'vacation_start_date',
+            'vacation_end_date',
+            'currency',
+            'business_hours_enabled',
+            'business_hours',
+            'created_at',
+            'reviews_avg_rating',
+            'reviews_count',
+            'products_count',
+            'customers_count',
+        ]);
+
+        array_walk_recursive($sellerData, static function (&$value): void {
+            if (is_string($value)) {
+                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+            }
+        });
+
+        foreach (['store_logo', 'store_banner'] as $imageField) {
+            $path = $sellerData[$imageField] ?? null;
+            $sellerData[$imageField] = empty($path)
+                ? null
+                : (filter_var($path, FILTER_VALIDATE_URL)
+                    ? $path
+                    : url('storage/' . ltrim($path, '/')));
+        }
+
+        $sellerData['is_verified'] = $seller->isVerifiedForDisplay();
+        $sellerData['trust_badge'] = $seller->trustBadge();
+        $sellerData['can_accept_orders'] = $seller->canAcceptOrders();
+
+        if ($seller->relationLoaded('user') && $seller->user) {
+            $sellerData['user'] = [
+                'id' => $seller->user->id,
+                'name' => $seller->user->name,
+            ];
+        }
+
+        return $sellerData;
     }
 
     public function dashboard(Request $request)
@@ -699,11 +726,11 @@ class SellerController extends Controller
                 : null,
 
             // Documents — convert relative paths to full URLs
-            'business_registration_document' => $this->formatMediaUrl($s->business_registration_document),
-            'tax_registration_document'      => $this->formatMediaUrl($s->tax_registration_document),
-            'identity_document_front'        => $this->formatMediaUrl($s->identity_document_front),
-            'identity_document_back'         => $this->formatMediaUrl($s->identity_document_back),
-            'business_certificate'           => $this->formatMediaUrl($s->business_certificate ?? null),
+            'business_registration_document' => $s->getDocumentUrl('business_registration_document'),
+            'tax_registration_document'      => $s->getDocumentUrl('tax_registration_document'),
+            'identity_document_front'        => $s->getDocumentUrl('identity_document_front'),
+            'identity_document_back'         => $s->getDocumentUrl('identity_document_back'),
+            'business_certificate'           => $s->getDocumentUrl('business_certificate'),
 
             // Document & verification status
             'documents_submitted'         => (bool) $s->documents_submitted,
@@ -958,21 +985,21 @@ class SellerController extends Controller
             ->orderByDesc('listed_at')
             ->paginate($perPage);
 
-        // Convert seller logo and banner to full URLs
-        $sellerData = $seller->toArray();
-        $sellerData['is_verified'] = $seller->isVerifiedForDisplay();
-        $sellerData['trust_badge'] = $seller->trustBadge();
-        $sellerData['can_accept_orders'] = $seller->canAcceptOrders();
-        $sellerData['store_logo'] = !empty($sellerData['store_logo'])
-            ? url('storage/' . ltrim($sellerData['store_logo'], '/'))
-            : null;
-        $sellerData['store_banner'] = !empty($sellerData['store_banner'])
-            ? url('storage/' . ltrim($sellerData['store_banner'], '/'))
-            : null;
+        $sellerData = $this->formatPublicSeller($seller);
 
         // Convert product images to full URLs and expose trust fields for the storefront.
         if ($products->count() > 0) {
             $products->getCollection()->transform(function ($product) {
+                if ($product->relationLoaded('seller') && $product->seller) {
+                    $profile = $product->seller->sellerProfile;
+
+                    $product->setRelation('seller', [
+                        'id' => $product->seller->id,
+                        'name' => $product->seller->name,
+                        'seller_profile' => $profile ? $this->formatPublicSeller($profile) : null,
+                    ]);
+                }
+
                 if (isset($product->images)) {
                     $images = is_string($product->images) ? json_decode($product->images, true) : $product->images;
                     if (is_array($images)) {
@@ -2367,6 +2394,45 @@ class SellerController extends Controller
     /**
      * Upload document with business type validation
      */
+    public function downloadDocument(SellerProfile $sellerProfile, string $documentType, Request $request)
+    {
+        $documentFields = [
+            'certificate',
+            'business_registration_document',
+            'business_certificate',
+            'tax_registration_document',
+            'identity_document_front',
+            'identity_document_back',
+        ];
+
+        if ($documentType === 'additional_documents') {
+            $index = filter_var($request->query('index'), FILTER_VALIDATE_INT);
+            $document = $index !== false
+                ? ($sellerProfile->additional_documents[$index] ?? null)
+                : null;
+            $path = $document['path'] ?? null;
+        } elseif (in_array($documentType, $documentFields, true)) {
+            $path = $sellerProfile->getAttribute($documentType);
+        } else {
+            abort(404);
+        }
+
+        $expectedDirectory = "sellers/{$sellerProfile->id}/documents/";
+        if (! is_string($path) || ! str_starts_with($path, $expectedDirectory)) {
+            abort(404);
+        }
+
+        if (Storage::disk('local')->exists($path)) {
+            return Storage::disk('local')->download($path, basename($path));
+        }
+
+        if (Storage::disk('public')->exists($path)) {
+            return Storage::disk('public')->download($path, basename($path));
+        }
+
+        abort(404);
+    }
+
     public function uploadDocument(Request $request)
     {
         try {
@@ -2437,7 +2503,7 @@ class SellerController extends Controller
             $path = "sellers/{$sellerProfile->id}/documents/{$documentType}";
 
             // Store file
-            $filePath = $file->storeAs($path, $filename, 'public');
+            $filePath = $file->storeAs($path, $filename, 'local');
 
             // Update seller profile with document path
             if ($documentType === 'additional_documents') {
@@ -2455,6 +2521,7 @@ class SellerController extends Controller
             } else {
                 // Delete old file if exists
                 if (!empty($sellerProfile->$documentType)) {
+                    Storage::disk('local')->delete($sellerProfile->$documentType);
                     Storage::disk('public')->delete($sellerProfile->$documentType);
                 }
                 $sellerProfile->$documentType = $filePath;
@@ -2476,7 +2543,9 @@ class SellerController extends Controller
                 'message' => __('messages.documents.uploaded'),
                 'data' => [
                     'type' => $documentType,
-                    'url' => Storage::url($filePath),
+                    'url' => $sellerProfile->getDocumentUrl(
+                        $documentType === 'additional_documents' ? $filePath : $documentType
+                    ),
                     'path' => $filePath,
                     'uploaded_at' => now()->toISOString()
                 ]
@@ -2487,7 +2556,7 @@ class SellerController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to upload document: ' . $e->getMessage()
+                'message' => 'Failed to upload document'
             ], 500);
         }
     }
@@ -2918,7 +2987,11 @@ class SellerController extends Controller
         }
 
         foreach ($documentsToCheck as $field) {
-            if (!empty($sellerProfile->$field) && !Storage::disk('public')->exists($sellerProfile->$field)) {
+            if (
+                ! empty($sellerProfile->$field)
+                && ! Storage::disk('local')->exists($sellerProfile->$field)
+                && ! Storage::disk('public')->exists($sellerProfile->$field)
+            ) {
                 $invalid[] = [
                     'type' => $field,
                     'path' => $sellerProfile->$field,
@@ -2974,6 +3047,7 @@ class SellerController extends Controller
             if (in_array($documentType, $documentFields)) {
                 // Delete regular document
                 if (!empty($sellerProfile->$documentType)) {
+                    Storage::disk('local')->delete($sellerProfile->$documentType);
                     Storage::disk('public')->delete($sellerProfile->$documentType);
                     $sellerProfile->update([$documentType => null]);
                 }
@@ -2986,6 +3060,7 @@ class SellerController extends Controller
 
                     if (isset($additionalDocs[$index])) {
                         if (isset($additionalDocs[$index]['path'])) {
+                            Storage::disk('local')->delete($additionalDocs[$index]['path']);
                             Storage::disk('public')->delete($additionalDocs[$index]['path']);
                         }
                         unset($additionalDocs[$index]);
@@ -2997,6 +3072,7 @@ class SellerController extends Controller
                     $additionalDocs = $sellerProfile->additional_documents ?? [];
                     foreach ($additionalDocs as $doc) {
                         if (isset($doc['path'])) {
+                            Storage::disk('local')->delete($doc['path']);
                             Storage::disk('public')->delete($doc['path']);
                         }
                     }
@@ -3070,7 +3146,8 @@ class SellerController extends Controller
                 }
 
                 if (!empty($sellerProfile->$field)) {
-                    $fileExists = Storage::disk('public')->exists($sellerProfile->$field);
+                    $fileExists = Storage::disk('local')->exists($sellerProfile->$field)
+                        || Storage::disk('public')->exists($sellerProfile->$field);
 
                     $documents[$field] = [
                         'name' => basename($sellerProfile->$field),
@@ -6751,7 +6828,7 @@ class SellerController extends Controller
                     }
                     $additionalUrls[] = [
                         'name' => $doc['name'] ?? ('Additional_'.($index + 1)),
-                        'url'  => $storageUrl($p),
+                        'url'  => $seller->getDocumentUrl($p),
                     ];
                 }
 
@@ -6781,12 +6858,12 @@ class SellerController extends Controller
                     'owner_phone'  => $seller->user?->phone,
                     'member_since' => $seller->user?->created_at?->toDateString(),
                     'store_logo_url' => $storageUrl($seller->store_logo),
-                    'identity_document_front_url' => $storageUrl($seller->identity_document_front),
-                    'identity_document_back_url' => $storageUrl($seller->identity_document_back),
-                    'business_registration_document_url' => $storageUrl($seller->business_registration_document),
-                    'tax_registration_document_url' => $storageUrl($seller->tax_registration_document),
-                    'business_certificate_url' => $storageUrl($seller->business_certificate ?? null),
-                    'certificate_url' => $storageUrl($seller->certificate ?? null),
+                    'identity_document_front_url' => $seller->getDocumentUrl('identity_document_front'),
+                    'identity_document_back_url' => $seller->getDocumentUrl('identity_document_back'),
+                    'business_registration_document_url' => $seller->getDocumentUrl('business_registration_document'),
+                    'tax_registration_document_url' => $seller->getDocumentUrl('tax_registration_document'),
+                    'business_certificate_url' => $seller->getDocumentUrl('business_certificate'),
+                    'certificate_url' => $seller->getDocumentUrl('certificate'),
                     'additional_documents' => $additionalUrls,
                 ];
             });
