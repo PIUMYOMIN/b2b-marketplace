@@ -173,6 +173,8 @@ Production checks reported on 2026-11-03:
 - A legacy seller-document URL returned `403`.
 - The public seller list and a seller detail endpoint returned `200`.
 - HTTP requests to the API health endpoint redirected to HTTPS with `301`.
+- The API disclosed PHP `8.2.35` through `X-Powered-By`. PHP `8.2.35` was the latest 8.2 security release on the check date, so ZAP's version-based High alert is not by itself proof of a vulnerable patch level. The release branch remains security-supported through 2026-12-31; schedule a tested upgrade to a maintained PHP branch before then. `public/.htaccess` now removes `X-Powered-By`; verify the header is absent after deployment.
+- ZAP reported a missing CSP on five API routes; all five returned `application/json`. CSP is a browser content-execution policy for HTML, so adding a policy to these JSON responses would not protect their content. The frontend site's HTML CSP is a separate concern and should be tightened independently; do not treat the API alert as proof that the frontend policy is adequate.
 - The signed-download valid/expired-link behavior and other roles/endpoints were not fully audited. These checks do not certify the whole application as secure.
 - Wishlist exception-detail redaction is in the current source update; deploy it before considering that change active in production.
 
