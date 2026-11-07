@@ -393,6 +393,8 @@ class CategoryController extends Controller
      */
     public function show(Category $category)
     {
+        abort_unless($category->is_active, 404);
+
         $category->load([
             'children' => function ($query) {
                 $query->where('is_active', true);
@@ -400,6 +402,7 @@ class CategoryController extends Controller
         ]);
 
         $this->attachPublicProductCounts($category);
+        abort_if((int) $category->products_count === 0, 404);
 
         return response()->json([
             'success' => true,
@@ -435,10 +438,24 @@ class CategoryController extends Controller
 
     public function descendants(Category $category)
     {
+        abort_unless($category->is_active, 404);
+
+        $this->attachPublicProductCounts($category);
+        abort_if((int) $category->products_count === 0, 404);
+
         $descendants = $category->descendants()
             ->where('is_active', true)
             ->orderBy('name_en')
             ->get();
+
+        $descendants = $descendants
+            ->map(function ($descendant) {
+                $this->attachPublicProductCounts($descendant);
+
+                return $descendant;
+            })
+            ->filter(fn ($descendant) => (int) $descendant->products_count > 0)
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -584,13 +601,17 @@ class CategoryController extends Controller
 
     private function attachPublicProductCounts(Category $category): void
     {
-        $treeIds = $category->getDescendantIds();
+        $treeIds = Category::whereIn('id', $category->getDescendantIds())
+            ->where('is_active', true)
+            ->pluck('id');
         $counts = $this->visibleProductCountsByCategoryId($treeIds);
 
         $visibleChildren = collect($category->relationLoaded('children') ? $category->children : [])
             ->filter(fn ($child) => (bool) $child->is_active)
             ->map(function ($child) use ($counts) {
-                $childIds = $child->getDescendantIds();
+                $childIds = Category::whereIn('id', $child->getDescendantIds())
+                    ->where('is_active', true)
+                    ->pluck('id');
                 $child->products_count = (int) $childIds->sum(
                     fn ($id) => (int) $counts->get($id, 0)
                 );
