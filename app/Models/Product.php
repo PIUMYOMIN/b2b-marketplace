@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -405,6 +406,17 @@ class Product extends Model
     public function scopeApproved($query)
     {
         return $query->where('status', 'approved')->where('is_active', true);
+    }
+
+    public function scopeWherePublicRouteKey(Builder $query, string $routeKey): Builder
+    {
+        if (ctype_digit($routeKey)) {
+            return $query->whereKey((int) $routeKey);
+        }
+
+        return $query->where(fn (Builder $query) => $query
+            ->where('slug_en', $routeKey)
+            ->orWhere('slug_mm', $routeKey));
     }
 
     /**

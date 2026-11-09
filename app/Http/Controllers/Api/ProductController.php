@@ -325,10 +325,7 @@ class ProductController extends Controller
             ->withAvg([
                 'reviews as average_rating' => fn ($q) => $q->where('status', 'approved')
             ], 'rating')
-            ->where(fn($q) => $q
-                ->where('slug_en', $slugOrId)
-                ->orWhere('slug_mm', $slugOrId)
-                ->orWhere('id', $slugOrId))
+            ->wherePublicRouteKey($slugOrId)
             ->firstOrFail();
  
         // Increment view count (fire-and-forget)
