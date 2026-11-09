@@ -5,6 +5,7 @@ namespace App\Http\Requests\Product;
 use App\Models\Product;
 use App\Support\ProductAccess;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateProductRequest extends FormRequest
 {
@@ -25,9 +26,24 @@ class UpdateProductRequest extends FormRequest
         $productId = Product::where('slug_en', $slugOrId)
             ->orWhere('id', $slugOrId)
             ->value('id');
+        $currentSlug = $productId
+            ? Product::whereKey($productId)->value('slug_en')
+            : null;
+        $slugRules = [
+            'sometimes',
+            'string',
+            'max:255',
+            Rule::unique('products', 'slug_en')->ignore($productId),
+        ];
+        if ($this->input('slug_en') !== $currentSlug) {
+            $slugRules[] = 'regex:/\A(?=.*[a-z])[a-z0-9]+(?:-[a-z0-9]+)*\z/';
+        }
 
         return [
             'name_en'          => ['sometimes', 'string', 'max:255'],
+            'slug_en'          => $this->user()?->hasRole('admin')
+                ? $slugRules
+                : ['prohibited'],
             'name_mm'          => ['nullable', 'string', 'max:255'],
             'description_en'   => ['nullable', 'string'],
             'description_mm'   => ['nullable', 'string'],

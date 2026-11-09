@@ -48,7 +48,7 @@ class SitemapController extends Controller
 
         $products   = Product::approved()
             ->whereNull('deleted_at')
-            ->select('slug_en', 'slug_mm', 'updated_at')
+            ->select('slug_en', 'updated_at')
             ->get();
 
         $sellers    = SellerProfile::where('status', 'approved')
@@ -93,19 +93,12 @@ class SitemapController extends Controller
             $xml .= $this->urlEntry($baseUrl . '/products?category=' . $cat->id, $cat->updated_at, 'weekly', '0.6');
         }
 
-        // Product pages — use slug_en as canonical path; also emit slug_mm if different
+        // Product pages use the English slug as the sole canonical URL.
         foreach ($products as $product) {
             $slugEn = $product->slug_en;
-            $slugMm = $product->slug_mm;
 
             if ($slugEn) {
                 $baseLoc = $baseUrl . '/products/' . $slugEn;
-                $xml .= $this->urlEntry($baseLoc, $product->updated_at, 'weekly', '0.8');
-            }
-
-            // If there is a distinct Myanmar slug, add it as a separate entry
-            if ($slugMm && $slugMm !== $slugEn) {
-                $baseLoc = $baseUrl . '/products/' . $slugMm;
                 $xml .= $this->urlEntry($baseLoc, $product->updated_at, 'weekly', '0.8');
             }
         }

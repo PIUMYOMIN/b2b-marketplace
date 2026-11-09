@@ -82,13 +82,14 @@ class GenerateSeoStaticPages extends Command
 
     private function productRoutes(?string $slug): array
     {
-        $query = Product::approved()->whereNull('deleted_at')->select('slug_en', 'slug_mm');
+        $query = Product::approved()->whereNull('deleted_at')->select('slug_en');
         if ($slug) {
-            $query->where(fn ($q) => $q->where('slug_en', $slug)->orWhere('slug_mm', $slug));
+            $query->where('slug_en', $slug);
         }
 
         return $query->get()
-            ->flatMap(fn (Product $product) => array_filter([$product->slug_en, $product->slug_mm]))
+            ->pluck('slug_en')
+            ->filter()
             ->unique()
             ->map(fn (string $value) => '/products/' . $value)
             ->values()

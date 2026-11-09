@@ -169,6 +169,11 @@ class Product extends Model
         return $this->hasMany(ProductReview::class);
     }
 
+    public function slugAliases(): HasMany
+    {
+        return $this->hasMany(ProductSlugAlias::class);
+    }
+
     // -------------------------------------------------------------------------
     // Business Logic Helpers
     // -------------------------------------------------------------------------
@@ -416,7 +421,9 @@ class Product extends Model
 
         return $query->where(fn (Builder $query) => $query
             ->where('slug_en', $routeKey)
-            ->orWhere('slug_mm', $routeKey));
+            ->orWhere('slug_mm', $routeKey)
+            ->orWhereHas('slugAliases', fn (Builder $aliases) => $aliases
+                ->where('slug', $routeKey)));
     }
 
     /**

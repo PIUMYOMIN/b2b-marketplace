@@ -20,6 +20,19 @@ class FrontendController extends Controller
         $locale = app()->getLocale(); // 'en' or 'my'
 
         $path = $request->path() === '/' ? '/' : '/' . $request->path();
+        if (preg_match('#^/products/([^/]+)$#', $path, $matches)) {
+            $product = Product::approved()
+                ->wherePublicRouteKey($matches[1])
+                ->first(['id', 'slug_en']);
+
+            if ($product && $product->slug_en !== $matches[1]) {
+                return redirect()->to(
+                    '/products/' . rawurlencode($product->slug_en) . '?lang=' . $locale,
+                    301
+                );
+            }
+        }
+
         $data = $this->resolveMetadata($path, $locale, $request);
 
         return view('app', $data);
@@ -199,8 +212,24 @@ class FrontendController extends Controller
         elseif (preg_match('#^products/([^/]+)$#', $trimmed, $matches)) {
             $slug = $matches[1];
             $product = Product::approved()
-                ->where(fn ($q) => $q->where('slug_en', $slug)->orWhere('slug_mm', $slug))
-                ->with(['seller', 'reviews.user'])
+                ->wherePublicRouteKey($slug)
+                ->with([
+                    'seller',
+                    'category',
+                    'reviews' => fn ($query) => $query
+                        ->where('status', 'approved')
+                        ->with('user')
+                        ->latest()
+                        ->limit(10),
+                ])
+                ->withCount([
+                    'reviews as review_count' => fn ($query) => $query
+                        ->where('status', 'approved'),
+                ])
+                ->withAvg([
+                    'reviews as reviews_avg_rating' => fn ($query) => $query
+                        ->where('status', 'approved'),
+                ], 'rating')
                 ->first();
 
             if ($product) {
@@ -245,10 +274,13 @@ class FrontendController extends Controller
                 $metadata['pageImage']  = $firstImage ?? $metadata['pageImage'];
                 $metadata['pageType']   = 'product';
                 $metadata['product']    = $this->formatProductForJsonLd($product, $locale);
+                $canonicalProductPath = '/products/' . rawurlencode($product->slug_en);
+                $metadata['canonicalPath'] = $canonicalProductPath;
+                $metadata['pageUrl'] = $frontendUrl . $canonicalProductPath . '?lang=' . $locale;
                 $metadata['breadcrumbs'] = [
                     ['name' => $m['home_label'],     'url' => '/'],
                     ['name' => $m['products_label'], 'url' => '/products'],
-                    ['name' => $displayName,         'url' => $path],
+                    ['name' => $displayName,         'url' => $canonicalProductPath],
                 ];
             } else {
                 abort(404);
@@ -568,31 +600,159 @@ class FrontendController extends Controller
         $name = $locale === 'my'
             ? ($product->name_mm ?? $product->name_en)
             : ($product->name_en ?? $product->name_mm);
+        $alternateName = $locale === 'my'
+            ? $product->name_en
+            : $product->name_mm;
 
         $description = $locale === 'my'
             ? ($product->description_mm ?? $product->description_en)
             : ($product->description_en ?? $product->description_mm);
-
-        return [
-            'name'           => $name,
-            'images'         => array_map(fn($url) => ['url' => $url], $imageUrls),
-            'description'    => $description,
-            'sku'            => $product->sku,
-            'brand'          => $product->seller->store_name ?? null,
-            'slug'           => $product->slug_en ?? $product->slug_mm,
-            'price'          => $product->price ?? 0,
-            'inStock'        => ($product->quantity ?? 0) > 0,
-            'average_rating' => $product->reviews_avg_rating ?? 0,
-            'review_count'   => $product->reviews_count ?? 0,
-            'reviews'        => $product->relationLoaded('reviews')
-                ? $product->reviews->map(fn($r) => [
-                    'user_name'  => $r->user->name ?? 'Anonymous',
-                    'created_at' => $r->created_at->toIso8601String(),
-                    'comment'    => $r->comment,
-                    'rating'     => $r->rating,
-                ])->toArray()
-                : [],
+        $canonicalUrl = rtrim(
+            config('app.frontend_url', config('app.url')),
+            '/'
+        ) . '/products/' . rawurlencode($product->slug_en) . '?lang=' . $locale;
+        $stock = $product->totalStock();
+        $inStock = $product->product_type !== 'physical' || $stock > 0;
+        $offer = [
+            '@type' => 'Offer',
+            'url' => $canonicalUrl,
+            'priceCurrency' => 'MMK',
+            'price' => $product->getSellingPrice(),
+            'availability' => $inStock
+                ? 'https://schema.org/InStock'
+                : 'https://schema.org/OutOfStock',
         ];
+        if ($product->seller?->store_name) {
+            $offer['seller'] = [
+                '@type' => 'Organization',
+                'name' => $product->seller->store_name,
+            ];
+        }
+
+        if ($product->condition === 'new') {
+            $offer['itemCondition'] = 'https://schema.org/NewCondition';
+        } elseif (in_array($product->condition, ['used_like_new', 'used_good', 'used_fair'], true)) {
+            $offer['itemCondition'] = 'https://schema.org/UsedCondition';
+        }
+
+        if ($product->product_type === 'physical' && $product->shipping_cost !== null) {
+            $offer['shippingDetails'] = [
+                '@type' => 'OfferShippingDetails',
+                'shippingDestination' => [
+                    '@type' => 'DefinedRegion',
+                    'addressCountry' => 'MM',
+                ],
+                'shippingRate' => [
+                    '@type' => 'MonetaryAmount',
+                    'value' => (float) $product->shipping_cost,
+                    'currency' => 'MMK',
+                ],
+            ];
+        }
+
+        $schema = [
+            '@context' => 'https://schema.org',
+            '@type' => 'Product',
+            '@id' => $canonicalUrl . '#product',
+            'url' => $canonicalUrl,
+            'mainEntityOfPage' => [
+                '@type' => 'WebPage',
+                '@id' => $canonicalUrl,
+            ],
+            'name' => $name,
+            'offers' => $offer,
+        ];
+
+        $cleanDescription = trim(strip_tags((string) $description));
+        if ($cleanDescription !== '') {
+            $schema['description'] = $cleanDescription;
+        }
+        if ($alternateName && $alternateName !== $name) {
+            $schema['alternateName'] = $alternateName;
+        }
+        if ($imageUrls) {
+            $schema['image'] = $imageUrls;
+        }
+        if ($product->sku) {
+            $schema['sku'] = $product->sku;
+        }
+        if ($product->brand) {
+            $schema['brand'] = [
+                '@type' => 'Brand',
+                'name' => $product->brand,
+            ];
+        }
+        if ($product->category?->name_en) {
+            $schema['category'] = $product->category->name_en;
+        }
+        if ($product->model) {
+            $schema['mpn'] = $product->model;
+        }
+        if ($product->moq > 1) {
+            $minimumOrder = [
+                '@type' => 'PropertyValue',
+                'name' => 'Minimum order quantity',
+                'value' => $product->moq,
+            ];
+            if ($product->quantity_unit) {
+                $minimumOrder['unitText'] = $product->quantity_unit;
+            }
+            $schema['additionalProperty'] = [$minimumOrder];
+        }
+
+        $reviews = $product->relationLoaded('reviews')
+            ? $product->reviews
+                ->map(function ($review) {
+                    $author = trim((string) ($review->user?->name ?? ''));
+                    $rating = (float) $review->rating;
+                    if ($author === '' || $rating < 1 || $rating > 5) {
+                        return null;
+                    }
+
+                    $schemaReview = [
+                        '@type' => 'Review',
+                        'author' => [
+                            '@type' => 'Person',
+                            'name' => $author,
+                        ],
+                        'reviewRating' => [
+                            '@type' => 'Rating',
+                            'ratingValue' => $rating,
+                            'bestRating' => 5,
+                            'worstRating' => 1,
+                        ],
+                    ];
+                    if ($review->created_at) {
+                        $schemaReview['datePublished'] = $review->created_at->toDateString();
+                    }
+                    $reviewBody = trim(strip_tags((string) $review->comment));
+                    if ($reviewBody !== '') {
+                        $schemaReview['reviewBody'] = $reviewBody;
+                    }
+
+                    return $schemaReview;
+                })
+                ->filter()
+                ->values()
+                ->all()
+            : [];
+        if ($reviews) {
+            $schema['review'] = $reviews;
+        }
+
+        $rating = (float) ($product->reviews_avg_rating ?? 0);
+        $reviewCount = (int) ($product->review_count ?? 0);
+        if ($reviewCount > 0 && $rating >= 1 && $rating <= 5) {
+            $schema['aggregateRating'] = [
+                '@type' => 'AggregateRating',
+                'ratingValue' => round($rating, 1),
+                'reviewCount' => $reviewCount,
+                'bestRating' => 5,
+                'worstRating' => 1,
+            ];
+        }
+
+        return $schema;
     }
 
     protected function formatSellerForJsonLd($seller): array

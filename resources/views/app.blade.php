@@ -107,36 +107,7 @@
   <!-- Product JSON-LD -->
   @if (!empty($product))
   <script type="application/ld+json">
-  {
-    "@@context": "https://schema.org",
-    "@@type": "Product",
-    "name": "{{ addslashes($product['name']) }}",
-    "description": "{{ addslashes($product['description'] ?? '') }}",
-    "sku": "{{ $product['sku'] ?? '' }}",
-    "image": [
-      @foreach (($product['images'] ?? []) as $img)
-      "{{ $img['url'] }}"{{ !$loop->last ? ',' : '' }}
-      @endforeach
-    ],
-    "brand": {
-      "@@type": "Brand",
-      "name": "{{ addslashes($product['brand'] ?? 'Pyonea Seller') }}"
-    },
-    "offers": {
-      "@@type": "Offer",
-      "priceCurrency": "MMK",
-      "price": "{{ $product['price'] ?? 0 }}",
-      "availability": "{{ ($product['inStock'] ?? true) ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock' }}",
-      "url": "{{ $pageUrl ?? 'https://pyonea.com/products/' . ($product['slug'] ?? '') }}"
-    }
-    @if (!empty($product['review_count']))
-    ,"aggregateRating": {
-      "@@type": "AggregateRating",
-      "ratingValue": "{{ $product['average_rating'] ?? 0 }}",
-      "reviewCount": "{{ $product['review_count'] }}"
-    }
-    @endif
-  }
+  @json($product)
   </script>
   @endif
 

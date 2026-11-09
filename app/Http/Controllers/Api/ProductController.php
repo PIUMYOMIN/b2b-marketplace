@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductSlugAlias;
 use App\Models\Category;
 use App\Models\ProductReview;
 use App\Models\Discount;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use App\Models\SubscriptionPlan;
 use App\Notifications\ProductLimitWarning;
@@ -585,6 +587,40 @@ class ProductController extends Controller
         }
  
         $data = $request->validated();
+        $previousSlugs = [];
+        $slugChanged = false;
+        if (array_key_exists('slug_en', $data) && $data['slug_en'] !== $product->slug_en) {
+            $nextSlug = $data['slug_en'];
+            $slugAliasInUse = ProductSlugAlias::where('slug', $nextSlug)->exists();
+            $myanmarSlugInUse = Product::where('slug_mm', $nextSlug)
+                ->where('id', '!=', $product->id)
+                ->exists();
+            $oldSlugAliasOwner = ProductSlugAlias::where('slug', $product->slug_en)
+                ->where('product_id', '!=', $product->id)
+                ->exists();
+            $oldSlugMyanmarOwner = Product::where('slug_mm', $product->slug_en)
+                ->where('id', '!=', $product->id)
+                ->exists();
+
+            if ($slugAliasInUse || $myanmarSlugInUse) {
+                throw ValidationException::withMessages([
+                    'slug_en' => ['This URL slug is already in use.'],
+                ]);
+            }
+            if ($oldSlugAliasOwner || $oldSlugMyanmarOwner) {
+                throw ValidationException::withMessages([
+                    'slug_en' => ['The current URL cannot be changed safely because it conflicts with another product URL.'],
+                ]);
+            }
+
+            $slugChanged = true;
+            if ($product->slug_en) {
+                $previousSlugs[] = $product->slug_en;
+            }
+        } else {
+            unset($data['slug_en']);
+        }
+
         if (array_intersect(
             array_keys($data),
             ['discount_type', 'discount_price', 'discount_percentage', 'discount_start', 'discount_end', 'is_on_sale']
@@ -602,14 +638,13 @@ class ProductController extends Controller
             $data['quantity_step'] = $data['moq'];
         }
  
-        if (isset($data['name_en']) && $data['name_en'] !== $product->name_en) {
-            $data['slug_en'] = $this->generateSlug($data['name_en'], 'products', 'slug_en', $product->id);
-        }
-
         if (array_key_exists('name_mm', $data) && $data['name_mm'] !== $product->name_mm) {
             $data['slug_mm'] = filled($data['name_mm'])
                 ? $this->generateSlug($data['name_mm'], 'products', 'slug_mm', $product->id)
                 : null;
+            if ($product->slug_mm && $product->slug_mm !== $data['slug_mm']) {
+                $previousSlugs[] = $product->slug_mm;
+            }
         }
  
         // Changing product_type — reset type-specific fields
@@ -621,8 +656,54 @@ class ProductController extends Controller
             }
         }
  
-        $product->update($data);
+        $previousSlugs = array_values(array_unique(array_filter(
+            $previousSlugs,
+            fn (string $slug) => $slug !== ($data['slug_en'] ?? $product->slug_en)
+        )));
+        $previousSlugs = array_values(array_filter(
+            $previousSlugs,
+            function (string $previousSlug) use ($product) {
+                $slugInUse = Product::where(function ($query) use ($previousSlug) {
+                    $query->where('slug_en', $previousSlug)
+                        ->orWhere('slug_mm', $previousSlug);
+                })
+                    ->where('id', '!=', $product->id)
+                    ->exists();
+                $aliasOwner = ProductSlugAlias::where('slug', $previousSlug)
+                    ->where('product_id', '!=', $product->id)
+                    ->exists();
+
+                return ! $slugInUse && ! $aliasOwner;
+            }
+        ));
+
+        if ($previousSlugs) {
+            DB::transaction(function () use ($product, $data, $previousSlugs) {
+                foreach ($previousSlugs as $previousSlug) {
+                    ProductSlugAlias::firstOrCreate(
+                        ['slug' => $previousSlug],
+                        ['product_id' => $product->id],
+                    );
+                }
+                $product->update($data);
+            });
+        } else {
+            $product->update($data);
+        }
         $this->flushPublicCatalogCaches();
+        if ($slugChanged || $previousSlugs) {
+            foreach ($previousSlugs as $previousSlug) {
+                $this->purgeSeoStaticForProduct((object) [
+                    'slug_en' => $previousSlug,
+                    'slug_mm' => null,
+                ]);
+            }
+            $this->purgeSeoStaticForProduct((object) [
+                'slug_en' => null,
+                'slug_mm' => $product->slug_mm,
+            ]);
+            $this->dispatchSeoRegenForProduct($product->fresh());
+        }
  
         return response()->json([
             'success' => true,
@@ -1845,20 +1926,44 @@ class ProductController extends Controller
         if ($base === '') {
             $base = 'p-' . substr(sha1($text), 0, 10);
         }
+        if ($table === 'products' && $column === 'slug_en' && ctype_digit($base)) {
+            $base = 'product-' . $base;
+        }
 
         $slug = $base;
         $i    = 1;
 
-        while (
-            DB::table($table)
-                ->where($column, $slug)
-                ->when($excludeId, fn($q) => $q->where('id', '!=', $excludeId))
-                ->exists()
-        ) {
+        while ($this->slugExists($slug, $table, $column, $excludeId)) {
             $slug = "{$base}-{$i}";
             $i++;
         }
 
         return $slug;
+    }
+
+    private function slugExists(
+        string $slug,
+        string $table,
+        string $column,
+        ?int $excludeId
+    ): bool {
+        $query = DB::table($table)
+            ->where($column, $slug)
+            ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId));
+
+        if ($table !== 'products') {
+            return $query->exists();
+        }
+
+        $otherSlugColumn = $column === 'slug_en' ? 'slug_mm' : 'slug_en';
+        $productSlugExists = DB::table('products')
+            ->where(fn ($query) => $query
+                ->where($column, $slug)
+                ->orWhere($otherSlugColumn, $slug))
+            ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
+            ->exists();
+
+        return $productSlugExists
+            || ProductSlugAlias::where('slug', $slug)->exists();
     }
 }
